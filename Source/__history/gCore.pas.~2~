@@ -1,0 +1,11 @@
+unit gCore;
+
+interface
+
+type
+  TgBase = class(TObject)
+  end;
+
+implementation
+
+end.
