@@ -17,10 +17,19 @@ uses
 type
   // Test methods for class TgBase
 
+  TgBaseCustom = class(TgBase)
+  strict private
+    FManuallyConstructedObjectProperty: TgBase;
+    FObjectProperty: TgBase;
+  published
+    [Exclude([AutoCreate])]
+    property ManuallyConstructedObjectProperty: TgBase read FManuallyConstructedObjectProperty write FManuallyConstructedObjectProperty;
+    property ObjectProperty: TgBase read FObjectProperty;
+  end;
+
   TestTgBase = class(TTestCase)
   strict private
-    FgBase: TgBase;
-    FgBase2: TgBase;
+    FgBase: TgBaseCustom;
   public
     procedure SetUp; override;
     procedure TearDown; override;
@@ -36,20 +45,34 @@ Uses
 
 procedure TestTgBase.SetUp;
 begin
-  FgBase := TgBase.Create;
-  FgBase2 := TgBase.Create(FgBase);
+  FgBase := TgBaseCustom.Create;
 end;
 
 procedure TestTgBase.TearDown;
 begin
-  FreeAndNil(FgBase2);
   FreeAndNil(FgBase);
 end;
 
 procedure TestTgBase.TestCreate;
+var
+  Base : TgBase;
+  BaseCustom: TgBaseCustom;
 begin
-  CheckNull(FgBase.Owner);
-  CheckEquals(FgBase, FgBase2.Owner);
+  CheckNull(FgBase.Owner, 'When a constructor is called without a parameter, its owner should be nil.');
+  CheckNotNull(FgBase.ObjectProperty, 'Object properties should be constructed automatically if the Exclude([AutoCreate]) attribute is not set.');
+  CheckNull(FgBase.ManuallyConstructedObjectProperty, 'Object properties with the Exlude([AutoCreate]) attribute should not be nil.');
+  Check(FgBase=FgBase.ObjectProperty.Owner, 'The owner of an automatically constructed object property shoud be set to the object that created it.');
+  Base := TgBase.Create;
+  try
+    BaseCustom := TgBaseCustom.Create(Base);
+    try
+      Check(BaseCustom.ObjectProperty = Base, 'Object properties should take the value of an existing owner object if one exists.');
+    finally
+      BaseCustom.Free;
+    end;
+  finally
+    Base.Free;
+  end;
 end;
 
 initialization

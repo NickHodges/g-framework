@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <BorlandProject>
-  <Transactions>
-    <Transaction>2012/02/22 15:34:48.709,=C:\DevelopmentNew\Projects\GNew\Source\Test\TestgCore.pas</Transaction>
-    <Transaction>2012/02/22 15:34:49.148,=C:\DevelopmentNew\Projects\GNew\Source\gCore.pas</Transaction>
+	<Transactions>
+    <Transaction>2012/02/22 15:34:48.000.709,=C:\DevelopmentNew\Projects\GNew\Source\Test\TestgCore.pas</Transaction>
+    <Transaction>2012/02/22 15:34:49.000.148,=C:\DevelopmentNew\Projects\GNew\Source\gCore.pas</Transaction>
   </Transactions>
 </BorlandProject>

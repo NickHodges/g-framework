@@ -1,9 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <BorlandProject>
-  <Transactions>
-    <Transaction>2012/02/22 15:18:16.306,=rtl.dcp</Transaction>
-    <Transaction>2012/02/22 15:19:25.876,C:\DevelopmentNew\Projects\GNew\Source\pgCore.dproj=C:\Users\Goog\Documents\RAD Studio\Projects\Package1.dproj</Transaction>
-    <Transaction>2012/02/22 15:19:33.859,=C:\DevelopmentNew\Projects\GNew\Source\Unit1.pas</Transaction>
-    <Transaction>2012/02/22 15:19:51.175,C:\DevelopmentNew\Projects\GNew\Source\gCore.pas=C:\DevelopmentNew\Projects\GNew\Source\Unit1.pas</Transaction>
+	<Transactions>
+    <Transaction>2012/02/22 15:18:16.000.306,=rtl.dcp</Transaction>
+    <Transaction>2012/02/22 15:19:25.000.876,C:\Users\Goog\Documents\RAD Studio\Projects\Package1.dproj=C:\DevelopmentNew\Projects\GNew\Source\pgCore.dproj</Transaction>
+    <Transaction>2012/02/22 15:19:33.000.859,=C:\DevelopmentNew\Projects\GNew\Source\Unit1.pas</Transaction>
+    <Transaction>2012/02/22 15:19:51.000.175,C:\DevelopmentNew\Projects\GNew\Source\Unit1.pas=C:\DevelopmentNew\Projects\GNew\Source\gCore.pas</Transaction>
   </Transactions>
 </BorlandProject>
