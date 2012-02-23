@@ -37,16 +37,38 @@ type
   strict private
     FOwner: TgBase;
   strict protected
+    /// <summary>TgBase.AutoCreate gets called by the Create constructor to instantiate
+    /// object properties. You may override this method in a descendant class to alter
+    /// its behavior.
+    /// </summary>
     procedure AutoCreate; virtual;
+    /// <summary>TgBase.OwnerByClass walks up the Owner path looking for an owner whose
+    /// class type matches the AClass parameter. This method gets used by the
+    /// AutoCreate method to determine if an object property should get created, or
+    /// reference an existing object up the owner tree.
+    /// </summary>
+    /// <returns> TgBase
+    /// </returns>
+    /// <param name="AClass"> (TgBaseClass) </param>
     function OwnerByClass(AClass: TgBaseClass): TgBase; virtual;
   public
     /// <summary>TgBase.Create instantiates a new G object, sets its owner and
-    /// automatically instantiates any object properties descending from TgBase that
-    /// don't have the Exclude attribute with an AutoCreate
-    /// </summary>
+    /// automatically
+    /// instantiates any object properties descending from TgBase that don't have the
+    /// Exclude
+    /// attribute with an AutoCreate</summary>
     /// <param name="AOwner"> (TgBase) </param>
     constructor Create(AOwner: TgBase = Nil);
+    /// <summary>TgBase.Destroy frees any automatically instantiated object properties
+    /// owned by the object,
+    /// then destroys itself.</summary>
     destructor Destroy; override;
+    /// <summary>TgBase.Owns determines if the object passed into  the ABase parameter
+    /// has Self as its owner.
+    /// </summary>
+    /// <returns> Boolean
+    /// </returns>
+    /// <param name="ABase"> (TgBase) </param>
     function Owns(ABase : TgBase): Boolean;
   published
     /// <summary>TgBase.Owner represents the object passed in the constructor. You may
