@@ -9,11 +9,9 @@ type
   public
     constructor Create(AOwner: TgBase = Nil);
   published
-    {$Region 'Documentation'}
-    /// <summary>TgBase.Owner represents the object passed in the constructor.
-    /// </summary>
-    /// type:TgBase
-    {$EndRegion}
+    /// <summary>TgBase.Owner represents the object passed in the constructor. You may
+    /// use the Owner object to "walk up" the model.
+    /// </summary> type:TgBase
     property Owner: TgBase read FOwner;
   end;
 

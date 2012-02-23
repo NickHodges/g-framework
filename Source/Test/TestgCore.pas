@@ -20,6 +20,7 @@ type
   TestTgBase = class(TTestCase)
   strict private
     FgBase: TgBase;
+    FgBase2: TgBase;
   public
     procedure SetUp; override;
     procedure TearDown; override;
@@ -29,20 +30,26 @@ type
 
 implementation
 
+Uses
+  SysUtils
+  ;
+
 procedure TestTgBase.SetUp;
 begin
   FgBase := TgBase.Create;
+  FgBase2 := TgBase.Create(FgBase);
 end;
 
 procedure TestTgBase.TearDown;
 begin
-  FgBase.Free;
-  FgBase := nil;
+  FreeAndNil(FgBase2);
+  FreeAndNil(FgBase);
 end;
 
 procedure TestTgBase.TestCreate;
 begin
   CheckNull(FgBase.Owner);
+  CheckEquals(FgBase, FgBase2.Owner);
 end;
 
 initialization
