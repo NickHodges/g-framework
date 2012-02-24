@@ -87,7 +87,16 @@ type
     FObjectProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FRTTIContext: TRTTIContext;
     class procedure Initialize; static;
+    /// <summary>G.InitializeAttributes initializes the cache of attributes for the
+    /// class passed in the ARTTIType parameter.  For property attributes, it assigns
+    /// the attribute's RTTIProperty property.
+    /// </summary>
+    /// <param name="ARTTIType"> (TRTTIType) </param>
     class procedure InitializeAttributes(ARTTIType: TRTTIType); static;
+    /// <summary>G.InitializeAutoCreateProperties initializes the cache of auto created
+    /// properties for the ARTTIType parameter class passed in.
+    /// </summary>
+    /// <param name="ARTTIType"> (TRTTIType) </param>
     class procedure InitializeAutoCreateProperties(ARTTIType: TRTTIType); static;
     class procedure InitializeObjectProperties(ARTTIType: TRTTIType); static;
   public
@@ -117,12 +126,17 @@ var
 begin
   for RTTIProperty in G.AutoCreateProperties(Self) do
   Begin
+    // If follow the convention the property name will have a underlying field with the same name prefixed by a 'F'
+   { TODO : Find a better of initialzing the local storage of a property }
     Field := RTTIProperty.Parent.GetField('F' + RTTIProperty.Name);
     if Assigned(Field) then
     Begin
       ObjectPropertyClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+      // See if there is a owner that can populate this property
       ObjectProperty := OwnerByClass(ObjectPropertyClass);
       if Not Assigned(ObjectProperty) then
+        // Then just create a empty structure to be populated later.
+        // This will be owned by this structure and destroyed because it there.
         ObjectProperty := ObjectPropertyClass.Create(Self);
       Field.SetValue(Self, ObjectProperty)
     End;
@@ -201,8 +215,10 @@ var
   end;
 
 begin
+  // Add Class Attributes
   for Attribute in ARTTIType.GetAttributes do
     AddAttribute(Attribute);
+  // Add Property Attributes
   for RTTIProperty in ARTTIType.GetProperties do
   begin
     for Attribute in RTTIProperty.GetAttributes do
@@ -223,6 +239,7 @@ Var
 Begin
   for RTTIProperty in G.ObjectProperties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
   begin
+{ TODO : Don't do a auto create if the getter is a method. only when it is local storage }
     CanAdd := True;
     for Attribute in RTTIProperty.GetAttributes do
     if Attribute.InheritsFrom(Exclude) And (AutoCreate In Exclude(Attribute).Exclusions) Then

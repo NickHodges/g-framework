@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <BorlandProject>
-  <Transactions/>
-  <Default.Personality>
-    <Projects ActiveProject="C:\DevelopmentNew\Projects\GNew\Source\Test\pgCoreTests.dproj"/>
-  </Default.Personality>
+	<Transactions/>
+	<Default.Personality>
+		<Projects ActiveProject="C:\Users\Administrator\Documents\Projects\g\g-framework\Source\pgCore.dproj"/>
+	</Default.Personality>
 </BorlandProject>
