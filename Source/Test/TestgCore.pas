@@ -19,12 +19,18 @@ type
 
   TgBaseCustom = class(TgBase)
   strict private
+    FIntegerProperty: Integer;
     FManuallyConstructedObjectProperty: TgBase;
     FObjectProperty: TgBase;
+    FStringProperty: String;
   published
+    [DefaultValue(5)]
+    property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
     [Exclude([AutoCreate])]
     property ManuallyConstructedObjectProperty: TgBase read FManuallyConstructedObjectProperty write FManuallyConstructedObjectProperty;
     property ObjectProperty: TgBase read FObjectProperty;
+    [DefaultValue('Test')]
+    property StringProperty: String read FStringProperty write FStringProperty;
   end;
 
   TestTgBase = class(TTestCase)
@@ -62,6 +68,8 @@ begin
   CheckNotNull(FgBase.ObjectProperty, 'Object properties should be constructed automatically if the Exclude([AutoCreate]) attribute is not set.');
   CheckNull(FgBase.ManuallyConstructedObjectProperty, 'Object properties with the Exlude([AutoCreate]) attribute should not be nil.');
   Check(FgBase=FgBase.ObjectProperty.Owner, 'The owner of an automatically constructed object property shoud be set to the object that created it.');
+  CheckEquals(5, FgBase.IntegerProperty, 'Default integer values should be set for properties with a DefaultValue attribute.');
+  CheckEquals('Test', FgBase.StringProperty, 'Default string values should be set for properties with a DefaultValue attribute.');
   Base := TgBase.Create;
   try
     BaseCustom := TgBaseCustom.Create(Base);

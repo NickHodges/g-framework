@@ -5,11 +5,14 @@ interface
 Uses
   Generics.Collections,
   RTTI
-  ;
+;
 
 type
   TCustomAttributeClass = class of TCustomAttribute;
   TgBaseClass = class of TgBase;
+  {$M+}
+  TgBase = class;
+  {$M-}
 
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
@@ -29,13 +32,25 @@ type
     property Exclusions: AttributeExclusions read FExclusions;
   end;
 
+  DefaultValue = class(TgPropertyAttribute)
+  Strict Private
+    FValue : Variant;
+  Public
+    Constructor Create(Const AValue : String); Overload;
+    Constructor Create(AValue : Integer); Overload;
+    Constructor Create(AValue : Double); Overload;
+    Constructor Create(AValue : TDateTime); Overload;
+    procedure Execute(ABase: TgBase);
+    Property Value : Variant Read FValue;
+  End;
+
   /// <summary>TgBase is the base ancestor of all application specific classes you
   /// create in G
   /// </summary>
-  {$M+}
   TgBase = class(TObject)
   strict private
     FOwner: TgBase;
+    procedure PopulateDefaultValues;
   strict protected
     /// <summary>TgBase.AutoCreate gets called by the Create constructor to instantiate
     /// object properties. You may override this method in a descendant class to alter
@@ -77,7 +92,6 @@ type
     [Exclude([AutoCreate])]
     property Owner: TgBase read FOwner;
   end;
-  {$M-}
 
   G = class(TObject)
   strict private
@@ -147,6 +161,7 @@ begin
   inherited Create;
   FOwner := AOwner;
   AutoCreate;
+  PopulateDefaultValues;
 end;
 
 destructor TgBase.Destroy;
@@ -166,6 +181,14 @@ end;
 function TgBase.Owns(ABase : TgBase): Boolean;
 Begin
   Result := Assigned(ABase) And (ABase.Owner = Self);
+End;
+
+procedure TgBase.PopulateDefaultValues;
+Var
+  Attribute : TCustomAttribute;
+Begin
+  For Attribute In G.Attributes(Self, DefaultValue) Do
+    DefaultValue(Attribute).Execute(Self);
 End;
 
 class procedure G.Initialize;
@@ -312,6 +335,34 @@ constructor Exclude.Create(AExclusions: AttributeExclusions);
 begin
   inherited Create;
   FExclusions := AExclusions;
+end;
+
+Constructor DefaultValue.Create(Const AValue : String);
+Begin
+  FValue := AValue;
+End;
+
+Constructor DefaultValue.Create(AValue : Integer);
+Begin
+  FValue := AValue;
+End;
+
+Constructor DefaultValue.Create(AValue : Double);
+Begin
+  FValue := AValue;
+End;
+
+Constructor DefaultValue.Create(AValue : TDateTime);
+Begin
+  FValue := AValue;
+End;
+
+procedure DefaultValue.Execute(ABase: TgBase);
+var
+  TempValue: TValue;
+begin
+  TempValue := TValue.FromVariant(Value);
+  RTTIProperty.SetValue(ABase, TempValue);
 end;
 
 end.
