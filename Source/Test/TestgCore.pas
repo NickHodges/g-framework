@@ -20,26 +20,47 @@ type
   TgBaseCustom = class(TgBase)
   strict private
     FIntegerProperty: Integer;
-    FManuallyConstructedObjectProperty: TgBase;
+    FManuallyConstructedObjectProperty: TgBaseCustom;
     FObjectProperty: TgBase;
     FStringProperty: String;
+    FUnconstructedObjectProperty: TgBase;
+    FUnreadableIntegerProperty: Integer;
+    FUnwriteableIntegerProperty: Integer;
+    function GetManuallyConstructedObjectProperty: TgBaseCustom;
+  public
+    destructor Destroy; override;
   published
+    procedure SetUnwriteableIntegerProperty;
     [DefaultValue(5)]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
     [Exclude([AutoCreate])]
-    property ManuallyConstructedObjectProperty: TgBase read FManuallyConstructedObjectProperty write FManuallyConstructedObjectProperty;
+    property ManuallyConstructedObjectProperty: TgBaseCustom read GetManuallyConstructedObjectProperty;
     property ObjectProperty: TgBase read FObjectProperty;
     [DefaultValue('Test')]
     property StringProperty: String read FStringProperty write FStringProperty;
+    [Exclude([AutoCreate])]
+    property UnconstructedObjectProperty: TgBase read FUnconstructedObjectProperty write FUnconstructedObjectProperty;
+    property UnreadableIntegerProperty: Integer write FUnreadableIntegerProperty;
+    property UnwriteableIntegerProperty: Integer read FUnwriteableIntegerProperty;
   end;
 
   TestTgBase = class(TTestCase)
   strict private
     FgBase: TgBaseCustom;
   public
+    procedure PathEndsWithAnObjectProperty;
+    procedure PathExtendsBeyondOrdinalProperty;
+    procedure PropertyNotReadable;
+    procedure PropertyNotWriteable;
+    procedure SetPathEndsWithAnObjectProperty;
+    procedure SetPathExtendsBeyondOrdinalProperty;
+    procedure SetUndeclaredProperty;
     procedure SetUp; override;
     procedure TearDown; override;
+    procedure UndeclaredProperty;
   published
+    procedure GetValue;
+    procedure SetValue;
     procedure TestCreate;
   end;
 
@@ -49,9 +70,81 @@ Uses
   SysUtils
   ;
 
+procedure TestTgBase.GetValue;
+begin
+  // Given a Pathname, return the property value
+  CheckEquals('Test', FgBase['StringProperty'], 'Non-Object Property');
+  CheckEquals('Test', FgBase['ManuallyConstructedObjectProperty.StringProperty'], 'Object Property');
+  // If the property doesn't exist, raise an exception
+  CheckException(UndeclaredProperty, EgValue);
+  // If the path extends beyond an ordinal property, raise an exception
+  CheckException(PathExtendsBeyondOrdinalProperty, EgValue);
+  // If the path ends with an object property, raise an exception
+  CheckException(PathEndsWithAnObjectProperty, EgValue);
+  // If the property is not readable, raise an exception
+  CheckException(PropertyNotReadable, EgValue);
+end;
+
+procedure TestTgBase.PathEndsWithAnObjectProperty;
+begin
+  FgBase['ObjectProperty'];
+end;
+
+procedure TestTgBase.PathExtendsBeyondOrdinalProperty;
+begin
+  FgBase['IntegerProperty.ThisShouldNotBeHere'];
+end;
+
+procedure TestTgBase.PropertyNotReadable;
+begin
+  FgBase['UnreadableIntegerProperty'];
+end;
+
+procedure TestTgBase.PropertyNotWriteable;
+begin
+  FgBase['UnwriteableIntegerProperty'] := 5;
+end;
+
+procedure TestTgBase.SetPathEndsWithAnObjectProperty;
+begin
+  FgBase['ObjectProperty'] := 'Test';
+end;
+
+procedure TestTgBase.SetPathExtendsBeyondOrdinalProperty;
+begin
+  FgBase['IntegerProperty.ThisShouldNotBeHere'] := 'Test';
+end;
+
+procedure TestTgBase.SetUndeclaredProperty;
+begin
+  FgBase['ThisPropertyDoesNotExist'] := 'Test';
+end;
+
 procedure TestTgBase.SetUp;
 begin
   FgBase := TgBaseCustom.Create;
+end;
+
+procedure TestTgBase.SetValue;
+begin
+  // Given a Pathname, set the property value
+  FgBase['StringProperty'] := 'Test2';
+  CheckEquals('Test2', FgBase['StringProperty'], 'Non-Object Property');
+  FgBase['ManuallyConstructedObjectProperty.StringProperty'] := 'Test2';
+  CheckEquals('Test2', FgBase['ManuallyConstructedObjectProperty.StringProperty'], 'Object Property');
+  // If the property doesn't exist, raise an exception
+  CheckException(SetUndeclaredProperty, EgValue);
+  // If the path extends beyond an ordinal property, raise an exception
+  CheckException(SetPathExtendsBeyondOrdinalProperty, EgValue);
+  // If the path ends with an object property, raise an exception
+  CheckException(SetPathEndsWithAnObjectProperty, EgValue);
+  // If the property is not writeable, raise an exception
+  CheckException(PropertyNotWriteable, EgValue);
+  // Call a method
+  FgBase['SetUnwriteableIntegerProperty'] := '';
+  CheckEquals(10, FgBase.UnwriteableIntegerProperty);
+  FgBase['ManuallyConstructedObjectProperty.SetUnwriteableIntegerProperty'] := '';
+  CheckEquals(10, FgBase.ManuallyConstructedObjectProperty.UnwriteableIntegerProperty);
 end;
 
 procedure TestTgBase.TearDown;
@@ -66,7 +159,7 @@ var
 begin
   CheckNull(FgBase.Owner, 'When a constructor is called without a parameter, its owner should be nil.');
   CheckNotNull(FgBase.ObjectProperty, 'Object properties should be constructed automatically if the Exclude([AutoCreate]) attribute is not set.');
-  CheckNull(FgBase.ManuallyConstructedObjectProperty, 'Object properties with the Exlude([AutoCreate]) attribute should not be nil.');
+  CheckNull(FgBase.UnconstructedObjectProperty, 'Object properties with the Exlude([AutoCreate]) attribute should not be nil.');
   Check(FgBase=FgBase.ObjectProperty.Owner, 'The owner of an automatically constructed object property shoud be set to the object that created it.');
   CheckEquals(5, FgBase.IntegerProperty, 'Default integer values should be set for properties with a DefaultValue attribute.');
   CheckEquals('Test', FgBase.StringProperty, 'Default string values should be set for properties with a DefaultValue attribute.');
@@ -81,6 +174,29 @@ begin
   finally
     Base.Free;
   end;
+end;
+
+procedure TestTgBase.UndeclaredProperty;
+begin
+  FgBase['ThisPropertyDoesNotExist'];
+end;
+
+destructor TgBaseCustom.Destroy;
+begin
+  FreeAndNil(FManuallyConstructedObjectProperty);
+  inherited Destroy;
+end;
+
+function TgBaseCustom.GetManuallyConstructedObjectProperty: TgBaseCustom;
+begin
+  if Not Assigned(FManuallyConstructedObjectProperty) then
+    FManuallyConstructedObjectProperty := TgBaseCustom.Create(Self);
+  Result := FManuallyConstructedObjectProperty;
+end;
+
+procedure TgBaseCustom.SetUnwriteableIntegerProperty;
+begin
+  FUnwriteableIntegerProperty := 10;
 end;
 
 initialization
