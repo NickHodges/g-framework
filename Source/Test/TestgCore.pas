@@ -17,11 +17,36 @@ uses
 type
   // Test methods for class TgBase
 
+  TgString5 = record
+  strict private
+    FValue: String;
+  public
+    function GetValue: String;
+    procedure SetValue(const AValue: String);
+    class operator implicit(AValue: Variant): TgString5; overload;
+    class operator Implicit(AValue: TgString5): Variant; overload;
+    property Value: String read GetValue write SetValue;
+  end;
+
+  TPhoneString = record
+  strict private
+    FValue: String;
+  public
+    function FormatPhone(AValue : String): String;
+    function GetValue: String;
+    procedure SetValue(const AValue: String);
+    class operator Implicit(AValue: TPhoneString): Variant; overload;
+    class operator Implicit(AValue: Variant): TPhoneString; overload;
+    property Value: String read GetValue write SetValue;
+  end;
+
   TgBaseCustom = class(TgBase)
   strict private
     FIntegerProperty: Integer;
     FManuallyConstructedObjectProperty: TgBaseCustom;
     FObjectProperty: TgBase;
+    FPhone: TPhoneString;
+    FString5: TgString5;
     FStringProperty: String;
     FUnconstructedObjectProperty: TgBase;
     FUnreadableIntegerProperty: Integer;
@@ -33,15 +58,17 @@ type
     procedure SetUnwriteableIntegerProperty;
     [DefaultValue(5)]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
-    [Exclude([AutoCreate])]
+    [ExcludeFeature([AutoCreate])]
     property ManuallyConstructedObjectProperty: TgBaseCustom read GetManuallyConstructedObjectProperty;
     property ObjectProperty: TgBase read FObjectProperty;
     [DefaultValue('Test')]
     property StringProperty: String read FStringProperty write FStringProperty;
-    [Exclude([AutoCreate])]
+    [ExcludeFeature([AutoCreate])]
     property UnconstructedObjectProperty: TgBase read FUnconstructedObjectProperty write FUnconstructedObjectProperty;
     property UnreadableIntegerProperty: Integer write FUnreadableIntegerProperty;
     property UnwriteableIntegerProperty: Integer read FUnwriteableIntegerProperty;
+    property String5: TgString5 read FString5 write FString5;
+    property Phone: TPhoneString read FPhone write FPhone;
   end;
 
   TestTgBase = class(TTestCase)
@@ -61,13 +88,20 @@ type
   published
     procedure GetValue;
     procedure SetValue;
+    procedure TestAssign;
     procedure TestCreate;
+  end;
+
+  TestTgString5 = class(TTestCase)
+  published
+    procedure TestLength;
   end;
 
 implementation
 
 Uses
-  SysUtils
+  SysUtils,
+  Character
   ;
 
 procedure TestTgBase.GetValue;
@@ -83,6 +117,11 @@ begin
   CheckException(PathEndsWithAnObjectProperty, EgValue);
   // If the property is not readable, raise an exception
   CheckException(PropertyNotReadable, EgValue);
+  // Can we get an Active Value?
+  FgBase.String5 := '123456789';
+  CheckEquals('12345', FgBase['String5'], 'Active Value');
+  FgBase.Phone := '5555555555';
+  CheckEquals('(555) 555-5555', FgBase['Phone'], 'Phone');
 end;
 
 procedure TestTgBase.PathEndsWithAnObjectProperty;
@@ -145,11 +184,18 @@ begin
   CheckEquals(10, FgBase.UnwriteableIntegerProperty);
   FgBase['ManuallyConstructedObjectProperty.SetUnwriteableIntegerProperty'] := '';
   CheckEquals(10, FgBase.ManuallyConstructedObjectProperty.UnwriteableIntegerProperty);
+  FgBase['String5'] := '123456789';
+  CheckEquals('12345', FgBase.String5);
 end;
 
 procedure TestTgBase.TearDown;
 begin
   FreeAndNil(FgBase);
+end;
+
+procedure TestTgBase.TestAssign;
+begin
+  // TODO -cMM: TestTgBase.TestAssign default body inserted
 end;
 
 procedure TestTgBase.TestCreate;
@@ -199,8 +245,84 @@ begin
   FUnwriteableIntegerProperty := 10;
 end;
 
+function TgString5.GetValue: String;
+begin
+  Result := FValue;
+end;
+
+procedure TgString5.SetValue(const AValue: String);
+begin
+  FValue := Copy(AValue, 1, 5);
+end;
+
+class operator TgString5.implicit(AValue: Variant): TgString5;
+begin
+  Result.Value := AValue;
+end;
+
+class operator TgString5.Implicit(AValue: TgString5): Variant;
+begin
+  Result := AValue.Value;
+end;
+
+procedure TestTgString5.TestLength;
+var
+  String5: TgString5;
+begin
+  String5 := '123456789';
+  CheckEquals('12345', String5);
+end;
+
+function TPhoneString.FormatPhone(AValue : String): String;
+Var
+  CurrentCharacter: Char;
+Begin
+  Result := '';
+  for CurrentCharacter in AValue do
+  Begin
+    if IsNumber(CurrentCharacter) then
+      Result := Result + CurrentCharacter;
+  End;
+  Case Length(Result) Of
+    7 :
+    Begin
+      Insert('(   ) ', Result, 1);
+      Insert('-', Result, 10);
+    End;
+    10 :
+    Begin
+      Insert('(', Result, 1);
+      Insert(') ', Result, 5);
+      Insert('-', Result, 10);
+    End;
+    Else
+      Result := AValue;
+  End;
+End;
+
+function TPhoneString.GetValue: String;
+begin
+  Result := FValue;
+end;
+
+procedure TPhoneString.SetValue(const AValue: String);
+begin
+  FValue := FormatPhone(AValue);
+end;
+
+class operator TPhoneString.Implicit(AValue: TPhoneString): Variant;
+begin
+  Result := AValue.Value;
+end;
+
+class operator TPhoneString.Implicit(AValue: Variant): TPhoneString;
+begin
+  Result.Value := AValue;
+end;
+
 initialization
   // Register any test cases with the test runner
   RegisterTest(TestTgBase.Suite);
+  RegisterTest(TestTgString5.Suite);
 end.
 
