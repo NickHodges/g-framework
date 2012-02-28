@@ -50,6 +50,9 @@ type
 
   TBase = class(TgBase)
   strict private
+    FBooleanProperty: Boolean;
+    FDateProperty: TDate;
+    FDateTimeProperty: TDateTime;
     FIntegerProperty: Integer;
     FManuallyConstructedObjectProperty: TBase;
     FObjectProperty: TBase2;
@@ -64,6 +67,9 @@ type
     destructor Destroy; override;
   published
     procedure SetUnwriteableIntegerProperty;
+    property BooleanProperty: Boolean read FBooleanProperty write FBooleanProperty;
+    property DateProperty: TDate read FDateProperty write FDateProperty;
+    property DateTimeProperty: TDateTime read FDateTimeProperty write FDateTimeProperty;
     [DefaultValue(5)]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
     property ManuallyConstructedObjectProperty: TBase read GetManuallyConstructedObjectProperty;
@@ -134,6 +140,18 @@ begin
   CheckEquals('12345', Base['String5'], 'Active Value');
   Base.Phone := '5555555555';
   CheckEquals('(555) 555-5555', Base['Phone'], 'Phone');
+  Base.BooleanProperty := True;
+  CheckEquals(True, Base['BooleanProperty']);
+  CheckEquals('True', Base['BooleanProperty']);
+  Base.BooleanProperty := False;
+  CheckEquals(False, Base['BooleanProperty']);
+  CheckEquals('False', Base['BooleanProperty']);
+  Base.DateProperty := StrToDate('1/1/12');
+  CheckEquals(StrToDate('1/1/12'), Base['DateProperty'], 'Date as TDate');
+  CheckEquals(FloatToStr(StrToDate('1/1/12')), Base['DateProperty'], 'Date as String');
+  Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
+  CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base['DateTimeProperty'], 'DateTime as TDateTime');
+  CheckEquals(FloatToStr(StrToDateTime('1/1/12 12:34 am')), Base['DateTimeProperty'], 'DateTime as String');
 end;
 
 procedure TestTBase.PathEndsWithAnObjectProperty;
@@ -198,6 +216,22 @@ begin
   CheckEquals(10, Base.ManuallyConstructedObjectProperty.UnwriteableIntegerProperty);
   Base['String5'] := '123456789';
   CheckEquals('12345', Base.String5);
+  Base['BooleanProperty'] := True;
+  CheckEquals(True, Base.BooleanProperty);
+  Base['BooleanProperty'] := False;
+  CheckEquals(False, Base.BooleanProperty);
+  Base['BooleanProperty'] := 'True';
+  CheckEquals(True, Base.BooleanProperty);
+  Base['BooleanProperty'] := 'False';
+  CheckEquals(False, Base.BooleanProperty);
+  Base['DateProperty'] := StrToDate('1/1/12');
+  CheckEquals(StrToDate('1/1/12'), Base.DateProperty, 'Date as TDate');
+  Base['DateProperty'] := '1/1/12';
+  CheckEquals(StrToDate('1/1/12'), Base.DateProperty, 'Date as String');
+  Base['DateTimeProperty'] := StrToDateTime('1/1/12 12:34 am');
+  CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty, 'DateTime as TDateTime');
+  Base['DateTimeProperty'] := '1/1/12 12:34 am';
+  CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty, 'DateTime as String');
 end;
 
 procedure TestTBase.TearDown;
@@ -231,28 +265,37 @@ begin
   XMLString :=
     '<xml>'#13#10 + //0
     '  <Base classname="TestgCore.TBase">'#13#10 + //1
-    '    <IntegerProperty>5</IntegerProperty>'#13#10 + //2
-    '    <ManuallyConstructedObjectProperty classname="TestgCore.TBase">'#13#10 + //3
-    '      <IntegerProperty>6</IntegerProperty>'#13#10 + //4
-    '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //5
-    '        <IntegerProperty>2</IntegerProperty>'#13#10 + //6
-    '      </ObjectProperty>'#13#10 + //7
-    '      <String5>98765</String5>'#13#10 + //8
-    '      <Phone>(444) 444-4444</Phone>'#13#10 + //9
-    '    </ManuallyConstructedObjectProperty>'#13#10 + //10
-    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
-    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //12
-    '    </ObjectProperty>'#13#10 + //13
-    '    <String5>12345</String5>'#13#10 + //14
-    '    <Phone>(555) 555-5555</Phone>'#13#10 + //15
-    '  </Base>'#13#10 + //16
-    '</xml>'#13#10; //17
+    '    <BooleanProperty>True</BooleanProperty>'#13#10 + //2
+    '    <DateProperty>1/1/2012</DateProperty>'#13#10 + //3
+    '    <DateTimeProperty>1/1/2012 00:34:00</DateTimeProperty>'#13#10 + //4
+    '    <IntegerProperty>5</IntegerProperty>'#13#10 + //5
+    '    <ManuallyConstructedObjectProperty classname="TestgCore.TBase">'#13#10 + //6
+    '      <BooleanProperty>False</BooleanProperty>'#13#10 + //7
+    '      <DateProperty>12/30/1899</DateProperty>'#13#10 + //8
+    '      <DateTimeProperty>12/30/1899 00:00:00</DateTimeProperty>'#13#10 + //9
+    '      <IntegerProperty>6</IntegerProperty>'#13#10 + //10
+    '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
+    '        <IntegerProperty>2</IntegerProperty>'#13#10 + //12
+    '      </ObjectProperty>'#13#10 + //13
+    '      <String5>98765</String5>'#13#10 + //14
+    '      <Phone>(444) 444-4444</Phone>'#13#10 + //15
+    '    </ManuallyConstructedObjectProperty>'#13#10 + //16
+    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //17
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //18
+    '    </ObjectProperty>'#13#10 + //19
+    '    <String5>12345</String5>'#13#10 + //20
+    '    <Phone>(555) 555-5555</Phone>'#13#10 + //21
+    '  </Base>'#13#10 + //22
+    '</xml>'#13#10; //23
   Base.Deserialize(TgSerializerXML, XMLString);
   CheckEquals('12345', Base.String5);
   CheckEquals('(555) 555-5555', Base.Phone);
   CheckEquals(6, Base.ManuallyConstructedObjectProperty.IntegerProperty);
   CheckEquals('98765', Base.ManuallyConstructedObjectProperty.String5);
   CheckEquals('(444) 444-4444', Base.ManuallyConstructedObjectProperty.Phone);
+  CheckEquals(True, Base.BooleanProperty);
+  CheckEquals(StrToDate('1/1/12'), Base.DateProperty);
+  CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
 end;
 
 procedure TestTBase.DeserializeJSON;
@@ -260,17 +303,23 @@ var
   JSONString: string;
 begin
   JSONString :=
-    '{"ClassName":"TestgCore.TBase","IntegerProperty":"5","ManuallyConstructedO'+
-    'bjectProperty":{"ClassName":"TestgCore.TBase","IntegerProperty":"6","Objec'+
-    'tProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"},"String5'+
-    '":"98765","Phone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCo'+
-    're.TBase2","IntegerProperty":"2"},"String5":"12345","Phone":"(555) 555-5555"}';
+    '{"ClassName":"TestgCore.TBase","BooleanProperty":"True","DateProperty":"1/'+
+    '1/2012","DateTimeProperty":"1/1/2012 00:34:00","IntegerProperty":"5","Manu'+
+    'allyConstructedObjectProperty":{"ClassName":"TestgCore.TBase","BooleanProp'+
+    'erty":"False","DateProperty":"12/30/1899","DateTimeProperty":"12/30/1899 0'+
+    '0:00:00","IntegerProperty":"6","ObjectProperty":{"ClassName":"TestgCore.TB'+
+    'ase2","IntegerProperty":"2"},"String5":"98765","Phone":"(444) 444-4444"},"'+
+    'ObjectProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"},"St'+
+    'ring5":"12345","Phone":"(555) 555-5555"}';
   Base.Deserialize(TgSerializerJSON, JSONString);
   CheckEquals('12345', Base.String5);
   CheckEquals('(555) 555-5555', Base.Phone);
   CheckEquals(6, Base.ManuallyConstructedObjectProperty.IntegerProperty);
   CheckEquals('98765', Base.ManuallyConstructedObjectProperty.String5);
   CheckEquals('(444) 444-4444', Base.ManuallyConstructedObjectProperty.Phone);
+  CheckEquals(True, Base.BooleanProperty);
+  CheckEquals(StrToDate('1/1/12'), Base.DateProperty);
+  CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
 end;
 
 procedure TestTBase.SerializeXML;
@@ -282,25 +331,34 @@ begin
   Base.ManuallyConstructedObjectProperty.IntegerProperty := 6;
   Base.ManuallyConstructedObjectProperty.String5 := '987654321';
   Base.ManuallyConstructedObjectProperty.Phone := '4444444444';
+  Base.BooleanProperty := True;
+  Base.DateProperty := StrToDate('1/1/12');
+  Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
   XMLString :=
     '<xml>'#13#10 + //0
     '  <Base classname="TestgCore.TBase">'#13#10 + //1
-    '    <IntegerProperty>5</IntegerProperty>'#13#10 + //2
-    '    <ManuallyConstructedObjectProperty classname="TestgCore.TBase">'#13#10 + //3
-    '      <IntegerProperty>6</IntegerProperty>'#13#10 + //4
-    '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //5
-    '        <IntegerProperty>2</IntegerProperty>'#13#10 + //6
-    '      </ObjectProperty>'#13#10 + //7
-    '      <String5>98765</String5>'#13#10 + //8
-    '      <Phone>(444) 444-4444</Phone>'#13#10 + //9
-    '    </ManuallyConstructedObjectProperty>'#13#10 + //10
-    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
-    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //12
-    '    </ObjectProperty>'#13#10 + //13
-    '    <String5>12345</String5>'#13#10 + //14
-    '    <Phone>(555) 555-5555</Phone>'#13#10 + //15
-    '  </Base>'#13#10 + //16
-    '</xml>'#13#10; //17
+    '    <BooleanProperty>True</BooleanProperty>'#13#10 + //2
+    '    <DateProperty>1/1/2012</DateProperty>'#13#10 + //3
+    '    <DateTimeProperty>1/1/2012 00:34:00</DateTimeProperty>'#13#10 + //4
+    '    <IntegerProperty>5</IntegerProperty>'#13#10 + //5
+    '    <ManuallyConstructedObjectProperty classname="TestgCore.TBase">'#13#10 + //6
+    '      <BooleanProperty>False</BooleanProperty>'#13#10 + //7
+    '      <DateProperty>12/30/1899</DateProperty>'#13#10 + //8
+    '      <DateTimeProperty>12/30/1899 00:00:00</DateTimeProperty>'#13#10 + //9
+    '      <IntegerProperty>6</IntegerProperty>'#13#10 + //10
+    '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
+    '        <IntegerProperty>2</IntegerProperty>'#13#10 + //12
+    '      </ObjectProperty>'#13#10 + //13
+    '      <String5>98765</String5>'#13#10 + //14
+    '      <Phone>(444) 444-4444</Phone>'#13#10 + //15
+    '    </ManuallyConstructedObjectProperty>'#13#10 + //16
+    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //17
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //18
+    '    </ObjectProperty>'#13#10 + //19
+    '    <String5>12345</String5>'#13#10 + //20
+    '    <Phone>(555) 555-5555</Phone>'#13#10 + //21
+    '  </Base>'#13#10 + //22
+    '</xml>'#13#10; //23
   CheckEquals(XMLString, Base.Serialize(TgSerializerXML));
 end;
 
@@ -313,12 +371,18 @@ begin
   Base.ManuallyConstructedObjectProperty.IntegerProperty := 6;
   Base.ManuallyConstructedObjectProperty.String5 := '987654321';
   Base.ManuallyConstructedObjectProperty.Phone := '4444444444';
+  Base.BooleanProperty := True;
+  Base.DateProperty := StrToDate('1/1/12');
+  Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
   JSONString :=
-    '{"ClassName":"TestgCore.TBase","IntegerProperty":"5","ManuallyConstructedO'+
-    'bjectProperty":{"ClassName":"TestgCore.TBase","IntegerProperty":"6","Objec'+
-    'tProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"},"String5'+
-    '":"98765","Phone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCo'+
-    're.TBase2","IntegerProperty":"2"},"String5":"12345","Phone":"(555) 555-5555"}';
+    '{"ClassName":"TestgCore.TBase","BooleanProperty":"True","DateProperty":"1/'+
+    '1/2012","DateTimeProperty":"1/1/2012 00:34:00","IntegerProperty":"5","Manu'+
+    'allyConstructedObjectProperty":{"ClassName":"TestgCore.TBase","BooleanProp'+
+    'erty":"False","DateProperty":"12/30/1899","DateTimeProperty":"12/30/1899 0'+
+    '0:00:00","IntegerProperty":"6","ObjectProperty":{"ClassName":"TestgCore.TB'+
+    'ase2","IntegerProperty":"2"},"String5":"98765","Phone":"(444) 444-4444"},"'+
+    'ObjectProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"},"St'+
+    'ring5":"12345","Phone":"(555) 555-5555"}';
   CheckEquals(JSONString, Base.Serialize(TgSerializerJSON));
 end;
 
@@ -449,6 +513,7 @@ initialization
   RegisterTest(TestTBase.Suite);
   RegisterTest(TestTgString5.Suite);
 end.
+
 
 
 
