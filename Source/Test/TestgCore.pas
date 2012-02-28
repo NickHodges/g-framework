@@ -89,6 +89,8 @@ type
     procedure GetValue;
     procedure SetValue;
     procedure Assign;
+    procedure DeserializeXML;
+    procedure SerializeXML;
     procedure TestCreate;
   end;
 
@@ -201,13 +203,44 @@ begin
   try
     FgBase.IntegerProperty := 6;
     FgBase.StringProperty := 'Hello';
+    FgBase.Phone := '5555555555';
     Target.Assign(FgBase);
     CheckEquals(6, Target.IntegerProperty);
     CheckNull(Target.Inspect(G.PropertyByName(Target, 'ManuallyConstructedObjectProperty')));
     CheckEquals('Test', Target.StringProperty);
+    CheckEquals('(555) 555-5555', Target.Phone);
   finally
     Target.Free;
   end;
+end;
+
+procedure TestTgBase.DeserializeXML;
+var
+  XMLString: string;
+begin
+  XMLString :=
+    '<xml>'#13#10 + //0
+    '  <gBaseCustom classname="TestgCore.TgBaseCustom">'#13#10 + //1
+    '    <IntegerProperty>8</IntegerProperty>'#13#10 + //2
+    '    <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //3
+    '  </gBaseCustom>'#13#10 + //4
+    '</xml>'#13#10;
+  FgBase.Deserialize(TgSerializerXML, XMLString);
+  CheckEquals(8, FgBase.IntegerProperty);
+end;
+
+procedure TestTgBase.SerializeXML;
+var
+  XMLString: string;
+begin
+  XMLString :=
+    '<xml>'#13#10 + //0
+    '  <gBaseCustom classname="TestgCore.TgBaseCustom">'#13#10 + //1
+    '    <IntegerProperty>5</IntegerProperty>'#13#10 + //2
+    '    <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //3
+    '  </gBaseCustom>'#13#10 + //4
+    '</xml>'#13#10;
+  CheckEquals(XMLString, FgBase.Serialize(TgSerializerXML));
 end;
 
 procedure TestTgBase.TestCreate;
@@ -337,4 +370,5 @@ initialization
   RegisterTest(TestTgBase.Suite);
   RegisterTest(TestTgString5.Suite);
 end.
+
 

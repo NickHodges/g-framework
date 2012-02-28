@@ -134,6 +134,7 @@ type
     /// then destroys itself.</summary>
     destructor Destroy; override;
     procedure Assign(ASource : TgBase); virtual;
+    procedure Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
     class function FriendlyName: String;
     function GetFriendlyClassName: String;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
@@ -379,6 +380,18 @@ Begin
   Else
     Raise EgAssign.CreateFmt('Assignment mismatch between source ''%s'' and destination ''%s'' classes.', [ASource.ClassName, ClassName]);
 End;
+
+procedure TgBase.Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
+var
+  Serializer: TgSerializer;
+begin
+  Serializer := ASerializerClass.Create;
+  try
+    Serializer.Deserialize(Self, AString);
+  finally
+    Serializer.Free;
+  end;
+end;
 
 function TgBase.DoGetValues(Const APath : String; Out AValue : Variant): Boolean;
 Var
@@ -692,11 +705,13 @@ begin
   FMethodByName := TDictionary<String, TRTTIMethod>.Create();
   FSerializableProperties := TDictionary < TgBaseClass, TArray < TRTTIProperty >>.Create();
   FRecordProperty := TDictionary<TRTTIProperty, TgRecordProperty>.Create();
+  FSerializationHelpers := TDictionary<TgSerializerClass, TList<TPair<TgBaseClass, TgSerializationHelperClass>>>.Create();
   Initialize;
 end;
 
 class destructor G.Destroy;
 begin
+  FreeAndNil(FSerializationHelpers);
   FreeAndNil(FRecordProperty);
   FreeAndNil(FMethodByName);
   FreeAndNil(FSerializableProperties);
@@ -793,23 +808,22 @@ Var
   RTTIProperty : TRTTIProperty;
 Begin
   for RTTIProperty in ARTTIType.GetProperties do
-  if RTTIProperty.Visibility = mvPublished then
   begin
-    If Not RTTIProperty.IsReadable Then
-      Break;
+    if Not (RTTIProperty.Visibility = mvPublished) Or Not RTTIProperty.IsReadable Then
+      Continue;
     if RTTIProperty.PropertyType.IsInstance then
     Begin
       If Not RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgBase) Then
-        Break;
+        Continue;
     End
     else if Not RTTIProperty.IsWritable Then
-      Break;
+      Continue;
     CanAdd := True;
     for Attribute in RTTIProperty.GetAttributes do
     if Attribute.InheritsFrom(ExcludeFeature) And (Serializable in ExcludeFeature(Attribute).FeatureExclusions) then
     begin
       CanAdd := False;
-      Break;
+      Continue;
     end;
     if CanAdd then
     begin
@@ -1213,5 +1227,9 @@ class function TgSerializationHelperXMLBase.SerializerClass: TgSerializerClass;
 begin
   Result := TgSerializerXML;
 end;
+
+Initialization
+  TgSerializationHelperXMLBase.BaseClass;
+  TgSerializationHelperJSONBase.BaseClass;
 
 end.
