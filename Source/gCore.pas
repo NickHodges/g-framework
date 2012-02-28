@@ -1109,7 +1109,7 @@ begin
       AObject[Pair.JsonString.Value] := Pair.JsonValue.Value
     Else
     Begin
-      ObjectProperty := TgBase(AObject.Inspect(RTTIProperty));
+      ObjectProperty := TgBase(RTTIProperty.GetValue(AObject).AsObject);
       If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) And AObject.Owns(ObjectProperty) Then
       Begin
         SerializationHelperJSONBaseClass := TgSerializationHelperJSONBaseClass(G.SerializationHelpers(TgSerializerJSON, ObjectProperty));
@@ -1141,7 +1141,7 @@ begin
          Value := FormatDateTime('m/d/yyyy hh:nn:ss', DoubleValue);
       End
       Else
-        Value := RTTIProperty.GetValue(AObject).AsVariant;
+        Value := AObject[RTTIProperty.Name];
       ASerializer.AddValueProperty(RTTIProperty.Name, Value);
     End
     Else

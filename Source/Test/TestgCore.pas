@@ -40,26 +40,34 @@ type
     property Value: String read GetValue write SetValue;
   end;
 
-  TgBaseCustom = class(TgBase)
+  TBase2 = Class(TgBase)
   strict private
     FIntegerProperty: Integer;
-    FManuallyConstructedObjectProperty: TgBaseCustom;
-    FObjectProperty: TgBase;
+  published
+    [DefaultValue(2)]
+    property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
+  End;
+
+  TBase = class(TgBase)
+  strict private
+    FIntegerProperty: Integer;
+    FManuallyConstructedObjectProperty: TBase;
+    FObjectProperty: TBase2;
     FPhone: TPhoneString;
     FString5: TgString5;
     FStringProperty: String;
     FUnconstructedObjectProperty: TgBase;
     FUnreadableIntegerProperty: Integer;
     FUnwriteableIntegerProperty: Integer;
-    function GetManuallyConstructedObjectProperty: TgBaseCustom;
+    function GetManuallyConstructedObjectProperty: TBase;
   public
     destructor Destroy; override;
   published
     procedure SetUnwriteableIntegerProperty;
     [DefaultValue(5)]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
-    property ManuallyConstructedObjectProperty: TgBaseCustom read GetManuallyConstructedObjectProperty;
-    property ObjectProperty: TgBase read FObjectProperty;
+    property ManuallyConstructedObjectProperty: TBase read GetManuallyConstructedObjectProperty;
+    property ObjectProperty: TBase2 read FObjectProperty;
     [DefaultValue('Test')]
     [ExcludeFeature([Serializable])]
     property StringProperty: String read FStringProperty write FStringProperty;
@@ -71,9 +79,9 @@ type
     property Phone: TPhoneString read FPhone write FPhone;
   end;
 
-  TestTgBase = class(TTestCase)
+  TestTBase = class(TTestCase)
   strict private
-    FgBase: TgBaseCustom;
+    Base: TBase;
   public
     procedure PathEndsWithAnObjectProperty;
     procedure PathExtendsBeyondOrdinalProperty;
@@ -90,7 +98,9 @@ type
     procedure SetValue;
     procedure Assign;
     procedure DeserializeXML;
+    procedure DeserializeJSON;
     procedure SerializeXML;
+    procedure SerializeJSON;
     procedure TestCreate;
   end;
 
@@ -106,11 +116,11 @@ Uses
   Character
   ;
 
-procedure TestTgBase.GetValue;
+procedure TestTBase.GetValue;
 begin
   // Given a Pathname, return the property value
-  CheckEquals('Test', FgBase['StringProperty'], 'Non-Object Property');
-  CheckEquals('Test', FgBase['ManuallyConstructedObjectProperty.StringProperty'], 'Object Property');
+  CheckEquals('Test', Base['StringProperty'], 'Non-Object Property');
+  CheckEquals('Test', Base['ManuallyConstructedObjectProperty.StringProperty'], 'Object Property');
   // If the property doesn't exist, raise an exception
   CheckException(UndeclaredProperty, EgValue);
   // If the path extends beyond an ordinal property, raise an exception
@@ -120,59 +130,59 @@ begin
   // If the property is not readable, raise an exception
   CheckException(PropertyNotReadable, EgValue);
   // Can we get an Active Value?
-  FgBase.String5 := '123456789';
-  CheckEquals('12345', FgBase['String5'], 'Active Value');
-  FgBase.Phone := '5555555555';
-  CheckEquals('(555) 555-5555', FgBase['Phone'], 'Phone');
+  Base.String5 := '123456789';
+  CheckEquals('12345', Base['String5'], 'Active Value');
+  Base.Phone := '5555555555';
+  CheckEquals('(555) 555-5555', Base['Phone'], 'Phone');
 end;
 
-procedure TestTgBase.PathEndsWithAnObjectProperty;
+procedure TestTBase.PathEndsWithAnObjectProperty;
 begin
-  FgBase['ObjectProperty'];
+  Base['ObjectProperty'];
 end;
 
-procedure TestTgBase.PathExtendsBeyondOrdinalProperty;
+procedure TestTBase.PathExtendsBeyondOrdinalProperty;
 begin
-  FgBase['IntegerProperty.ThisShouldNotBeHere'];
+  Base['IntegerProperty.ThisShouldNotBeHere'];
 end;
 
-procedure TestTgBase.PropertyNotReadable;
+procedure TestTBase.PropertyNotReadable;
 begin
-  FgBase['UnreadableIntegerProperty'];
+  Base['UnreadableIntegerProperty'];
 end;
 
-procedure TestTgBase.PropertyNotWriteable;
+procedure TestTBase.PropertyNotWriteable;
 begin
-  FgBase['UnwriteableIntegerProperty'] := 5;
+  Base['UnwriteableIntegerProperty'] := 5;
 end;
 
-procedure TestTgBase.SetPathEndsWithAnObjectProperty;
+procedure TestTBase.SetPathEndsWithAnObjectProperty;
 begin
-  FgBase['ObjectProperty'] := 'Test';
+  Base['ObjectProperty'] := 'Test';
 end;
 
-procedure TestTgBase.SetPathExtendsBeyondOrdinalProperty;
+procedure TestTBase.SetPathExtendsBeyondOrdinalProperty;
 begin
-  FgBase['IntegerProperty.ThisShouldNotBeHere'] := 'Test';
+  Base['IntegerProperty.ThisShouldNotBeHere'] := 'Test';
 end;
 
-procedure TestTgBase.SetUndeclaredProperty;
+procedure TestTBase.SetUndeclaredProperty;
 begin
-  FgBase['ThisPropertyDoesNotExist'] := 'Test';
+  Base['ThisPropertyDoesNotExist'] := 'Test';
 end;
 
-procedure TestTgBase.SetUp;
+procedure TestTBase.SetUp;
 begin
-  FgBase := TgBaseCustom.Create;
+  Base := TBase.Create;
 end;
 
-procedure TestTgBase.SetValue;
+procedure TestTBase.SetValue;
 begin
   // Given a Pathname, set the property value
-  FgBase['StringProperty'] := 'Test2';
-  CheckEquals('Test2', FgBase.StringProperty, 'Non-Object Property');
-  FgBase['ManuallyConstructedObjectProperty.StringProperty'] := 'Test2';
-  CheckEquals('Test2', FgBase.ManuallyConstructedObjectProperty.StringProperty, 'Object Property');
+  Base['StringProperty'] := 'Test2';
+  CheckEquals('Test2', Base.StringProperty, 'Non-Object Property');
+  Base['ManuallyConstructedObjectProperty.StringProperty'] := 'Test2';
+  CheckEquals('Test2', Base.ManuallyConstructedObjectProperty.StringProperty, 'Object Property');
   // If the property doesn't exist, raise an exception
   CheckException(SetUndeclaredProperty, EgValue);
   // If the path extends beyond a non-object property, raise an exception
@@ -182,29 +192,29 @@ begin
   // If the property is not writeable, raise an exception
   CheckException(PropertyNotWriteable, EgValue);
   // Call a method
-  FgBase['SetUnwriteableIntegerProperty'] := '';
-  CheckEquals(10, FgBase.UnwriteableIntegerProperty);
-  FgBase['ManuallyConstructedObjectProperty.SetUnwriteableIntegerProperty'] := '';
-  CheckEquals(10, FgBase.ManuallyConstructedObjectProperty.UnwriteableIntegerProperty);
-  FgBase['String5'] := '123456789';
-  CheckEquals('12345', FgBase.String5);
+  Base['SetUnwriteableIntegerProperty'] := '';
+  CheckEquals(10, Base.UnwriteableIntegerProperty);
+  Base['ManuallyConstructedObjectProperty.SetUnwriteableIntegerProperty'] := '';
+  CheckEquals(10, Base.ManuallyConstructedObjectProperty.UnwriteableIntegerProperty);
+  Base['String5'] := '123456789';
+  CheckEquals('12345', Base.String5);
 end;
 
-procedure TestTgBase.TearDown;
+procedure TestTBase.TearDown;
 begin
-  FreeAndNil(FgBase);
+  FreeAndNil(Base);
 end;
 
-procedure TestTgBase.Assign;
+procedure TestTBase.Assign;
 var
-  Target: TgBaseCustom;
+  Target: TBase;
 begin
-  Target := TgBaseCustom.Create(FgBase);
+  Target := TBase.Create(Base);
   try
-    FgBase.IntegerProperty := 6;
-    FgBase.StringProperty := 'Hello';
-    FgBase.Phone := '5555555555';
-    Target.Assign(FgBase);
+    Base.IntegerProperty := 6;
+    Base.StringProperty := 'Hello';
+    Base.Phone := '5555555555';
+    Target.Assign(Base);
     CheckEquals(6, Target.IntegerProperty);
     CheckNull(Target.Inspect(G.PropertyByName(Target, 'ManuallyConstructedObjectProperty')));
     CheckEquals('Test', Target.StringProperty);
@@ -214,103 +224,147 @@ begin
   end;
 end;
 
-procedure TestTgBase.DeserializeXML;
+procedure TestTBase.DeserializeXML;
 var
   XMLString: string;
 begin
   XMLString :=
     '<xml>'#13#10 + //0
-    '  <gBaseCustom classname="TestgCore.TgBaseCustom">'#13#10 + //1
+    '  <Base classname="TestgCore.TBase">'#13#10 + //1
     '    <IntegerProperty>5</IntegerProperty>'#13#10 + //2
-    '    <ManuallyConstructedObjectProperty classname="TestgCore.TgBaseCustom">'#13#10 + //3
+    '    <ManuallyConstructedObjectProperty classname="TestgCore.TBase">'#13#10 + //3
     '      <IntegerProperty>6</IntegerProperty>'#13#10 + //4
-    '      <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //5
-    '      <String5>98765</String5>'#13#10 + //6
-    '      <Phone>(444) 444-4444</Phone>'#13#10 + //7
-    '    </ManuallyConstructedObjectProperty>'#13#10 + //8
-    '    <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //9
-    '    <String5>12345</String5>'#13#10 + //10
-    '    <Phone>(555) 555-5555</Phone>'#13#10 + //11
-    '  </gBaseCustom>'#13#10 + //12
-    '</xml>'#13#10; //13
-  FgBase.Deserialize(TgSerializerXML, XMLString);
-  CheckEquals('12345', FgBase.String5);
-  CheckEquals('(555) 555-5555', FgBase.Phone);
-  CheckEquals(6, FgBase.ManuallyConstructedObjectProperty.IntegerProperty);
-  CheckEquals('98765', FgBase.ManuallyConstructedObjectProperty.String5);
-  CheckEquals('(444) 444-4444', FgBase.ManuallyConstructedObjectProperty.Phone);
+    '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //5
+    '        <IntegerProperty>2</IntegerProperty>'#13#10 + //6
+    '      </ObjectProperty>'#13#10 + //7
+    '      <String5>98765</String5>'#13#10 + //8
+    '      <Phone>(444) 444-4444</Phone>'#13#10 + //9
+    '    </ManuallyConstructedObjectProperty>'#13#10 + //10
+    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //12
+    '    </ObjectProperty>'#13#10 + //13
+    '    <String5>12345</String5>'#13#10 + //14
+    '    <Phone>(555) 555-5555</Phone>'#13#10 + //15
+    '  </Base>'#13#10 + //16
+    '</xml>'#13#10; //17
+  Base.Deserialize(TgSerializerXML, XMLString);
+  CheckEquals('12345', Base.String5);
+  CheckEquals('(555) 555-5555', Base.Phone);
+  CheckEquals(6, Base.ManuallyConstructedObjectProperty.IntegerProperty);
+  CheckEquals('98765', Base.ManuallyConstructedObjectProperty.String5);
+  CheckEquals('(444) 444-4444', Base.ManuallyConstructedObjectProperty.Phone);
 end;
 
-procedure TestTgBase.SerializeXML;
+procedure TestTBase.DeserializeJSON;
+var
+  JSONString: string;
+begin
+  JSONString :=
+    '{"ClassName":"TestgCore.TBase","IntegerProperty":"5","ManuallyConstructedO'+
+    'bjectProperty":{"ClassName":"TestgCore.TBase","IntegerProperty":"6","Objec'+
+    'tProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"},"String5'+
+    '":"98765","Phone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCo'+
+    're.TBase2","IntegerProperty":"2"},"String5":"12345","Phone":"(555) 555-5555"}';
+  Base.Deserialize(TgSerializerJSON, JSONString);
+  CheckEquals('12345', Base.String5);
+  CheckEquals('(555) 555-5555', Base.Phone);
+  CheckEquals(6, Base.ManuallyConstructedObjectProperty.IntegerProperty);
+  CheckEquals('98765', Base.ManuallyConstructedObjectProperty.String5);
+  CheckEquals('(444) 444-4444', Base.ManuallyConstructedObjectProperty.Phone);
+end;
+
+procedure TestTBase.SerializeXML;
 var
   XMLString: string;
 begin
-  FgBase.String5 := '123456789';
-  FgBase.Phone := '5555555555';
-  FgBase.ManuallyConstructedObjectProperty.IntegerProperty := 6;
-  FgBase.ManuallyConstructedObjectProperty.String5 := '987654321';
-  FgBase.ManuallyConstructedObjectProperty.Phone := '4444444444';
+  Base.String5 := '123456789';
+  Base.Phone := '5555555555';
+  Base.ManuallyConstructedObjectProperty.IntegerProperty := 6;
+  Base.ManuallyConstructedObjectProperty.String5 := '987654321';
+  Base.ManuallyConstructedObjectProperty.Phone := '4444444444';
   XMLString :=
     '<xml>'#13#10 + //0
-    '  <gBaseCustom classname="TestgCore.TgBaseCustom">'#13#10 + //1
+    '  <Base classname="TestgCore.TBase">'#13#10 + //1
     '    <IntegerProperty>5</IntegerProperty>'#13#10 + //2
-    '    <ManuallyConstructedObjectProperty classname="TestgCore.TgBaseCustom">'#13#10 + //3
+    '    <ManuallyConstructedObjectProperty classname="TestgCore.TBase">'#13#10 + //3
     '      <IntegerProperty>6</IntegerProperty>'#13#10 + //4
-    '      <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //5
-    '      <String5>98765</String5>'#13#10 + //6
-    '      <Phone>(444) 444-4444</Phone>'#13#10 + //7
-    '    </ManuallyConstructedObjectProperty>'#13#10 + //8
-    '    <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //9
-    '    <String5>12345</String5>'#13#10 + //10
-    '    <Phone>(555) 555-5555</Phone>'#13#10 + //11
-    '  </gBaseCustom>'#13#10 + //12
-    '</xml>'#13#10; //13
-  CheckEquals(XMLString, FgBase.Serialize(TgSerializerXML));
+    '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //5
+    '        <IntegerProperty>2</IntegerProperty>'#13#10 + //6
+    '      </ObjectProperty>'#13#10 + //7
+    '      <String5>98765</String5>'#13#10 + //8
+    '      <Phone>(444) 444-4444</Phone>'#13#10 + //9
+    '    </ManuallyConstructedObjectProperty>'#13#10 + //10
+    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //12
+    '    </ObjectProperty>'#13#10 + //13
+    '    <String5>12345</String5>'#13#10 + //14
+    '    <Phone>(555) 555-5555</Phone>'#13#10 + //15
+    '  </Base>'#13#10 + //16
+    '</xml>'#13#10; //17
+  CheckEquals(XMLString, Base.Serialize(TgSerializerXML));
 end;
 
-procedure TestTgBase.TestCreate;
+procedure TestTBase.SerializeJSON;
 var
-  Base : TgBase;
-  BaseCustom: TgBaseCustom;
+  JSONString: string;
 begin
-  CheckNull(FgBase.Owner, 'When a constructor is called without a parameter, its owner should be nil.');
-  CheckNotNull(FgBase.ObjectProperty, 'Object properties should be constructed automatically if the Exclude([AutoCreate]) attribute is not set.');
-  CheckNull(FgBase.UnconstructedObjectProperty, 'Object properties with the Exlude([AutoCreate]) attribute should not be nil.');
-  Check(FgBase=FgBase.ObjectProperty.Owner, 'The owner of an automatically constructed object property shoud be set to the object that created it.');
-  CheckEquals(5, FgBase.IntegerProperty, 'Default integer values should be set for properties with a DefaultValue attribute.');
-  CheckEquals('Test', FgBase.StringProperty, 'Default string values should be set for properties with a DefaultValue attribute.');
-  Base := TgBase.Create;
+  Base.String5 := '123456789';
+  Base.Phone := '5555555555';
+  Base.ManuallyConstructedObjectProperty.IntegerProperty := 6;
+  Base.ManuallyConstructedObjectProperty.String5 := '987654321';
+  Base.ManuallyConstructedObjectProperty.Phone := '4444444444';
+  JSONString :=
+    '{"ClassName":"TestgCore.TBase","IntegerProperty":"5","ManuallyConstructedO'+
+    'bjectProperty":{"ClassName":"TestgCore.TBase","IntegerProperty":"6","Objec'+
+    'tProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"},"String5'+
+    '":"98765","Phone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCo'+
+    're.TBase2","IntegerProperty":"2"},"String5":"12345","Phone":"(555) 555-5555"}';
+  CheckEquals(JSONString, Base.Serialize(TgSerializerJSON));
+end;
+
+procedure TestTBase.TestCreate;
+var
+  Base1: TBase;
+  Base2: TBase2;
+begin
+  CheckNull(Base.Owner, 'When a constructor is called without a parameter, its owner should be nil.');
+  CheckNotNull(Base.ObjectProperty, 'Object properties should be constructed automatically if the Exclude([AutoCreate]) attribute is not set.');
+  CheckNull(Base.UnconstructedObjectProperty, 'Object properties with the Exlude([AutoCreate]) attribute should not be nil.');
+  Check(Base=Base.ObjectProperty.Owner, 'The owner of an automatically constructed object property shoud be set to the object that created it.');
+  CheckEquals(5, Base.IntegerProperty, 'Default integer values should be set for properties with a DefaultValue attribute.');
+  CheckEquals('Test', Base.StringProperty, 'Default string values should be set for properties with a DefaultValue attribute.');
+  Base2 := TBase2.Create;
   try
-    BaseCustom := TgBaseCustom.Create(Base);
+    Base1 := TBase.Create(Base2);
     try
-      Check(BaseCustom.ObjectProperty = Base, 'Object properties should take the value of an existing owner object if one exists.');
+      Check(Base1.ObjectProperty = Base2, 'Object properties should take the value of an existing owner object if one exists.');
     finally
-      BaseCustom.Free;
+      Base1.Free;
     end;
   finally
-    Base.Free;
+    Base2.Free;
   end;
 end;
 
-procedure TestTgBase.UndeclaredProperty;
+procedure TestTBase.UndeclaredProperty;
 begin
-  FgBase['ThisPropertyDoesNotExist'];
+  Base['ThisPropertyDoesNotExist'];
 end;
 
-destructor TgBaseCustom.Destroy;
+destructor TBase.Destroy;
 begin
   FreeAndNil(FManuallyConstructedObjectProperty);
   inherited Destroy;
 end;
 
-function TgBaseCustom.GetManuallyConstructedObjectProperty: TgBaseCustom;
+function TBase.GetManuallyConstructedObjectProperty: TBase;
 begin
   if Not IsInspecting And Not Assigned(FManuallyConstructedObjectProperty) then
-    FManuallyConstructedObjectProperty := TgBaseCustom.Create(Self);
+    FManuallyConstructedObjectProperty := TBase.Create(Self);
   Result := FManuallyConstructedObjectProperty;
 end;
 
-procedure TgBaseCustom.SetUnwriteableIntegerProperty;
+procedure TBase.SetUnwriteableIntegerProperty;
 begin
   FUnwriteableIntegerProperty := 10;
 end;
@@ -392,9 +446,10 @@ end;
 
 initialization
   // Register any test cases with the test runner
-  RegisterTest(TestTgBase.Suite);
+  RegisterTest(TestTBase.Suite);
   RegisterTest(TestTgString5.Suite);
 end.
+
 
 
 
