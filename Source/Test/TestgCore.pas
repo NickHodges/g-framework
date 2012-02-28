@@ -62,6 +62,7 @@ type
     property ManuallyConstructedObjectProperty: TgBaseCustom read GetManuallyConstructedObjectProperty;
     property ObjectProperty: TgBase read FObjectProperty;
     [DefaultValue('Test')]
+    [ExcludeFeature([Serializable])]
     property StringProperty: String read FStringProperty write FStringProperty;
     [ExcludeFeature([AutoCreate])]
     property UnconstructedObjectProperty: TgBase read FUnconstructedObjectProperty write FUnconstructedObjectProperty;
@@ -88,7 +89,7 @@ type
   published
     procedure GetValue;
     procedure SetValue;
-    procedure TestAssign;
+    procedure Assign;
     procedure TestCreate;
   end;
 
@@ -168,12 +169,12 @@ procedure TestTgBase.SetValue;
 begin
   // Given a Pathname, set the property value
   FgBase['StringProperty'] := 'Test2';
-  CheckEquals('Test2', FgBase['StringProperty'], 'Non-Object Property');
+  CheckEquals('Test2', FgBase.StringProperty, 'Non-Object Property');
   FgBase['ManuallyConstructedObjectProperty.StringProperty'] := 'Test2';
-  CheckEquals('Test2', FgBase['ManuallyConstructedObjectProperty.StringProperty'], 'Object Property');
+  CheckEquals('Test2', FgBase.ManuallyConstructedObjectProperty.StringProperty, 'Object Property');
   // If the property doesn't exist, raise an exception
   CheckException(SetUndeclaredProperty, EgValue);
-  // If the path extends beyond an ordinal property, raise an exception
+  // If the path extends beyond a non-object property, raise an exception
   CheckException(SetPathExtendsBeyondOrdinalProperty, EgValue);
   // If the path ends with an object property, raise an exception
   CheckException(SetPathEndsWithAnObjectProperty, EgValue);
@@ -193,9 +194,21 @@ begin
   FreeAndNil(FgBase);
 end;
 
-procedure TestTgBase.TestAssign;
+procedure TestTgBase.Assign;
+var
+  Target: TgBaseCustom;
 begin
-  // TODO -cMM: TestTgBase.TestAssign default body inserted
+  Target := TgBaseCustom.Create(FgBase);
+  try
+    FgBase.IntegerProperty := 6;
+    FgBase.StringProperty := 'Hello';
+    Target.Assign(FgBase);
+    CheckEquals(6, Target.IntegerProperty);
+    CheckNull(Target.Inspect(G.PropertyByName(Target, 'ManuallyConstructedObjectProperty')));
+    CheckEquals('Test', Target.StringProperty);
+  finally
+    Target.Free;
+  end;
 end;
 
 procedure TestTgBase.TestCreate;
@@ -235,7 +248,7 @@ end;
 
 function TgBaseCustom.GetManuallyConstructedObjectProperty: TgBaseCustom;
 begin
-  if Not Assigned(FManuallyConstructedObjectProperty) then
+  if Not IsInspecting And Not Assigned(FManuallyConstructedObjectProperty) then
     FManuallyConstructedObjectProperty := TgBaseCustom.Create(Self);
   Result := FManuallyConstructedObjectProperty;
 end;
