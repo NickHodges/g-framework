@@ -221,25 +221,50 @@ begin
   XMLString :=
     '<xml>'#13#10 + //0
     '  <gBaseCustom classname="TestgCore.TgBaseCustom">'#13#10 + //1
-    '    <IntegerProperty>8</IntegerProperty>'#13#10 + //2
-    '    <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //3
-    '  </gBaseCustom>'#13#10 + //4
-    '</xml>'#13#10;
+    '    <IntegerProperty>5</IntegerProperty>'#13#10 + //2
+    '    <ManuallyConstructedObjectProperty classname="TestgCore.TgBaseCustom">'#13#10 + //3
+    '      <IntegerProperty>6</IntegerProperty>'#13#10 + //4
+    '      <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //5
+    '      <String5>98765</String5>'#13#10 + //6
+    '      <Phone>(444) 444-4444</Phone>'#13#10 + //7
+    '    </ManuallyConstructedObjectProperty>'#13#10 + //8
+    '    <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //9
+    '    <String5>12345</String5>'#13#10 + //10
+    '    <Phone>(555) 555-5555</Phone>'#13#10 + //11
+    '  </gBaseCustom>'#13#10 + //12
+    '</xml>'#13#10; //13
   FgBase.Deserialize(TgSerializerXML, XMLString);
-  CheckEquals(8, FgBase.IntegerProperty);
+  CheckEquals('12345', FgBase.String5);
+  CheckEquals('(555) 555-5555', FgBase.Phone);
+  CheckEquals(6, FgBase.ManuallyConstructedObjectProperty.IntegerProperty);
+  CheckEquals('98765', FgBase.ManuallyConstructedObjectProperty.String5);
+  CheckEquals('(444) 444-4444', FgBase.ManuallyConstructedObjectProperty.Phone);
 end;
 
 procedure TestTgBase.SerializeXML;
 var
   XMLString: string;
 begin
+  FgBase.String5 := '123456789';
+  FgBase.Phone := '5555555555';
+  FgBase.ManuallyConstructedObjectProperty.IntegerProperty := 6;
+  FgBase.ManuallyConstructedObjectProperty.String5 := '987654321';
+  FgBase.ManuallyConstructedObjectProperty.Phone := '4444444444';
   XMLString :=
     '<xml>'#13#10 + //0
     '  <gBaseCustom classname="TestgCore.TgBaseCustom">'#13#10 + //1
     '    <IntegerProperty>5</IntegerProperty>'#13#10 + //2
-    '    <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //3
-    '  </gBaseCustom>'#13#10 + //4
-    '</xml>'#13#10;
+    '    <ManuallyConstructedObjectProperty classname="TestgCore.TgBaseCustom">'#13#10 + //3
+    '      <IntegerProperty>6</IntegerProperty>'#13#10 + //4
+    '      <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //5
+    '      <String5>98765</String5>'#13#10 + //6
+    '      <Phone>(444) 444-4444</Phone>'#13#10 + //7
+    '    </ManuallyConstructedObjectProperty>'#13#10 + //8
+    '    <ObjectProperty classname="gCore.TgBase"/>'#13#10 + //9
+    '    <String5>12345</String5>'#13#10 + //10
+    '    <Phone>(555) 555-5555</Phone>'#13#10 + //11
+    '  </gBaseCustom>'#13#10 + //12
+    '</xml>'#13#10; //13
   CheckEquals(XMLString, FgBase.Serialize(TgSerializerXML));
 end;
 
@@ -370,5 +395,7 @@ initialization
   RegisterTest(TestTgBase.Suite);
   RegisterTest(TestTgString5.Suite);
 end.
+
+
 
 

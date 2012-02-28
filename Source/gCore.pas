@@ -1181,7 +1181,7 @@ begin
       AObject[ChildNode.NodeName] := ChildNode.ChildNodes.First.Text
     Else
     Begin
-      ObjectProperty := TgBase(AObject.Inspect(RTTIProperty));
+      ObjectProperty := TgBase(RTTIProperty.GetValue(AObject).AsObject);
       If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) And AObject.Owns(ObjectProperty) Then
       Begin
         SerializationHelperXMLBaseClass := TgSerializationHelperXMLBaseClass(G.SerializationHelpers(TgSerializerXML, ObjectProperty));
@@ -1200,7 +1200,13 @@ var
 begin
   For RTTIProperty In G.SerializableProperties(AObject) Do
   Begin
-    If Not RTTIProperty.PropertyType.IsInstance Then
+    if RTTIProperty.PropertyType.IsInstance then
+    Begin
+      ObjectProperty := TgBase(AObject.Inspect(RTTIProperty));
+      If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) Then
+        ASerializer.AddObjectProperty(RTTIProperty.Name, ObjectProperty);
+    End
+    Else
     Begin
       if (RTTIProperty.PropertyType.TypeKind = tkFloat) then
       Begin
@@ -1211,15 +1217,9 @@ begin
          Value := FormatDateTime('m/d/yyyy hh:nn:ss', DoubleValue);
       End
       Else
-        Value := RTTIProperty.GetValue(AObject).AsVariant;
+        Value := AObject[RTTIProperty.Name];
       ASerializer.AddValueProperty(RTTIProperty.Name, Value);
     End
-    Else
-    Begin
-      ObjectProperty := TgBase(AObject.Inspect(RTTIProperty));
-      If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) Then
-        ASerializer.AddObjectProperty(RTTIProperty.Name, ObjectProperty);
-    End;
   End;
 end;
 
