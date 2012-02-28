@@ -58,7 +58,6 @@ type
     procedure SetUnwriteableIntegerProperty;
     [DefaultValue(5)]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
-    [ExcludeFeature([AutoCreate])]
     property ManuallyConstructedObjectProperty: TgBaseCustom read GetManuallyConstructedObjectProperty;
     property ObjectProperty: TgBase read FObjectProperty;
     [DefaultValue('Test')]

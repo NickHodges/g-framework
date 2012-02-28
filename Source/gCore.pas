@@ -8,6 +8,7 @@ Uses
   System.RTTI,
   System.SysUtils,
   Data.DBXJSON,
+  Data.DBXPlatform,
   Xml.XMLDoc,
   Xml.XMLIntf
   ;
@@ -260,6 +261,19 @@ Uses
   XML.XMLDOM
 ;
 
+Const
+{$IFDEF CPUX86}
+  PROPSLOT_MASK    = $FF000000;
+{$ENDIF CPUX86}
+{$IFDEF CPUX64}
+  PROPSLOT_MASK    = $FF00000000000000;
+{$ENDIF CPUX64}
+
+function IsField(P: Pointer): Boolean; inline;
+begin
+  Result := (IntPtr(P) and PROPSLOT_MASK) = PROPSLOT_MASK;
+end;
+
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 var
   Position: Integer;
@@ -280,26 +294,21 @@ End;
 procedure TgBase.AutoCreate;
 var
   RTTIProperty: TRTTIProperty;
-  Field : TRTTIField;
   ObjectProperty : TgBase;
   ObjectPropertyClass: TgBaseClass;
+  Value : TValue;
+  Field : Pointer;
 begin
   for RTTIProperty in G.AutoCreateProperties(Self) do
   Begin
-    // If follow the convention the property name will have a underlying field with the same name prefixed by a 'F'
-   { TODO : Find a better of initialzing the local storage of a property }
-    Field := RTTIProperty.Parent.GetField('F' + RTTIProperty.Name);
-    if Assigned(Field) then
-    Begin
-      ObjectPropertyClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
-      // See if there is a owner that can populate this property
-      ObjectProperty := OwnerByClass(ObjectPropertyClass);
-      if Not Assigned(ObjectProperty) then
-        // Then just create a empty structure to be populated later.
-        // This will be owned by this structure and destroyed because it there.
-        ObjectProperty := ObjectPropertyClass.Create(Self);
-      Field.SetValue(Self, ObjectProperty)
-    End;
+    ObjectPropertyClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+    // See if there is a owner that can populate this property
+    ObjectProperty := OwnerByClass(ObjectPropertyClass);
+    if Not Assigned(ObjectProperty) then
+      ObjectProperty := ObjectPropertyClass.Create(Self);
+    Value := ObjectProperty;
+    Field := TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc;
+    Value.Cast(RTTIProperty.PropertyType.Handle).ExtractRawData(PByte(Self) + (IntPtr(Field) and (not PROPSLOT_MASK)));
   End;
 end;
 
@@ -641,8 +650,7 @@ Var
 Begin
   for RTTIProperty in G.ObjectProperties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
   begin
-{ TODO : Don't do a auto create if the getter is a method. only when it is local storage }
-    CanAdd := True;
+    CanAdd := Not RTTIProperty.IsWritable And IsField(TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc);
     for Attribute in RTTIProperty.GetAttributes do
     if Attribute.InheritsFrom(ExcludeFeature) And (AutoCreate In ExcludeFeature(Attribute).FeatureExclusions) Then
     Begin

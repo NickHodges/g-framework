@@ -79,6 +79,10 @@
 				<MainSource>MainSource</MainSource>
 			</DelphiCompile>
 			<DCCReference Include="rtl.dcp"/>
+			<DCCReference Include="xmlrtl.dcp"/>
+			<DCCReference Include="dsnap.dcp"/>
+			<DCCReference Include="dbrtl.dcp"/>
+			<DCCReference Include="DbxCommonDriver.dcp"/>
 			<DCCReference Include="gCore.pas"/>
 			<BuildConfiguration Include="Release">
 				<Key>Cfg_2</Key>

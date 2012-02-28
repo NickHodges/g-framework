@@ -28,7 +28,11 @@ package pgCore;
 {$IMPLICITBUILD ON}
 
 requires
-  rtl;
+  rtl,
+  xmlrtl,
+  dsnap,
+  dbrtl,
+  DbxCommonDriver;
 
 contains
   gCore in 'gCore.pas';
