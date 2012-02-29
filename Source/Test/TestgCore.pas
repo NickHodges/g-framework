@@ -17,9 +17,6 @@ uses
 type
   // Test methods for class TgBase
 
-  // <summary>TgString5 This is a wrapper for a String that will limit all incoming
-  // string assignments to 5 characters
-  // </summary>
   TgString5 = record
   strict private
     FValue: String;
@@ -31,9 +28,6 @@ type
     property Value: String read GetValue write SetValue;
   end;
 
-  /// <summary>TPhoneString Automaticly formats all assigned strings to a proper
-  /// phone number format
-  /// </summary>
   TPhoneString = record
   strict private
     FValue: String;
