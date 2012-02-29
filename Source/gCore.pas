@@ -5,6 +5,7 @@ interface
 Uses
   Generics.Collections,
   Generics.Defaults,
+  TypInfo,
   System.RTTI,
   System.SysUtils,
   Data.DBXJSON,
@@ -14,6 +15,12 @@ Uses
   ;
 
 type
+  TPropInfo_Helper = record helper for TPropInfo
+    procedure GetProc_SetValue(Instance: TObject; RTTIProperty: TRTTIProperty; AValue: TValue);
+  end;
+  TRTTIProperty_Helper = class helper for TRTTIProperty
+    procedure GetProc_SetValue(Instance: TObject; const AValue: TValue);
+  end;
   TCustomAttributeClass = class of TCustomAttribute;
   TgBaseClass = class of TgBase;
   {$M+}
@@ -257,7 +264,6 @@ procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 implementation
 
 Uses
-  TypInfo,
   Variants,
   XML.XMLDOM
 ;
@@ -297,8 +303,6 @@ var
   RTTIProperty: TRTTIProperty;
   ObjectProperty : TgBase;
   ObjectPropertyClass: TgBaseClass;
-  Value : TValue;
-  Field : Pointer;
 begin
   for RTTIProperty in G.AutoCreateProperties(Self) do
   Begin
@@ -307,9 +311,7 @@ begin
     ObjectProperty := OwnerByClass(ObjectPropertyClass);
     if Not Assigned(ObjectProperty) then
       ObjectProperty := ObjectPropertyClass.Create(Self);
-    Value := ObjectProperty;
-    Field := TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc;
-    Value.Cast(RTTIProperty.PropertyType.Handle).ExtractRawData(PByte(Self) + (IntPtr(Field) and (not PROPSLOT_MASK)));
+   RTTIProperty.GetProc_SetValue(Self,ObjectProperty);
   End;
 end;
 
@@ -1226,6 +1228,25 @@ end;
 class function TgSerializationHelperXMLBase.SerializerClass: TgSerializerClass;
 begin
   Result := TgSerializerXML;
+end;
+
+{ TPropInfo_Helper }
+
+procedure TPropInfo_Helper.GetProc_SetValue(Instance: TObject; RTTIProperty: TRTTIProperty; AValue: TValue);
+var
+  Field : Pointer;
+begin
+  Field :=  GetProc;
+  AValue.Cast(RTTIProperty.PropertyType.Handle).ExtractRawData(PByte(Instance) + (IntPtr(Field) and (not PROPSLOT_MASK)));
+end;
+
+{ TRTTIProperty_Helper }
+
+procedure TRTTIProperty_Helper.GetProc_SetValue(Instance: TObject;
+  const AValue: TValue);
+begin
+  TRTTIInstanceProperty(Self).PropInfo^.GetProc_SetValue(Instance,Self,AValue);
+
 end;
 
 Initialization
