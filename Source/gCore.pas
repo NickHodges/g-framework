@@ -10,8 +10,8 @@ Uses
   Data.DBXJSON,
   Data.DBXPlatform,
   Xml.XMLDoc,
-  Xml.XMLIntf
-  ;
+  Xml.XMLIntf,
+  Contnrs;
 
 type
   TCustomAttributeClass = class of TCustomAttribute;
@@ -20,6 +20,7 @@ type
   TgBase = class;
   {$M-}
 
+  TgList = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -128,7 +129,7 @@ type
     /// ExcludeFeature
     /// attribute with an AutoCreate</summary>
     /// <param name="AOwner"> (TgBase) </param>
-    constructor Create(AOwner: TgBase = Nil);
+    constructor Create(AOwner: TgBase = Nil); virtual;
     /// <summary>TgBase.Destroy frees any automatically instantiated object properties
     /// owned by the object,
     /// then destroys itself.</summary>
@@ -252,6 +253,87 @@ type
   EgParse = class(Exception)
   end;
 
+  TgListEnumerator = class(TObject)
+  strict private
+    FCurrentIndex: Integer;
+    FList: TgList;
+  strict protected
+    function GetCurrent: TgBase;
+  public
+    constructor Create(AList: TgList);
+    function MoveNext: Boolean;
+    property Current: TgBase read GetCurrent;
+  End;
+
+  TgBaseProcedure = Reference to Procedure(ABase : TgBase);
+
+  TgList = class(TgBase)
+  Strict Private
+    FList: TObjectList;
+    FItemClass: TgBaseClass;
+    FWhere: String;
+    FOrderBy: String;
+    function GetIsFiltered: Boolean;
+    procedure SetIsFiltered(const AValue: Boolean);
+  Private
+    FCurrentIndex: Integer;
+    function GetCurrent: TgBase;
+  Strict Protected
+    Function DoGetValues(Const APath : String; Out AValue : Variant) : Boolean; Override;
+    Function DoSetValues(Const APath : String; AValue : Variant) : Boolean; Override;
+    function GetBOL: Boolean; virtual;
+    function GetCanAdd: Boolean; virtual;
+    function GetCanNext: Boolean; virtual;
+    function GetCanPrevious: Boolean; virtual;
+    function GetCount: Integer; virtual;
+    function GetCurrentIndex: Integer; virtual;
+    function GetEOL: Boolean; virtual;
+    function GetHasItems: Boolean; virtual;
+    function GetItems(AIndex : Integer): TgBase; virtual;
+    function GetItemClass: TgBaseClass;virtual;
+    procedure SetCurrentIndex(const AIndex: Integer); virtual;
+    procedure SetItemClass(const Value: TgBaseClass);virtual;
+    procedure SetItems(AIndex : Integer; const AValue: TgBase); virtual;
+    procedure SetWhere(const AValue: String); virtual;
+    procedure SetOrderBy(const AValue: String); virtual;
+  Public
+    Constructor Create(AOwner : TgBase = Nil); Override;
+    Destructor Destroy; Override;
+    procedure Clear; virtual;
+    function GetEnumerator: TgListEnumerator;
+    procedure Execute(AgBaseProcedure: TgBaseProcedure);
+    procedure Filter; virtual;
+    procedure Sort;
+    property IsFiltered: Boolean read GetIsFiltered write SetIsFiltered;
+    property Items[AIndex : Integer]: TgBase read GetItems write SetItems; default;
+    property ItemClass: TgBaseClass read GetItemClass write SetItemClass;
+  Published
+    Procedure Add; Overload; Virtual;
+    Procedure Delete; Virtual;
+    Procedure First; Virtual;
+    Procedure Last; Virtual;
+    Procedure Next; Virtual;
+    Procedure Previous; Virtual;
+    property BOL: Boolean read GetBOL;
+    property CanAdd: Boolean read GetCanAdd;
+    property CanNext: Boolean read GetCanNext;
+    property CanPrevious: Boolean read GetCanPrevious;
+    property Count: Integer read GetCount;
+    [ExcludeFeature([AutoCreate, Serializable])]
+    property Current: TgBase read GetCurrent;
+    [ExcludeFeature([Serializable])]
+    property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
+    property EOL: Boolean read GetEOL;
+    property HasItems: Boolean read GetHasItems;
+    [ExcludeFeature([Serializable])]
+    property Where: String read FWhere write SetWhere;
+    [ExcludeFeature([Serializable])]
+    property OrderBy: String read FOrderBy write SetOrderBy;
+  End;
+
+  EgList = class(Exception)
+  end;
+
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 
 implementation
@@ -259,7 +341,8 @@ implementation
 Uses
   TypInfo,
   Variants,
-  XML.XMLDOM
+  XML.XMLDOM,
+  Math
 ;
 
 Const
@@ -1226,6 +1309,279 @@ end;
 class function TgSerializationHelperXMLBase.SerializerClass: TgSerializerClass;
 begin
   Result := TgSerializerXML;
+end;
+
+Constructor TgList.Create(AOwner : TgBase = Nil);
+Begin
+  Inherited Create(AOwner);
+  FList := TObjectList.Create;
+  FCurrentIndex := -1;
+End;
+
+Destructor TgList.Destroy;
+Begin
+  Inherited;
+  FList.Free;
+End;
+
+Procedure TgList.Add;
+Begin
+  FCurrentIndex := FList.Add(ItemClass.Create(Self));
+End;
+
+Procedure TgList.Delete;
+Begin
+  FList.Delete(CurrentIndex);
+End;
+
+Function TgList.DoGetValues(Const APath : String; Out AValue : Variant) : Boolean;
+Var
+  Index : Integer;
+  IndexString : String;
+  Position : Integer;
+Begin
+  Result := Inherited DoGetValues(APath, AValue);
+  If Not Result Then
+  Begin
+    If (Length(APath) > 0) And (APath[1] = '[') Then
+    Begin
+      Position := Pos(']', APath);
+      If Not (Position > 0) Then
+        EgList.CreateFmt('Array not terminated in path ''%s''.', [APath]);
+      IndexString := Trim(Copy(APath, 2, Position - 2));
+      If Not TryStrToInt(IndexString, Index) Then
+        EgList.CreateFmt('''%s'' is not a valid index value.', [IndexString]);
+      CurrentIndex := Index;
+      Result := True;
+      AValue := Current.Values[Copy(APath, Position + 2, MaxInt)];
+    End;
+  End;
+End;
+
+Function TgList.DoSetValues(Const APath : String; AValue : Variant) : Boolean;
+Var
+  Index : Integer;
+  IndexString : String;
+  Position : Integer;
+Begin
+  Result := Inherited DoSetValues(APath, AValue);
+  If Not Result Then
+  Begin
+    If (Length(APath) > 0) And (APath[1] = '[') Then
+    Begin
+      Position := Pos(']', APath);
+      If Not (Position > 0) Then
+        EgList.CreateFmt('Array not terminated in path ''%s''.', [APath]);
+      IndexString := Trim(Copy(APath, 2, Position - 1));
+      If Not TryStrToInt(IndexString, Index) Then
+        EgList.CreateFmt('''%s'' is not a valid index value.', [IndexString]);
+      CurrentIndex := Index;
+      Result := True;
+      Current.Values[Copy(APath, Position + 2, MaxInt)] := AValue;
+    End;
+  End;
+End;
+
+Procedure TgList.First;
+Begin
+  FCurrentIndex := -1;
+End;
+
+function TgList.GetBOL: Boolean;
+Begin
+  Result := Min(FCurrentIndex, FList.Count - 1) = - 1;
+End;
+
+function TgList.GetCanAdd: Boolean;
+Begin
+  Result := True;
+End;
+
+function TgList.GetCanNext: Boolean;
+Begin
+  Result := (Count > 1) And InRange(FCurrentIndex, - 1, Count - 2);
+End;
+
+function TgList.GetCanPrevious: Boolean;
+Begin
+  Result := (Count > 1) And (FCurrentIndex > 0);
+End;
+
+function TgList.GetCount: Integer;
+Begin
+  Result := FList.Count;
+End;
+
+function TgList.GetCurrent: TgBase;
+Begin
+  Result := TgBase(FList[CurrentIndex]);
+End;
+
+function TgList.GetCurrentIndex: Integer;
+Begin
+  If FList.Count > 0 Then
+    Result := EnsureRange(FCurrentIndex, 0, FList.Count - 1)
+  Else
+    Result := - 1;
+End;
+
+function TgList.GetEOL: Boolean;
+Begin
+  Result := Max(FCurrentIndex, 0) = FList.Count;
+End;
+
+function TgList.GetItemClass: TgBaseClass;
+begin
+  Result := FItemClass;
+end;
+
+function TgList.GetItems(AIndex : Integer): TgBase;
+Begin
+  Result := TgBase(FList[AIndex]);
+End;
+
+Procedure TgList.Last;
+Begin
+  FCurrentIndex := FList.Count;
+End;
+
+Procedure TgList.Next;
+Begin
+  If FCurrentIndex < - 1 Then
+    FCurrentIndex := CurrentIndex - 1
+  Else If FCurrentIndex < FList.Count Then
+    FCurrentIndex := CurrentIndex + 1
+  Else
+    Raise EgList.Create('Failed attempt to move past end of list.');
+End;
+
+Procedure TgList.Previous;
+Begin
+  If FCurrentIndex > FList.Count Then
+    FCurrentIndex := CurrentIndex + 1
+  Else If FCurrentIndex > - 1 Then
+    FCurrentIndex := CurrentIndex - 1
+  Else
+    Raise EgList.Create('Failed attempt to move before beginning of list.');
+End;
+
+procedure TgList.SetCurrentIndex(const AIndex: Integer);
+Begin
+  If (FList.Count > 0) And InRange(AIndex, - 1, FList.Count) Then
+    FCurrentIndex := AIndex
+  Else
+    Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
+End;
+
+procedure TgList.SetItemClass(const Value: TgBaseClass);
+begin
+  FItemClass := Value;
+end;
+
+procedure TgList.SetItems(AIndex : Integer; const AValue: TgBase);
+Begin
+  FList[AIndex] := AValue;
+End;
+
+procedure TgList.Clear;
+begin
+  FList.Clear;
+  FCurrentIndex := -1;
+end;
+
+function TgList.GetEnumerator: TgListEnumerator;
+Begin
+  Result := TgListEnumerator.Create(Self);
+End;
+
+procedure TgList.Execute(AgBaseProcedure: TgBaseProcedure);
+var
+  Item: TgBase;
+begin
+  for Item in Self do
+    AgBaseProcedure(Item);
+end;
+
+procedure TgList.Filter;
+begin
+{
+  If Not IsFiltered And ( Where > '' ) Then
+  Begin
+    Last;
+    While Not BOL Do
+    Begin
+      If Not Eval( Where, Current ) Then
+        Delete;
+      Previous;
+    End;
+    IsFiltered := True;
+  End;
+}
+end;
+
+function TgList.GetHasItems: Boolean;
+begin
+  Result := Count > 0;
+end;
+
+function TgList.GetIsFiltered: Boolean;
+begin
+  Result := gosFiltered In FObjectStates;
+end;
+
+procedure TgList.SetIsFiltered(const AValue: Boolean);
+begin
+  If AValue Then
+    Include(FObjectStates, gosFiltered)
+  Else
+    Exclude(FObjectStates, gosFiltered);
+end;
+
+procedure TgList.SetWhere(const AValue: String);
+begin
+  FWhere := AValue;
+end;
+
+procedure TgList.SetOrderBy(const AValue: String);
+begin
+  FOrderBy := AValue;
+end;
+
+procedure TgList.Sort;
+begin
+  // TODO -cMM: TgList.Sort default body inserted
+end;
+
+constructor TgListEnumerator.Create(AList: TgList);
+begin
+  FList := AList;
+  FCurrentIndex := -1;
+end;
+
+function TgListEnumerator.GetCurrent: TgBase;
+var
+  SavedCurrentIndex: Integer;
+begin
+  SavedCurrentIndex := FList.CurrentIndex;
+  FList.CurrentIndex := FCurrentIndex;
+  Result := FList.Current;
+  FList.CurrentIndex := SavedCurrentIndex;
+end;
+
+function TgListEnumerator.MoveNext: Boolean;
+var
+  SavedCurrentIndex: Integer;
+begin
+  If FList.Count = 0 Then
+  Begin
+    Result := False;
+    Exit;
+  End;
+  Inc( FCurrentIndex );
+  SavedCurrentIndex := FList.CurrentIndex;
+  FList.CurrentIndex := FCurrentIndex;
+  Result := Not FList.EOL;
+  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 Initialization
