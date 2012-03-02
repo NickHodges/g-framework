@@ -20,7 +20,6 @@ type
   TgBase = class;
   {$M-}
 
-  TgList = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -136,6 +135,7 @@ type
     destructor Destroy; override;
     procedure Assign(ASource : TgBase); virtual;
     procedure Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
+    class function FeatureExclusions(ARTTIProperty: TRTTIProperty): TgFeatureExclusions; virtual;
     class function FriendlyName: String;
     function GetFriendlyClassName: String;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
@@ -158,6 +158,8 @@ type
     [ExcludeFeature([AutoCreate, Serializable])]
     property Owner: TgBase read FOwner;
   end;
+
+  TgList<T: TgBase> = class;
 
   TgRecordProperty = Record
   public
@@ -253,21 +255,21 @@ type
   EgParse = class(Exception)
   end;
 
-  TgListEnumerator = class(TObject)
+  TgListEnumerator<T: TgBase> = class(TObject)
   strict private
     FCurrentIndex: Integer;
-    FList: TgList;
+    FList: TgList<T>;
   strict protected
-    function GetCurrent: TgBase;
+    function GetCurrent: T;
   public
-    constructor Create(AList: TgList);
+    constructor Create(AList: TgList<T>);
     function MoveNext: Boolean;
-    property Current: TgBase read GetCurrent;
+    property Current: T read GetCurrent;
   End;
 
   TgBaseProcedure = Reference to Procedure(ABase : TgBase);
 
-  TgList = class(TgBase)
+  TgList<T: TgBase> = class(TgBase)
   Strict Private
     FList: TObjectList;
     FItemClass: TgBaseClass;
@@ -277,7 +279,7 @@ type
     procedure SetIsFiltered(const AValue: Boolean);
   Private
     FCurrentIndex: Integer;
-    function GetCurrent: TgBase;
+    function GetCurrent: T;
   Strict Protected
     Function DoGetValues(Const APath : String; Out AValue : Variant) : Boolean; Override;
     Function DoSetValues(Const APath : String; AValue : Variant) : Boolean; Override;
@@ -289,23 +291,24 @@ type
     function GetCurrentIndex: Integer; virtual;
     function GetEOL: Boolean; virtual;
     function GetHasItems: Boolean; virtual;
-    function GetItems(AIndex : Integer): TgBase; virtual;
+    function GetItems(AIndex : Integer): T; virtual;
     function GetItemClass: TgBaseClass;virtual;
     procedure SetCurrentIndex(const AIndex: Integer); virtual;
     procedure SetItemClass(const Value: TgBaseClass);virtual;
-    procedure SetItems(AIndex : Integer; const AValue: TgBase); virtual;
+    procedure SetItems(AIndex : Integer; const AValue: T); virtual;
     procedure SetWhere(const AValue: String); virtual;
     procedure SetOrderBy(const AValue: String); virtual;
   Public
     Constructor Create(AOwner : TgBase = Nil); Override;
     Destructor Destroy; Override;
     procedure Clear; virtual;
-    function GetEnumerator: TgListEnumerator;
+    function GetEnumerator: TgListEnumerator<T>;
     procedure Execute(AgBaseProcedure: TgBaseProcedure);
+    class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
     procedure Filter; virtual;
     procedure Sort;
     property IsFiltered: Boolean read GetIsFiltered write SetIsFiltered;
-    property Items[AIndex : Integer]: TgBase read GetItems write SetItems; default;
+    property Items[AIndex : Integer]: T read GetItems write SetItems; default;
     property ItemClass: TgBaseClass read GetItemClass write SetItemClass;
   Published
     Procedure Add; Overload; Virtual;
@@ -320,7 +323,7 @@ type
     property CanPrevious: Boolean read GetCanPrevious;
     property Count: Integer read GetCount;
     [ExcludeFeature([AutoCreate, Serializable])]
-    property Current: TgBase read GetCurrent;
+    property Current: T read GetCurrent;
     [ExcludeFeature([Serializable])]
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
@@ -612,6 +615,18 @@ Begin
   End;
 End;
 
+class function TgBase.FeatureExclusions(ARTTIProperty: TRTTIProperty): TgFeatureExclusions;
+var
+  Attribute: TCustomAttribute;
+begin
+  Result := [];
+  for Attribute in ARTTIProperty.GetAttributes do
+  Begin
+    if Attribute.InheritsFrom(ExcludeFeature) Then
+      Result := Result + ExcludeFeature(Attribute).FeatureExclusions;
+  End;
+end;
+
 class function TgBase.FriendlyName: String;
 Begin
   if SameText(UnitName, TgBase.UnitName) then
@@ -740,25 +755,18 @@ end;
 class procedure G.InitializeAutoCreateProperties(ARTTIType: TRTTIType);
 Var
   RTTIProperty : TRTTIProperty;
-  Attribute: TCustomAttribute;
-  CanAdd : Boolean;
+  BaseClass: TgBaseClass;
   RTTIProperties: TArray<TRTTIProperty>;
 Begin
-  for RTTIProperty in G.ObjectProperties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
+  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
+  for RTTIProperty in G.ObjectProperties(BaseClass) do
   begin
-    CanAdd := Not RTTIProperty.IsWritable And IsField(TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc);
-    for Attribute in RTTIProperty.GetAttributes do
-    if Attribute.InheritsFrom(ExcludeFeature) And (AutoCreate In ExcludeFeature(Attribute).FeatureExclusions) Then
+    If Not RTTIProperty.IsWritable And IsField(TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc) And Not (AutoCreate In BaseClass.FeatureExclusions(RTTIProperty)) Then
     Begin
-      CanAdd := False;
-      Break;
-    End;
-    if CanAdd then
-    Begin
-      FAutoCreateProperties.TryGetValue(TgBaseClass(ARTTIType.AsInstance.MetaclassType), RTTIProperties);
+      FAutoCreateProperties.TryGetValue(BaseClass, RTTIProperties);
       SetLength(RTTIProperties, Length(RTTIProperties) + 1);
       RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
-      FAutoCreateProperties.AddOrSetValue(TgBaseClass(ARTTIType.AsInstance.MetaclassType), RTTIProperties);
+      FAutoCreateProperties.AddOrSetValue(BaseClass, RTTIProperties);
     End;
   end;
 end;
@@ -885,30 +893,20 @@ end;
 
 class procedure G.InitializeSerializableProperties(ARTTIType : TRttiType);
 Var
-  Attribute: TCustomAttribute;
-  CanAdd: Boolean;
   RTTIProperties: TArray<TRTTIProperty>;
   RTTIProperty : TRTTIProperty;
 Begin
   for RTTIProperty in ARTTIType.GetProperties do
   begin
-    if Not (RTTIProperty.Visibility = mvPublished) Or Not RTTIProperty.IsReadable Then
-      Continue;
-    if RTTIProperty.PropertyType.IsInstance then
-    Begin
-      If Not RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgBase) Then
-        Continue;
-    End
-    else if Not RTTIProperty.IsWritable Then
-      Continue;
-    CanAdd := True;
-    for Attribute in RTTIProperty.GetAttributes do
-    if Attribute.InheritsFrom(ExcludeFeature) And (Serializable in ExcludeFeature(Attribute).FeatureExclusions) then
-    begin
-      CanAdd := False;
-      Continue;
-    end;
-    if CanAdd then
+    if (RTTIProperty.Visibility = mvPublished) And RTTIProperty.IsReadable
+      And Not (Serializable In TgBaseClass(ARTTIType.AsInstance.MetaclassType).FeatureExclusions(RTTIProperty))
+      And
+        (
+            (RTTIProperty.PropertyType.IsInstance And RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgBase))
+          Or
+            (Not RTTIProperty.PropertyType.IsInstance And RTTIProperty.IsWritable)
+        )
+    then
     begin
       FSerializableProperties.TryGetValue(TgBaseClass(ARTTIType.AsInstance.MetaclassType), RTTIProperties);
       SetLength(RTTIProperties, Length(RTTIProperties) + 1);
@@ -1311,30 +1309,30 @@ begin
   Result := TgSerializerXML;
 end;
 
-Constructor TgList.Create(AOwner : TgBase = Nil);
+constructor TgList<T>.Create(AOwner : TgBase = Nil);
 Begin
   Inherited Create(AOwner);
   FList := TObjectList.Create;
   FCurrentIndex := -1;
 End;
 
-Destructor TgList.Destroy;
+destructor TgList<T>.Destroy;
 Begin
   Inherited;
   FList.Free;
 End;
 
-Procedure TgList.Add;
+procedure TgList<T>.Add;
 Begin
   FCurrentIndex := FList.Add(ItemClass.Create(Self));
 End;
 
-Procedure TgList.Delete;
+procedure TgList<T>.Delete;
 Begin
   FList.Delete(CurrentIndex);
 End;
 
-Function TgList.DoGetValues(Const APath : String; Out AValue : Variant) : Boolean;
+function TgList<T>.DoGetValues(Const APath : String; Out AValue : Variant): Boolean;
 Var
   Index : Integer;
   IndexString : String;
@@ -1358,7 +1356,7 @@ Begin
   End;
 End;
 
-Function TgList.DoSetValues(Const APath : String; AValue : Variant) : Boolean;
+function TgList<T>.DoSetValues(Const APath : String; AValue : Variant): Boolean;
 Var
   Index : Integer;
   IndexString : String;
@@ -1382,42 +1380,42 @@ Begin
   End;
 End;
 
-Procedure TgList.First;
+procedure TgList<T>.First;
 Begin
   FCurrentIndex := -1;
 End;
 
-function TgList.GetBOL: Boolean;
+function TgList<T>.GetBOL: Boolean;
 Begin
   Result := Min(FCurrentIndex, FList.Count - 1) = - 1;
 End;
 
-function TgList.GetCanAdd: Boolean;
+function TgList<T>.GetCanAdd: Boolean;
 Begin
   Result := True;
 End;
 
-function TgList.GetCanNext: Boolean;
+function TgList<T>.GetCanNext: Boolean;
 Begin
   Result := (Count > 1) And InRange(FCurrentIndex, - 1, Count - 2);
 End;
 
-function TgList.GetCanPrevious: Boolean;
+function TgList<T>.GetCanPrevious: Boolean;
 Begin
   Result := (Count > 1) And (FCurrentIndex > 0);
 End;
 
-function TgList.GetCount: Integer;
+function TgList<T>.GetCount: Integer;
 Begin
   Result := FList.Count;
 End;
 
-function TgList.GetCurrent: TgBase;
+function TgList<T>.GetCurrent: T;
 Begin
   Result := TgBase(FList[CurrentIndex]);
 End;
 
-function TgList.GetCurrentIndex: Integer;
+function TgList<T>.GetCurrentIndex: Integer;
 Begin
   If FList.Count > 0 Then
     Result := EnsureRange(FCurrentIndex, 0, FList.Count - 1)
@@ -1425,27 +1423,29 @@ Begin
     Result := - 1;
 End;
 
-function TgList.GetEOL: Boolean;
+function TgList<T>.GetEOL: Boolean;
 Begin
   Result := Max(FCurrentIndex, 0) = FList.Count;
 End;
 
-function TgList.GetItemClass: TgBaseClass;
+function TgList<T>.GetItemClass: TgBaseClass;
 begin
+  if Not Assigned(FItemClass) then
+    FItemClass := T;
   Result := FItemClass;
 end;
 
-function TgList.GetItems(AIndex : Integer): TgBase;
+function TgList<T>.GetItems(AIndex : Integer): T;
 Begin
   Result := TgBase(FList[AIndex]);
 End;
 
-Procedure TgList.Last;
+procedure TgList<T>.Last;
 Begin
   FCurrentIndex := FList.Count;
 End;
 
-Procedure TgList.Next;
+procedure TgList<T>.Next;
 Begin
   If FCurrentIndex < - 1 Then
     FCurrentIndex := CurrentIndex - 1
@@ -1455,7 +1455,7 @@ Begin
     Raise EgList.Create('Failed attempt to move past end of list.');
 End;
 
-Procedure TgList.Previous;
+procedure TgList<T>.Previous;
 Begin
   If FCurrentIndex > FList.Count Then
     FCurrentIndex := CurrentIndex + 1
@@ -1465,7 +1465,7 @@ Begin
     Raise EgList.Create('Failed attempt to move before beginning of list.');
 End;
 
-procedure TgList.SetCurrentIndex(const AIndex: Integer);
+procedure TgList<T>.SetCurrentIndex(const AIndex: Integer);
 Begin
   If (FList.Count > 0) And InRange(AIndex, - 1, FList.Count) Then
     FCurrentIndex := AIndex
@@ -1473,28 +1473,28 @@ Begin
     Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
 
-procedure TgList.SetItemClass(const Value: TgBaseClass);
+procedure TgList<T>.SetItemClass(const Value: TgBaseClass);
 begin
   FItemClass := Value;
 end;
 
-procedure TgList.SetItems(AIndex : Integer; const AValue: TgBase);
+procedure TgList<T>.SetItems(AIndex : Integer; const AValue: T);
 Begin
   FList[AIndex] := AValue;
 End;
 
-procedure TgList.Clear;
+procedure TgList<T>.Clear;
 begin
   FList.Clear;
   FCurrentIndex := -1;
 end;
 
-function TgList.GetEnumerator: TgListEnumerator;
+function TgList<T>.GetEnumerator: TgListEnumerator<T>;
 Begin
-  Result := TgListEnumerator.Create(Self);
+  Result := TgListEnumerator<T>.Create(Self);
 End;
 
-procedure TgList.Execute(AgBaseProcedure: TgBaseProcedure);
+procedure TgList<T>.Execute(AgBaseProcedure: TgBaseProcedure);
 var
   Item: TgBase;
 begin
@@ -1502,7 +1502,20 @@ begin
     AgBaseProcedure(Item);
 end;
 
-procedure TgList.Filter;
+class function TgList<T>.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
+begin
+  Result := inherited FeatureExclusions(ARTTIProperty);
+  if SameText(ARTTIProperty.Name, 'Current') then
+    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
+  if SameText(ARTTIProperty.Name, 'CurrentIndex') then
+    Result := Result + [TgFeature.Serializable];
+  if SameText(ARTTIProperty.Name, 'Where') then
+    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
+  if SameText(ARTTIProperty.Name, 'OrderBy') then
+    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
+end;
+
+procedure TgList<T>.Filter;
 begin
 {
   If Not IsFiltered And ( Where > '' ) Then
@@ -1519,17 +1532,17 @@ begin
 }
 end;
 
-function TgList.GetHasItems: Boolean;
+function TgList<T>.GetHasItems: Boolean;
 begin
   Result := Count > 0;
 end;
 
-function TgList.GetIsFiltered: Boolean;
+function TgList<T>.GetIsFiltered: Boolean;
 begin
   Result := gosFiltered In FObjectStates;
 end;
 
-procedure TgList.SetIsFiltered(const AValue: Boolean);
+procedure TgList<T>.SetIsFiltered(const AValue: Boolean);
 begin
   If AValue Then
     Include(FObjectStates, gosFiltered)
@@ -1537,28 +1550,28 @@ begin
     Exclude(FObjectStates, gosFiltered);
 end;
 
-procedure TgList.SetWhere(const AValue: String);
+procedure TgList<T>.SetWhere(const AValue: String);
 begin
   FWhere := AValue;
 end;
 
-procedure TgList.SetOrderBy(const AValue: String);
+procedure TgList<T>.SetOrderBy(const AValue: String);
 begin
   FOrderBy := AValue;
 end;
 
-procedure TgList.Sort;
+procedure TgList<T>.Sort;
 begin
   // TODO -cMM: TgList.Sort default body inserted
 end;
 
-constructor TgListEnumerator.Create(AList: TgList);
+constructor TgListEnumerator<T>.Create(AList: TgList<T>);
 begin
   FList := AList;
   FCurrentIndex := -1;
 end;
 
-function TgListEnumerator.GetCurrent: TgBase;
+function TgListEnumerator<T>.GetCurrent: T;
 var
   SavedCurrentIndex: Integer;
 begin
@@ -1568,7 +1581,7 @@ begin
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
-function TgListEnumerator.MoveNext: Boolean;
+function TgListEnumerator<T>.MoveNext: Boolean;
 var
   SavedCurrentIndex: Integer;
 begin
