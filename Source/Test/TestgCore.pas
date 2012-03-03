@@ -160,6 +160,10 @@ type
     procedure ItemClass;
     procedure Next;
     procedure Previous;
+    procedure SerializeXML;
+    procedure SerializeJSON;
+    procedure DeserializeXML;
+    procedure DeserializeJSON;
     procedure SetValue;
     procedure TestCreate(BOL: Integer; const Value: string);
   end;
@@ -590,6 +594,7 @@ begin
   try
     NewBase2List.Assign(FBase2List);
     CheckEquals(3, NewBase2List.Count, 'Should have copied 3 items.');
+    CheckEquals(3, NewBase2List[2].IntegerProperty, 'Make sure the value got copied.');
   finally
     NewBase2List.Free;
   end;
@@ -825,6 +830,74 @@ begin
   FBase2List.Previous;
 end;
 
+procedure TestTBase2List.SerializeXML;
+var
+  XMLString: string;
+begin
+  Add3;
+  XMLString :=
+    '<xml>'#13#10 + //0
+    '  <Base2List classname="TestgCore.TBase2List">'#13#10 + //1
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //2
+    '      <IntegerProperty>1</IntegerProperty>'#13#10 + //3
+    '    </Base2>'#13#10 + //4
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //5
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //6
+    '    </Base2>'#13#10 + //7
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //8
+    '      <IntegerProperty>3</IntegerProperty>'#13#10 + //9
+    '    </Base2>'#13#10 + //10
+    '  </Base2List>'#13#10 + //11
+    '</xml>'#13#10; //12
+  CheckEquals(XMLString, FBase2List.Serialize(TgSerializerXML));
+end;
+
+procedure TestTBase2List.SerializeJSON;
+var
+  JSONString: string;
+begin
+  Add3;
+  JSONString :=
+  '{"ClassName":"TestgCore.TBase2List","List":[{"ClassName":"TestgCore.TBase2",'+
+  '"IntegerProperty":"1"},{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"'+
+  '},{"ClassName":"TestgCore.TBase2","IntegerProperty":"3"}]}';
+  CheckEquals(JSONString, FBase2List.Serialize(TgSerializerJSON));
+end;
+
+procedure TestTBase2List.DeserializeXML;
+var
+  XMLString: string;
+begin
+  XMLString :=
+    '<xml>'#13#10 + //0
+    '  <Base2List classname="TestgCore.TBase2List">'#13#10 + //1
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //2
+    '      <IntegerProperty>1</IntegerProperty>'#13#10 + //3
+    '    </Base2>'#13#10 + //4
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //5
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //6
+    '    </Base2>'#13#10 + //7
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //8
+    '      <IntegerProperty>3</IntegerProperty>'#13#10 + //9
+    '    </Base2>'#13#10 + //10
+    '  </Base2List>'#13#10 + //11
+    '</xml>'#13#10; //12
+  FBase2List.Deserialize(TgSerializerXML, XMLString);
+  CheckEquals(3, FBase2List.Items[2].IntegerProperty);
+end;
+
+procedure TestTBase2List.DeserializeJSON;
+var
+  JSONString: string;
+begin
+  JSONString :=
+  '{"ClassName":"TestgCore.TBase2List","List":[{"ClassName":"TestgCore.TBase2",'+
+  '"IntegerProperty":"1"},{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"'+
+  '},{"ClassName":"TestgCore.TBase2","IntegerProperty":"3"}]}';
+  FBase2List.Deserialize(TgSerializerJSON, JSONString);
+  CheckEquals(3, FBase2List.Items[2].IntegerProperty);
+end;
+
 procedure TestTBase2List.SetValueInvalidIndex;
 begin
   FBase2List.Values['[xyz].IntegerProperty'] := 2;
@@ -863,6 +936,7 @@ initialization
   RegisterTest(TestTgString5.Suite);
   RegisterTest(TestTBase2List.Suite);
 end.
+
 
 
 

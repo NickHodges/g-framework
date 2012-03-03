@@ -355,6 +355,22 @@ type
   EgList = class(Exception)
   end;
 
+type
+  TgSerializationHelperXMLList = class(TgSerializationHelperXMLBase)
+  public
+    class function BaseClass: TgBaseClass; override;
+    class procedure Deserialize(AObject: TgBase; AXMLNode: IXMLNode); override;
+    class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerXML); override;
+  end;
+
+type
+  TgSerializationHelperJSONList = class(TgSerializationHelperJSONBase)
+  public
+    class function BaseClass: TgBaseClass; override;
+    class procedure Serialize(AObject: TgBase;ASerializer: TgSerializerJSON); override;
+    class procedure Deserialize(AObject: TgBase; AJSONObject: TJSONObject); override;
+  end;
+
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 
 implementation
@@ -1663,8 +1679,107 @@ begin
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
+class function TgSerializationHelperXMLList.BaseClass: TgBaseClass;
+begin
+  Result := TgList;
+end;
+
+class procedure TgSerializationHelperXMLList.Deserialize(AObject: TgBase; AXMLNode: IXMLNode);
+var
+  Counter: Integer;
+  SerializationHelperXMLBaseClass: TgSerializationHelperXMLBaseClass;
+begin
+  if Not SameText(AXMLNode.Attributes['classname'], AObject.QualifiedClassName) then
+    Raise EgParse.CreateFmt('Expected: %s, Parsed: %s', [AObject.QualifiedClassName, AXMLNode.Attributes['classname']]);
+  for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
+  Begin
+    TgList(AObject).Add;
+    SerializationHelperXMLBaseClass := TgSerializationHelperXMLBaseClass(G.SerializationHelpers(TgSerializerXML, TgList(AObject).Current));
+    SerializationHelperXMLBaseClass.Deserialize(TgList(AObject).Current, AXMLNode.ChildNodes[Counter]);
+  End;
+end;
+
+class procedure TgSerializationHelperXMLList.Serialize(AObject: TgBase; ASerializer: TgSerializerXML);
+var
+  ItemObject: TgBase;
+  ItemPointer: TObject;
+  SerializationHelperXMLBaseClass: TgSerializationHelperXMLBaseClass;
+begin
+  for ItemPointer in TgList(AObject) do
+  Begin
+    ItemObject := TgBase(ItemPointer);
+    ASerializer.CurrentNode := ASerializer.CurrentNode.AddChild(ItemObject.FriendlyClassName);
+    ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName;
+    SerializationHelperXMLBaseClass := TgSerializationHelperXMLBaseClass(G.SerializationHelpers(TgSerializerXML, ItemObject));
+    SerializationHelperXMLBaseClass.Serialize(ItemObject, ASerializer);
+    ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
+  End;
+end;
+
+class function TgSerializationHelperJSONList.BaseClass: TgBaseClass;
+begin
+  Result := TgList;
+end;
+
+class procedure TgSerializationHelperJSONList.Deserialize(AObject: TgBase; AJSONObject: TJSONObject);
+var
+  JSONClassName: String;
+  JSONValue: TJSONValue;
+  Pair: TJSONPair;
+  SerializationHelperJSONBaseClass: TgSerializationHelperJSONBaseClass;
+begin
+  Pair := AJSONObject.Get('ClassName');
+  JSONClassName := Pair.JsonValue.Value;
+  if Not SameText(JSONClassName, AObject.QualifiedClassName) then
+    Raise EgParse.CreateFmt('Expected: %s, Parsed: %s', [QualifiedClassName, JSONClassName]);
+  Pair := AJSONObject.Get('List');
+  If Not Pair.JsonValue.InheritsFrom(TJSONArray) Then
+    raise EgParse.CreateFmt('Expected: TJSONArray, Parsed: %s.', [Pair.JsonValue.ClassName]);
+  for JSONValue in TJSONArray(Pair.JsonValue) Do
+  Begin
+    if Not JSONValue.InheritsFrom(TJSONObject) then
+      raise EgParse.CreateFmt('Expected: TJSONObject, Parsed: %s', [JSONValue.ClassName]);
+    TgList(AObject).Add;
+    SerializationHelperJSONBaseClass := TgSerializationHelperJSONBaseClass(G.SerializationHelpers(TgSerializerJSON, TgList(AObject).Current));
+    SerializationHelperJSONBaseClass.Deserialize(TgList(AObject).Current, TJSONObject(JSONValue));
+  End;
+end;
+
+class procedure TgSerializationHelperJSONList.Serialize(AObject: TgBase;ASerializer: TgSerializerJSON);
+var
+  ItemObject: TgBase;
+  ItemPointer: TObject;
+  JSONArray: TJSONArray;
+  ItemSerializer: TgSerializerJSON;
+  SerializationHelperJSONBaseClass: TgSerializationHelperJSONBaseClass;
+begin
+  ASerializer.JSONObject.AddPair('ClassName', AObject.QualifiedClassName);
+  JSONArray := TJSONArray.Create;
+  try
+    for ItemPointer in TgList(AObject) do
+    Begin
+      ItemSerializer := TgSerializerJSON.Create;
+      try
+        ItemObject := TgBase(ItemPointer);
+        SerializationHelperJSONBaseClass := TgSerializationHelperJSONBaseClass(G.SerializationHelpers(TgSerializerJSON, ItemObject));
+        SerializationHelperJSONBaseClass.Serialize(ItemObject, ItemSerializer);
+        JSONArray.AddElement(ItemSerializer.JSONObject);
+        ItemSerializer.JSONObject := Nil;
+      finally
+        ItemSerializer.Free;
+      end;
+    End;
+    ASerializer.JSONObject.AddPair('List', JSONArray);
+    JSONArray := Nil;
+  finally
+    JSONArray.Free;
+  end;
+end;
+
 Initialization
   TgSerializationHelperXMLBase.BaseClass;
+  TgSerializationHelperXMLList.BaseClass;
   TgSerializationHelperJSONBase.BaseClass;
+  TgSerializationHelperJSONList.BaseClass;
 
 end.
