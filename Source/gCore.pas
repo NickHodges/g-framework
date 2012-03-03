@@ -184,6 +184,7 @@ type
     FAutoCreateProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FMethodByName: TDictionary<String, TRTTIMethod>;
     FObjectProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
+    FProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FPropertyByName: TDictionary<String, TRTTIProperty>;
     FRecordProperty: TDictionary<TRTTIProperty, TgRecordProperty>;
     FRTTIContext: TRTTIContext;
@@ -203,6 +204,7 @@ type
     class procedure InitializeAutoCreateProperties(ARTTIType: TRTTIType); static;
     class procedure InitializeMethodByName(ARTTIType: TRTTIType); static;
     class procedure InitializeObjectProperties(ARTTIType: TRTTIType); static;
+    class procedure InitializeProperties(ARTTIType: TRTTIType); static;
     class procedure InitializePropertyByName(ARTTIType: TRTTIType); static;
     class procedure InitializeRecordProperty(ARTTIType: TRTTIType); static;
     class procedure InitializeSerializableProperties(ARTTIType : TRttiType); static;
@@ -218,6 +220,7 @@ type
     class function MethodByName(ABase: TgBase; const AName: String): TRTTIMethod; overload; static;
     class function ObjectProperties(AInstance: TgBase): TArray<TRTTIProperty>; overload; static; inline;
     class function ObjectProperties(AClass: TgBaseClass): TArray<TRTTIProperty>; overload; static; inline;
+    class function Properties(AClass: TgBaseClass): TArray<TRTTIProperty>; static;
     class function PropertyByName(AClass: TgBaseClass; const AName: String): TRTTIProperty; overload; static;
     class function PropertyByName(ABase: TgBase; const AName: String): TRTTIProperty; overload; static;
     class function RecordProperty(ARTTIProperty: TRTTIProperty): TgRecordProperty; static;
@@ -304,7 +307,6 @@ type
     destructor Destroy; override;
     procedure Assign(ASource: TgBase); override;
     procedure Clear; virtual;
-    class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
     procedure Filter; virtual;
     function GetEnumerator: TgListEnumerator;
     procedure Sort;
@@ -323,11 +325,15 @@ type
     property CanNext: Boolean read GetCanNext;
     property CanPrevious: Boolean read GetCanPrevious;
     property Count: Integer read GetCount;
+    [ExcludeFeature([AutoCreate, Serializable])]
     property Current: TgBase read GetCurrent;
+    [ExcludeFeature([Serializable])]
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
     property HasItems: Boolean read GetHasItems;
+    [ExcludeFeature([Serializable])]
     property OrderBy: String read FOrderBy write SetOrderBy;
+    [ExcludeFeature([Serializable])]
     property Where: String read FWhere write SetWhere;
   end;
 
@@ -346,6 +352,7 @@ type
     procedure SetItems(AIndex : Integer; const AValue: T); reintroduce; virtual;
     function GetItemClass: TgBaseClass; override;
   Public
+    class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
     function GetEnumerator: TgListEnumerator<T>;
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   Published
@@ -739,6 +746,7 @@ begin
   begin
     if RTTIType.IsInstance And RTTIType.AsInstance.MetaclassType.InheritsFrom(TgBase) then
     Begin
+      InitializeProperties(RTTIType);
       InitializeAttributes(RTTIType);
       InitializeObjectProperties(RTTIType);
       InitializeAutoCreateProperties(RTTIType);
@@ -774,7 +782,7 @@ begin
   for Attribute in ARTTIType.GetAttributes do
     AddAttribute(Attribute);
   // Add Property Attributes
-  for RTTIProperty in ARTTIType.GetProperties do
+  for RTTIProperty in Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
   if RTTIProperty.Visibility = mvPublished then
   begin
     for Attribute in RTTIProperty.GetAttributes do
@@ -810,7 +818,7 @@ Var
   RTTIProperty : TRTTIProperty;
   RTTIProperties: TArray<TRTTIProperty>;
 Begin
-  for RTTIProperty in ARTTIType.GetProperties do
+  for RTTIProperty in G.Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
   if (RTTIProperty.Visibility = mvPublished) And RTTIProperty.PropertyType.IsInstance then
   Begin
     FObjectProperties.TryGetValue(TgBaseClass(ARTTIType.AsInstance.MetaclassType), RTTIProperties);
@@ -823,6 +831,7 @@ end;
 class constructor G.Create;
 begin
   FRTTIContext := TRTTIContext.Create();
+  FProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FAttributes := TDictionary<TPair<TgBaseClass, TCustomAttributeClass>, TArray<TCustomAttribute>>.Create();
   FObjectProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FAutoCreateProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
@@ -844,6 +853,7 @@ begin
   FreeAndNil(FAutoCreateProperties);
   FreeAndNil(FObjectProperties);
   FreeAndNil(FAttributes);
+  FreeAndNil(FProperties);
   FRTTIContext.Free;
 end;
 
@@ -884,16 +894,53 @@ begin
   end;
 end;
 
+class procedure G.InitializeProperties(ARTTIType: TRTTIType);
+var
+  RTTIProperties: TArray<TRTTIProperty>;
+  TempClass: TgBaseClass;
+  RTTIProperty: TRTTIProperty;
+  Counter: Integer;
+  Replaced: Boolean;
+begin
+  TempClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
+  //Include all the ancestor properties
+  If TempClass <> TgBase Then
+    FProperties.TryGetValue(TgBaseClass(TempClass.ClassParent), RTTIProperties);
+  //For each new property
+  for RTTIProperty in ARTTIType.GetDeclaredProperties do
+  if RTTIProperty.Visibility = mvPublished then
+  begin
+    Replaced := False;
+    for Counter := 0 to Length(RTTIProperties) - 1 do
+    Begin
+      //If the property is re-introduced
+      if SameText(RTTIProperty.Name, RTTIProperties[Counter].Name) then
+      Begin
+        //Substitute the ancestor property with the declared one
+        RTTIProperties[Counter] := RTTIProperty;
+        Replaced := True;
+        Break;
+      End;
+    End;
+    if Not Replaced then
+    Begin
+      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
+      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
+    End;
+  end;
+  FProperties.AddOrSetValue(TempClass, RTTIProperties);
+end;
+
 class procedure G.InitializePropertyByName(ARTTIType: TRTTIType);
 var
   RTTIProperty: TRTTIProperty;
   Key : String;
 begin
-  for RTTIProperty in ARTTIType.GetProperties do
+  for RTTIProperty in G.Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
   if RTTIProperty.Visibility = mvPublished then
   begin
     Key := ARTTIType.AsInstance.MetaclassType.ClassName + '.' + UpperCase(RTTIProperty.Name);
-    FPropertyByName.AddOrSetValue(Key, RTTIProperty);
+    FPropertyByName.Add(Key, RTTIProperty);
   end;
 end;
 
@@ -903,7 +950,7 @@ var
   RecordProperty: TgRecordProperty;
   RTTIProperty: TRTTIProperty;
 begin
-  for RTTIProperty in ARTTIType.GetProperties do
+  for RTTIProperty in G.Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
   if (RTTIProperty.Visibility = mvPublished) And (RTTIProperty.PropertyType.IsRecord) then
   begin
     CanAdd := True;
@@ -930,7 +977,7 @@ Var
   RTTIProperties: TArray<TRTTIProperty>;
   RTTIProperty : TRTTIProperty;
 Begin
-  for RTTIProperty in ARTTIType.GetProperties do
+  for RTTIProperty in G.Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
   begin
     if (RTTIProperty.Visibility = mvPublished) And RTTIProperty.IsReadable
       And Not (Serializable In TgBaseClass(ARTTIType.AsInstance.MetaclassType).FeatureExclusions(RTTIProperty))
@@ -997,6 +1044,11 @@ end;
 class function G.ObjectProperties(AClass: TgBaseClass): TArray<TRTTIProperty>;
 begin
   FObjectProperties.TryGetValue(AClass, Result);
+end;
+
+class function G.Properties(AClass: TgBaseClass): TArray<TRTTIProperty>;
+begin
+  FProperties.TryGetValue(AClass, Result);
 end;
 
 class function G.PropertyByName(AClass: TgBaseClass; const AName: String): TRTTIProperty;
@@ -1343,6 +1395,19 @@ begin
   Result := TgSerializerXML;
 end;
 
+class function TgList<T>.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
+begin
+  Result := inherited FeatureExclusions(ARTTIProperty);
+  if SameText(ARTTIProperty.Name, 'Current') then
+    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
+//  if SameText(ARTTIProperty.Name, 'CurrentIndex') then
+//    Result := Result + [TgFeature.Serializable];
+//  if SameText(ARTTIProperty.Name, 'Where') then
+//    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
+//  if SameText(ARTTIProperty.Name, 'OrderBy') then
+//    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
+end;
+
 function TgList<T>.GetCurrent: T;
 Begin
   Result := T(Inherited GetCurrent);
@@ -1476,19 +1541,6 @@ Begin
     End;
   End;
 End;
-
-class function TgList.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
-begin
-  Result := inherited FeatureExclusions(ARTTIProperty);
-  if SameText(ARTTIProperty.Name, 'Current') then
-    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
-  if SameText(ARTTIProperty.Name, 'CurrentIndex') then
-    Result := Result + [TgFeature.Serializable];
-  if SameText(ARTTIProperty.Name, 'Where') then
-    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
-  if SameText(ARTTIProperty.Name, 'OrderBy') then
-    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
-end;
 
 procedure TgList.Filter;
 begin
