@@ -259,6 +259,7 @@ type
   strict private
     FCurrentIndex: Integer;
     FList: TgList<T>;
+    SavedCurrentIndex: Integer;
   strict protected
     function GetCurrent: T;
   public
@@ -267,11 +268,9 @@ type
     property Current: T read GetCurrent;
   End;
 
-  TgBaseProcedure = Reference to Procedure(ABase : TgBase);
-
   TgList<T: TgBase> = class(TgBase)
   Strict Private
-    FList: TObjectList;
+    FList: TObjectList<T>;
     FItemClass: TgBaseClass;
     FWhere: String;
     FOrderBy: String;
@@ -303,7 +302,6 @@ type
     Destructor Destroy; Override;
     procedure Clear; virtual;
     function GetEnumerator: TgListEnumerator<T>;
-    procedure Execute(AgBaseProcedure: TgBaseProcedure);
     class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
     procedure Filter; virtual;
     procedure Sort;
@@ -322,15 +320,11 @@ type
     property CanNext: Boolean read GetCanNext;
     property CanPrevious: Boolean read GetCanPrevious;
     property Count: Integer read GetCount;
-    [ExcludeFeature([AutoCreate, Serializable])]
     property Current: T read GetCurrent;
-    [ExcludeFeature([Serializable])]
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
     property HasItems: Boolean read GetHasItems;
-    [ExcludeFeature([Serializable])]
     property Where: String read FWhere write SetWhere;
-    [ExcludeFeature([Serializable])]
     property OrderBy: String read FOrderBy write SetOrderBy;
   End;
 
@@ -1312,7 +1306,7 @@ end;
 constructor TgList<T>.Create(AOwner : TgBase = Nil);
 Begin
   Inherited Create(AOwner);
-  FList := TObjectList.Create;
+  FList := TObjectList<T>.Create;
   FCurrentIndex := -1;
 End;
 
@@ -1329,7 +1323,10 @@ End;
 
 procedure TgList<T>.Delete;
 Begin
-  FList.Delete(CurrentIndex);
+  if CurrentIndex > -1 then
+    FList.Delete(CurrentIndex)
+  Else
+    raise EgList.Create('There is no item to delete.');
 End;
 
 function TgList<T>.DoGetValues(Const APath : String; Out AValue : Variant): Boolean;
@@ -1344,14 +1341,16 @@ Begin
     If (Length(APath) > 0) And (APath[1] = '[') Then
     Begin
       Position := Pos(']', APath);
-      If Not (Position > 0) Then
-        EgList.CreateFmt('Array not terminated in path ''%s''.', [APath]);
-      IndexString := Trim(Copy(APath, 2, Position - 2));
-      If Not TryStrToInt(IndexString, Index) Then
-        EgList.CreateFmt('''%s'' is not a valid index value.', [IndexString]);
-      CurrentIndex := Index;
-      Result := True;
-      AValue := Current.Values[Copy(APath, Position + 2, MaxInt)];
+      If Position > 0 Then
+      Begin
+        IndexString := Trim(Copy(APath, 2, Position - 2));
+        If TryStrToInt(IndexString, Index) Then
+        Begin
+          CurrentIndex := Index;
+          Result := True;
+          AValue := Current.Values[Copy(APath, Position + 2, MaxInt)];
+        End;
+      End;
     End;
   End;
 End;
@@ -1368,14 +1367,16 @@ Begin
     If (Length(APath) > 0) And (APath[1] = '[') Then
     Begin
       Position := Pos(']', APath);
-      If Not (Position > 0) Then
-        EgList.CreateFmt('Array not terminated in path ''%s''.', [APath]);
-      IndexString := Trim(Copy(APath, 2, Position - 1));
-      If Not TryStrToInt(IndexString, Index) Then
-        EgList.CreateFmt('''%s'' is not a valid index value.', [IndexString]);
-      CurrentIndex := Index;
-      Result := True;
-      Current.Values[Copy(APath, Position + 2, MaxInt)] := AValue;
+      If Position > 0 Then
+      Begin
+        IndexString := Trim(Copy(APath, 2, Position - 2));
+        If TryStrToInt(IndexString, Index) Then
+        Begin
+          CurrentIndex := Index;
+          Result := True;
+          Current.Values[Copy(APath, Position + 2, MaxInt)] := AValue;
+        End;
+      End;
     End;
   End;
 End;
@@ -1412,7 +1413,9 @@ End;
 
 function TgList<T>.GetCurrent: T;
 Begin
-  Result := TgBase(FList[CurrentIndex]);
+  if CurrentIndex = -1 then
+    raise EgList.CreateFmt('Attempted to get an item from an empty %s list.', [ClassName]);
+  Result := FList[CurrentIndex];
 End;
 
 function TgList<T>.GetCurrentIndex: Integer;
@@ -1437,7 +1440,10 @@ end;
 
 function TgList<T>.GetItems(AIndex : Integer): T;
 Begin
-  Result := TgBase(FList[AIndex]);
+  if InRange(AIndex, 0, FList.Count - 1) then
+    Result := FList[AIndex]
+  Else
+    Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
 
 procedure TgList<T>.Last;
@@ -1447,9 +1453,7 @@ End;
 
 procedure TgList<T>.Next;
 Begin
-  If FCurrentIndex < - 1 Then
-    FCurrentIndex := CurrentIndex - 1
-  Else If FCurrentIndex < FList.Count Then
+  If (FList.Count > 0) And (FCurrentIndex < FList.Count) Then
     FCurrentIndex := CurrentIndex + 1
   Else
     Raise EgList.Create('Failed attempt to move past end of list.');
@@ -1457,17 +1461,15 @@ End;
 
 procedure TgList<T>.Previous;
 Begin
-  If FCurrentIndex > FList.Count Then
-    FCurrentIndex := CurrentIndex + 1
-  Else If FCurrentIndex > - 1 Then
+  If (FList.Count > 0) And (FCurrentIndex > -1) Then
     FCurrentIndex := CurrentIndex - 1
   Else
-    Raise EgList.Create('Failed attempt to move before beginning of list.');
+    Raise EgList.Create('Failed attempt to move past end of list.');
 End;
 
 procedure TgList<T>.SetCurrentIndex(const AIndex: Integer);
 Begin
-  If (FList.Count > 0) And InRange(AIndex, - 1, FList.Count) Then
+  If (FList.Count > 0) And InRange(AIndex, 0, FList.Count - 1) Then
     FCurrentIndex := AIndex
   Else
     Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
@@ -1480,7 +1482,10 @@ end;
 
 procedure TgList<T>.SetItems(AIndex : Integer; const AValue: T);
 Begin
-  FList[AIndex] := AValue;
+  if InRange(AIndex, 0, FList.Count - 1) then
+    FList[AIndex] := AValue
+  Else
+    Raise EgList.CreateFmt('Failed to set the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
 
 procedure TgList<T>.Clear;
@@ -1493,14 +1498,6 @@ function TgList<T>.GetEnumerator: TgListEnumerator<T>;
 Begin
   Result := TgListEnumerator<T>.Create(Self);
 End;
-
-procedure TgList<T>.Execute(AgBaseProcedure: TgBaseProcedure);
-var
-  Item: TgBase;
-begin
-  for Item in Self do
-    AgBaseProcedure(Item);
-end;
 
 class function TgList<T>.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
 begin
@@ -1568,31 +1565,28 @@ end;
 constructor TgListEnumerator<T>.Create(AList: TgList<T>);
 begin
   FList := AList;
+  SavedCurrentIndex := FList.CurrentIndex;
+  FList.First;
   FCurrentIndex := -1;
 end;
 
 function TgListEnumerator<T>.GetCurrent: T;
-var
-  SavedCurrentIndex: Integer;
 begin
-  SavedCurrentIndex := FList.CurrentIndex;
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 function TgListEnumerator<T>.MoveNext: Boolean;
-var
-  SavedCurrentIndex: Integer;
 begin
   If FList.Count = 0 Then
+    Exit(False);
+  if FCurrentIndex > -1 then
   Begin
-    Result := False;
-    Exit;
+    FList.CurrentIndex := FCurrentIndex;
+    FList.Next;
   End;
-  Inc( FCurrentIndex );
-  SavedCurrentIndex := FList.CurrentIndex;
-  FList.CurrentIndex := FCurrentIndex;
+  Inc(FCurrentIndex);
   Result := Not FList.EOL;
   FList.CurrentIndex := SavedCurrentIndex;
 end;

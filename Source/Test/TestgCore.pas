@@ -48,6 +48,12 @@ type
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
   End;
 
+  TBase3 = Class(TBase2)
+  End;
+
+  TBase2List = Class(TgList<TBase2>)
+  End;
+
   TBase = class(TgBase)
   strict private
     FBooleanProperty: Boolean;
@@ -115,11 +121,54 @@ type
     procedure TestLength;
   end;
 
+  TestTBase2List = class(TTestCase)
+  strict private
+    FBase2List: TBase2List;
+    procedure Add3;
+  public
+    procedure CurrentOnEmptyList;
+    procedure DeleteFromEmptyList;
+    procedure GetItemInvalidIndex;
+    procedure SetItemInvalidIndex;
+    procedure GetValueInvalidIndex;
+    procedure NextPastEOL;
+    procedure PreviousBeforeBOL;
+    procedure SetValueInvalidIndex;
+    procedure SetCurrentIndexTooHigh;
+    procedure SetCurrentIndexTooLow;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Add;
+    procedure BOL;
+    procedure EOL;
+    procedure CanAdd;
+    procedure CanNext;
+    procedure CanPrevious;
+    procedure Clear;
+    procedure Count;
+    procedure Current;
+    procedure CurrentIndex;
+    procedure Delete;
+    procedure First;
+    procedure GetItem;
+    procedure SetItem;
+    procedure Last;
+    procedure GetValue;
+    procedure HasItems;
+    procedure ItemClass;
+    procedure Next;
+    procedure Previous;
+    procedure SetValue;
+    procedure TestCreate(BOL: Integer; const Value: string);
+  end;
+
 implementation
 
 Uses
   SysUtils,
-  Character
+  Character,
+  Math
   ;
 
 procedure TestTBase.GetValue;
@@ -508,10 +557,296 @@ begin
   Result.Value := AValue;
 end;
 
+procedure TestTBase2List.Add;
+begin
+  Add3;
+  CheckEquals(3, FBase2List.Count, 'There should be 3 items in the list.');
+  CheckEquals(3, FBase2List.Current.IntegerProperty, 'The last item added should be the current one.');
+  CheckEquals(2, FBase2List.CurrentIndex, 'The CurrentIndex value should be one less than the count.');
+  CheckEquals(TBase2, FBase2List.Current.ClassType, 'Constructs the new list item from ItemClass, which in this case, is the generic class.');
+  FBase2List.ItemClass := TBase3;
+  FBase2List.Add;
+  CheckEquals(TBase3, FBase2List.Current.ClassType, 'Constructs the new list item from the new ItemClass.');
+end;
+
+procedure TestTBase2List.Add3;
+var
+  Counter: Integer;
+begin
+  for Counter := 1 to 3 do
+  Begin
+    FBase2List.Add;
+    FBase2List.Current.IntegerProperty := Counter;
+  End;
+end;
+
+procedure TestTBase2List.BOL;
+begin
+  CheckTrue(FBase2List.BOL, 'When there are no items, BOL should be true.');
+  FBase2List.Add;
+  CheckFalse(FBase2List.BOL, 'When there is one item and it''s the current one, BOL should be false.');
+  FBase2List.Previous;
+  CheckTrue(FBase2List.BOL, 'If you try to move before the first item, BOL should be true');
+  FBase2List.Last;
+  CheckFalse(FBase2List.BOL, 'This should make the only item current and set EOL, but not BOL.');
+  FBase2List.First;
+  CheckTrue(FBase2List.BOL, 'Calling First shoule make BOL true.');
+end;
+
+procedure TestTBase2List.EOL;
+begin
+  CheckTrue(FBase2List.EOL, 'When there are no items, EOL should be true.');
+  FBase2List.Add;
+  CheckFalse(FBase2List.EOL, 'When there is one item and it''s the current one, EOL should be false.');
+  FBase2List.Next;
+  CheckTrue(FBase2List.EOL, 'If you try to move after the only item, EOL should be true');
+  FBase2List.First;
+  CheckFalse(FBase2List.EOL, 'This should make the only item current, but not set EOL.');
+  FBase2List.Last;
+  CheckTrue(FBase2List.EOL, 'Calling Last shoule make EOL true.');
+end;
+
+procedure TestTBase2List.CanAdd;
+begin
+  CheckTrue(FBase2List.CanAdd);
+end;
+
+procedure TestTBase2List.CanNext;
+begin
+  CheckFalse(FBase2List.CanNext, 'Always false for an empty list.');
+  FBase2List.Add;
+  CheckFalse(FBase2List.CanNext, 'Always false for the last item in the list.');
+  FBase2List.Add;
+  FBase2List.Previous;
+  CheckTrue(FBase2List.CanNext, 'Always true if list not empty and not on the last item.');
+end;
+
+procedure TestTBase2List.CanPrevious;
+begin
+  CheckFalse(FBase2List.CanPrevious, 'Always false for an empty list.');
+  FBase2List.Add;
+  CheckFalse(FBase2List.CanPrevious, 'Always false for the first item in the list.');
+  FBase2List.Add;
+  CheckTrue(FBase2List.CanPrevious, 'Always true if list not empty and not on the first item.');
+end;
+
+procedure TestTBase2List.Clear;
+begin
+  Add3;
+  FBase2List.Clear;
+  CheckEquals(0, FBase2List.Count);
+end;
+
+procedure TestTBase2List.Count;
+begin
+  CheckEquals(0, FBase2List.Count, 'When a list is created it has no items');
+  Add3;
+  FBase2List.Delete;
+  CheckEquals(2, FBase2List.Count, 'The count equals the number of items added minus the number deleted.');
+end;
+
+procedure TestTBase2List.Current;
+begin
+  CheckException(CurrentOnEmptyList, EgList, 'Calling Current on an empty list should cause an exception.');
+  Add3;
+  FBase2List.CurrentIndex := 1;
+  CheckEquals(2, FBase2List.Current.IntegerProperty, 'If there are items in the list, Current returns the item at CurrentIndex (zero based).');
+end;
+
+procedure TestTBase2List.CurrentIndex;
+begin
+  CheckEquals(-1, FBase2List.CurrentIndex, 'CurrentIndex should be -1 on an empty list.');
+  Add3;
+  while Not FBase2List.BOL do
+  Begin
+    Check(InRange(FBase2List.CurrentIndex, 0, FBase2List.Count - 1), Format('%d is not in range 0..%d', [FBase2List.CurrentIndex, FBase2List.Count - 1]));
+    FBase2List.Previous;
+  End;
+  FBase2List.Last;
+  FBase2List.Delete;
+  CheckEquals(1, FBase2List.CurrentIndex, 'When Current is Last, and it gets deleted, CurrentIndex matched the new Last');
+  FBase2List.CurrentIndex := 0;
+  CheckEquals(0, FBase2List.CurrentIndex, 'Setting CurrentIndex to a valid value should allow you to get that same value.');
+  CheckException(SetCurrentIndexTooLow, EgList, 'CurrentIndex must be greater than or equal to 0.');
+  CheckException(SetCurrentIndexTooHigh, EgList, 'CurrentIndex must be less than or equal to Count - 1.');
+end;
+
+procedure TestTBase2List.CurrentOnEmptyList;
+begin
+  FBase2List.Clear;
+  FBase2List.Current;
+end;
+
+procedure TestTBase2List.Delete;
+begin
+  CheckException(DeleteFromEmptyList, EgList, 'The Delete method may not be called from an empty list.');
+  Add3;
+  FBase2List.CurrentIndex := 1;
+  FBase2List.Delete;
+  CheckEquals(2, FBase2List.Count, 'Deleting one of the 3 list items should yield a count of 2.');
+  CheckEquals(3, FBase2List.Current.IntegerProperty, 'The 3rd item should have taken the place of the 2nd');
+end;
+
+procedure TestTBase2List.DeleteFromEmptyList;
+begin
+  FBase2List.Clear;
+  FBase2List.Delete;
+end;
+
+procedure TestTBase2List.First;
+begin
+  Add3;
+  FBase2List.First;
+  CheckTrue(FBase2List.BOL, 'First should set BOL');
+  CheckEquals(0, FBase2List.CurrentIndex, 'CurrentIndex should be at 0.');
+end;
+
+procedure TestTBase2List.GetItem;
+begin
+  Add3;
+  CheckEquals(2, FBase2List.Items[1].IntegerProperty, 'Get the 2nd item in the array');
+  CheckException(GetItemInvalidIndex, EgList, 'Invalid Index');
+end;
+
+procedure TestTBase2List.SetItem;
+begin
+  Add3;
+  FBase2List.Items[1].IntegerProperty := 22;
+  CheckEquals(22, FBase2List.Items[1].IntegerProperty, 'Get the 2nd item in the array');
+  CheckException(SetItemInvalidIndex, EgList, 'Invalid Index');
+end;
+
+procedure TestTBase2List.GetItemInvalidIndex;
+begin
+  FBase2List.Items[23].IntegerProperty := FBase2List.Items[23].IntegerProperty + 1;
+end;
+
+procedure TestTBase2List.SetItemInvalidIndex;
+begin
+  FBase2List.Items[23].IntegerProperty := 22;
+end;
+
+procedure TestTBase2List.Last;
+begin
+  Add3;
+  FBase2List.First;
+  FBase2List.Last;
+  CheckTrue(FBase2List.EOL, 'Last should set EOL');
+  CheckEquals(2, FBase2List.CurrentIndex, 'CurrentIndex should be at 2.');
+end;
+
+procedure TestTBase2List.GetValue;
+begin
+  Add3;
+  CheckEquals(3, FBase2List.Values['Current.IntegerProperty'], 'Testing the inherited GetValue');
+  CheckEquals(2, FBase2List.Values['[1].IntegerProperty'], 'Testing the overridden GetValues that looks for an index value');
+  CheckException(GetValueInvalidIndex, EgValue, 'Invalid Index');
+end;
+
+procedure TestTBase2List.SetValue;
+begin
+  FBase2List.Add;
+  FBase2List.Values['Current.IntegerProperty'] := 1;
+  CheckEquals(1, FBase2List.Current.IntegerProperty, 'Testing the inherited SetValue');
+  FBase2List.Values['[0].IntegerProperty'] := 2;
+  CheckEquals(2, FBase2List[0].IntegerProperty, 'Testing the overriden SetValue looking for an index value.');
+  CheckException(SetValueInvalidIndex, EgValue, 'Invalid Index');
+end;
+
+procedure TestTBase2List.GetValueInvalidIndex;
+begin
+  FBase2List.Values['[xyz].IntegerProperty'];
+end;
+
+procedure TestTBase2List.HasItems;
+begin
+  CheckFalse(FBase2List.HasItems, 'Should return False on an empty list.');
+  FBase2List.Add;
+  CheckTrue(FBase2List.HasItems, 'Should return True on a non-empty list.');
+end;
+
+procedure TestTBase2List.ItemClass;
+begin
+  Check(FBase2List.ItemClass = TBase2, 'The default ItemClass should be the generic type.');
+  FBase2List.ItemClass := TBase3;
+  CheckEquals(TBase3, FBase2List.ItemClass, 'Should return the ItemClass that was set.');
+  FBase2List.ItemClass := Nil;
+  Check(FBase2List.ItemClass = TBase2, 'The default ItemClass should be the generic type.');
+end;
+
+procedure TestTBase2List.Next;
+begin
+  CheckException(NextPastEOL, EgList, 'Exception calling on Empty List');
+  Add3;
+  FBase2List.Last;
+  FBase2List.Previous;
+  FBase2List.Next;
+  CheckEquals(2, FBase2List.CurrentIndex, 'Should be CurrentIndex2');
+  FBase2List.Next;
+  CheckTrue(FBase2List.EOL);
+  CheckException(NextPastEOL, EgList, 'Exception calling on EOL.');
+end;
+
+procedure TestTBase2List.Previous;
+begin
+  CheckException(PreviousBeforeBOL, EgList, 'Exception calling on Empty List');
+  Add3;
+  FBase2List.First;
+  FBase2List.Next;
+  FBase2List.Previous;
+  CheckEquals(0, FBase2List.CurrentIndex, 'CurrentIndex should be 0');
+  FBase2List.Previous;
+  CheckTrue(FBase2List.BOL);
+  CheckException(PreviousBeforeBOL, EgList, 'Exception calling on EOL.');
+end;
+
+procedure TestTBase2List.NextPastEOL;
+begin
+  FBase2List.Next;
+end;
+
+procedure TestTBase2List.PreviousBeforeBOL;
+begin
+  FBase2List.Previous;
+end;
+
+procedure TestTBase2List.SetValueInvalidIndex;
+begin
+  FBase2List.Values['[xyz].IntegerProperty'] := 2;
+end;
+
+procedure TestTBase2List.SetCurrentIndexTooHigh;
+begin
+  FBase2List.CurrentIndex := FBase2List.Count;
+end;
+
+procedure TestTBase2List.SetCurrentIndexTooLow;
+begin
+  FBase2List.CurrentIndex := -1;
+end;
+
+procedure TestTBase2List.SetUp;
+begin
+  FBase2List := TBase2List.Create;
+end;
+
+procedure TestTBase2List.TearDown;
+begin
+  FBase2List.Free;
+  FBase2List := nil;
+end;
+
+procedure TestTBase2List.TestCreate(BOL: Integer; const Value: string);
+begin
+  CheckEquals(0, FBase2List.Count, 'A list has no items after it gets created.');
+  CheckEquals(-1, FBase2List.CurrentIndex, 'The CurrentIndex is set to -1 if there are no list items.');
+end;
+
 initialization
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
   RegisterTest(TestTgString5.Suite);
+  RegisterTest(TestTBase2List.Suite);
 end.
 
 
