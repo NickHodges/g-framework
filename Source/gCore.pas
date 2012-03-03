@@ -11,7 +11,8 @@ Uses
   Data.DBXPlatform,
   Xml.XMLDoc,
   Xml.XMLIntf,
-  Contnrs;
+  Contnrs
+  ;
 
 type
   TCustomAttributeClass = class of TCustomAttribute;
@@ -20,6 +21,7 @@ type
   TgBase = class;
   {$M-}
 
+  TgList = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -255,77 +257,99 @@ type
   EgParse = class(Exception)
   end;
 
-  TgListEnumerator<T: TgBase> = class(TObject)
+  TgListEnumerator = class(TObject)
   strict private
     FCurrentIndex: Integer;
-    FList: TgList<T>;
+    FList: TgList;
     SavedCurrentIndex: Integer;
   strict protected
-    function GetCurrent: T;
+    function GetCurrent: TgBase;
   public
-    constructor Create(AList: TgList<T>);
+    constructor Create(AList: TgList);
     function MoveNext: Boolean;
-    property Current: T read GetCurrent;
+    property Current: TgBase read GetCurrent;
   End;
 
-  TgList<T: TgBase> = class(TgBase)
-  Strict Private
-    FList: TObjectList<T>;
+  TgList = class(TgBase)
+  strict private
     FItemClass: TgBaseClass;
-    FWhere: String;
+    FList: TObjectList;
     FOrderBy: String;
+    FWhere: String;
     function GetIsFiltered: Boolean;
     procedure SetIsFiltered(const AValue: Boolean);
-  Private
+  private
     FCurrentIndex: Integer;
-    function GetCurrent: T;
-  Strict Protected
-    Function DoGetValues(Const APath : String; Out AValue : Variant) : Boolean; Override;
-    Function DoSetValues(Const APath : String; AValue : Variant) : Boolean; Override;
+  strict protected
+    function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; override;
+    function DoSetValues(Const APath : String; AValue : Variant): Boolean; override;
     function GetBOL: Boolean; virtual;
     function GetCanAdd: Boolean; virtual;
     function GetCanNext: Boolean; virtual;
     function GetCanPrevious: Boolean; virtual;
     function GetCount: Integer; virtual;
+    function GetCurrent: TgBase;
     function GetCurrentIndex: Integer; virtual;
     function GetEOL: Boolean; virtual;
     function GetHasItems: Boolean; virtual;
-    function GetItems(AIndex : Integer): T; virtual;
-    function GetItemClass: TgBaseClass;virtual;
+    function GetItemClass: TgBaseClass; virtual;
+    function GetItems(AIndex : Integer): TgBase; virtual;
     procedure SetCurrentIndex(const AIndex: Integer); virtual;
-    procedure SetItemClass(const Value: TgBaseClass);virtual;
-    procedure SetItems(AIndex : Integer; const AValue: T); virtual;
-    procedure SetWhere(const AValue: String); virtual;
+    procedure SetItemClass(const Value: TgBaseClass); virtual;
+    procedure SetItems(AIndex : Integer; const AValue: TgBase); virtual;
     procedure SetOrderBy(const AValue: String); virtual;
-  Public
-    Constructor Create(AOwner : TgBase = Nil); Override;
-    Destructor Destroy; Override;
+    procedure SetWhere(const AValue: String); virtual;
+  public
+    constructor Create(AOwner : TgBase = Nil); override;
+    destructor Destroy; override;
+    procedure Assign(ASource: TgBase); override;
     procedure Clear; virtual;
-    function GetEnumerator: TgListEnumerator<T>;
     class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
     procedure Filter; virtual;
+    function GetEnumerator: TgListEnumerator;
     procedure Sort;
     property IsFiltered: Boolean read GetIsFiltered write SetIsFiltered;
-    property Items[AIndex : Integer]: T read GetItems write SetItems; default;
     property ItemClass: TgBaseClass read GetItemClass write SetItemClass;
-  Published
-    Procedure Add; Overload; Virtual;
-    Procedure Delete; Virtual;
-    Procedure First; Virtual;
-    Procedure Last; Virtual;
-    Procedure Next; Virtual;
-    Procedure Previous; Virtual;
+    property Items[AIndex : Integer]: TgBase read GetItems write SetItems; default;
+  published
+    procedure Add; overload; virtual;
+    procedure Delete; virtual;
+    procedure First; virtual;
+    procedure Last; virtual;
+    procedure Next; virtual;
+    procedure Previous; virtual;
     property BOL: Boolean read GetBOL;
     property CanAdd: Boolean read GetCanAdd;
     property CanNext: Boolean read GetCanNext;
     property CanPrevious: Boolean read GetCanPrevious;
     property Count: Integer read GetCount;
-    property Current: T read GetCurrent;
+    property Current: TgBase read GetCurrent;
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
     property HasItems: Boolean read GetHasItems;
-    property Where: String read FWhere write SetWhere;
     property OrderBy: String read FOrderBy write SetOrderBy;
+    property Where: String read FWhere write SetWhere;
+  end;
+
+  TgListEnumerator<T: TgBase> = class(TgListEnumerator)
+  strict protected
+    function GetCurrent: T;
+  public
+    constructor Create(AList: TgList<T>);
+    property Current: T read GetCurrent;
+  End;
+
+ TgList<T: TgBase> = class(TgList)
+  Strict Protected
+    function GetCurrent: T;
+    function GetItems(AIndex : Integer): T; reintroduce; virtual;
+    procedure SetItems(AIndex : Integer; const AValue: T); reintroduce; virtual;
+    function GetItemClass: TgBaseClass; override;
+  Public
+    function GetEnumerator: TgListEnumerator<T>;
+    property Items[AIndex : Integer]: T read GetItems write SetItems; default;
+  Published
+    property Current: T read GetCurrent;
   End;
 
   EgList = class(Exception)
@@ -853,7 +877,7 @@ begin
   if RTTIProperty.Visibility = mvPublished then
   begin
     Key := ARTTIType.AsInstance.MetaclassType.ClassName + '.' + UpperCase(RTTIProperty.Name);
-    FPropertyByName.Add(Key, RTTIProperty);
+    FPropertyByName.AddOrSetValue(Key, RTTIProperty);
   end;
 end;
 
@@ -1303,25 +1327,81 @@ begin
   Result := TgSerializerXML;
 end;
 
-constructor TgList<T>.Create(AOwner : TgBase = Nil);
+function TgList<T>.GetCurrent: T;
+Begin
+  Result := T(Inherited GetCurrent);
+End;
+
+function TgList<T>.GetItems(AIndex : Integer): T;
+Begin
+  Result := T(Inherited GetItems(AIndex));
+End;
+
+procedure TgList<T>.SetItems(AIndex : Integer; const AValue: T);
+Begin
+  Inherited SetItems(AIndex, AValue);
+End;
+
+function TgList<T>.GetEnumerator: TgListEnumerator<T>;
+Begin
+  Result := TgListEnumerator<T>.Create(Self);
+End;
+
+function TgList<T>.GetItemClass: TgBaseClass;
+begin
+  if Not Assigned(Inherited GetItemClass) then
+    Inherited SetItemClass(T);
+  Result := inherited GetItemClass;
+end;
+
+constructor TgListEnumerator<T>.Create(AList: TgList<T>);
+begin
+  Inherited Create(AList);
+end;
+
+function TgListEnumerator<T>.GetCurrent: T;
+begin
+  Result := T(Inherited GetCurrent);
+end;
+
+constructor TgList.Create(AOwner : TgBase = Nil);
 Begin
   Inherited Create(AOwner);
-  FList := TObjectList<T>.Create;
+  FList := TObjectList.Create;
   FCurrentIndex := -1;
 End;
 
-destructor TgList<T>.Destroy;
+destructor TgList.Destroy;
 Begin
   Inherited;
   FList.Free;
 End;
 
-procedure TgList<T>.Add;
+procedure TgList.Add;
 Begin
   FCurrentIndex := FList.Add(ItemClass.Create(Self));
 End;
 
-procedure TgList<T>.Delete;
+procedure TgList.Assign(ASource: TgBase);
+var
+  Item: TgBase;
+begin
+  inherited Assign(ASource);
+  for Item in TgList(ASource) do
+  begin
+    ItemClass := TgBaseClass(Item.ClassType);
+    Add;
+    Current.Assign(Item);
+  end;
+end;
+
+procedure TgList.Clear;
+begin
+  FList.Clear;
+  FCurrentIndex := -1;
+end;
+
+procedure TgList.Delete;
 Begin
   if CurrentIndex > -1 then
     FList.Delete(CurrentIndex)
@@ -1329,7 +1409,7 @@ Begin
     raise EgList.Create('There is no item to delete.');
 End;
 
-function TgList<T>.DoGetValues(Const APath : String; Out AValue : Variant): Boolean;
+function TgList.DoGetValues(Const APath : String; Out AValue : Variant): Boolean;
 Var
   Index : Integer;
   IndexString : String;
@@ -1355,7 +1435,7 @@ Begin
   End;
 End;
 
-function TgList<T>.DoSetValues(Const APath : String; AValue : Variant): Boolean;
+function TgList.DoSetValues(Const APath : String; AValue : Variant): Boolean;
 Var
   Index : Integer;
   IndexString : String;
@@ -1381,125 +1461,7 @@ Begin
   End;
 End;
 
-procedure TgList<T>.First;
-Begin
-  FCurrentIndex := -1;
-End;
-
-function TgList<T>.GetBOL: Boolean;
-Begin
-  Result := Min(FCurrentIndex, FList.Count - 1) = - 1;
-End;
-
-function TgList<T>.GetCanAdd: Boolean;
-Begin
-  Result := True;
-End;
-
-function TgList<T>.GetCanNext: Boolean;
-Begin
-  Result := (Count > 1) And InRange(FCurrentIndex, - 1, Count - 2);
-End;
-
-function TgList<T>.GetCanPrevious: Boolean;
-Begin
-  Result := (Count > 1) And (FCurrentIndex > 0);
-End;
-
-function TgList<T>.GetCount: Integer;
-Begin
-  Result := FList.Count;
-End;
-
-function TgList<T>.GetCurrent: T;
-Begin
-  if CurrentIndex = -1 then
-    raise EgList.CreateFmt('Attempted to get an item from an empty %s list.', [ClassName]);
-  Result := FList[CurrentIndex];
-End;
-
-function TgList<T>.GetCurrentIndex: Integer;
-Begin
-  If FList.Count > 0 Then
-    Result := EnsureRange(FCurrentIndex, 0, FList.Count - 1)
-  Else
-    Result := - 1;
-End;
-
-function TgList<T>.GetEOL: Boolean;
-Begin
-  Result := Max(FCurrentIndex, 0) = FList.Count;
-End;
-
-function TgList<T>.GetItemClass: TgBaseClass;
-begin
-  if Not Assigned(FItemClass) then
-    FItemClass := T;
-  Result := FItemClass;
-end;
-
-function TgList<T>.GetItems(AIndex : Integer): T;
-Begin
-  if InRange(AIndex, 0, FList.Count - 1) then
-    Result := FList[AIndex]
-  Else
-    Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
-End;
-
-procedure TgList<T>.Last;
-Begin
-  FCurrentIndex := FList.Count;
-End;
-
-procedure TgList<T>.Next;
-Begin
-  If (FList.Count > 0) And (FCurrentIndex < FList.Count) Then
-    FCurrentIndex := CurrentIndex + 1
-  Else
-    Raise EgList.Create('Failed attempt to move past end of list.');
-End;
-
-procedure TgList<T>.Previous;
-Begin
-  If (FList.Count > 0) And (FCurrentIndex > -1) Then
-    FCurrentIndex := CurrentIndex - 1
-  Else
-    Raise EgList.Create('Failed attempt to move past end of list.');
-End;
-
-procedure TgList<T>.SetCurrentIndex(const AIndex: Integer);
-Begin
-  If (FList.Count > 0) And InRange(AIndex, 0, FList.Count - 1) Then
-    FCurrentIndex := AIndex
-  Else
-    Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
-End;
-
-procedure TgList<T>.SetItemClass(const Value: TgBaseClass);
-begin
-  FItemClass := Value;
-end;
-
-procedure TgList<T>.SetItems(AIndex : Integer; const AValue: T);
-Begin
-  if InRange(AIndex, 0, FList.Count - 1) then
-    FList[AIndex] := AValue
-  Else
-    Raise EgList.CreateFmt('Failed to set the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
-End;
-
-procedure TgList<T>.Clear;
-begin
-  FList.Clear;
-  FCurrentIndex := -1;
-end;
-
-function TgList<T>.GetEnumerator: TgListEnumerator<T>;
-Begin
-  Result := TgListEnumerator<T>.Create(Self);
-End;
-
-class function TgList<T>.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
+class function TgList.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
 begin
   Result := inherited FeatureExclusions(ARTTIProperty);
   if SameText(ARTTIProperty.Name, 'Current') then
@@ -1512,7 +1474,7 @@ begin
     Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
 end;
 
-procedure TgList<T>.Filter;
+procedure TgList.Filter;
 begin
 {
   If Not IsFiltered And ( Where > '' ) Then
@@ -1529,17 +1491,114 @@ begin
 }
 end;
 
-function TgList<T>.GetHasItems: Boolean;
+procedure TgList.First;
+Begin
+  FCurrentIndex := -1;
+End;
+
+function TgList.GetBOL: Boolean;
+Begin
+  Result := Min(FCurrentIndex, FList.Count - 1) = - 1;
+End;
+
+function TgList.GetCanAdd: Boolean;
+Begin
+  Result := True;
+End;
+
+function TgList.GetCanNext: Boolean;
+Begin
+  Result := (Count > 1) And InRange(FCurrentIndex, - 1, Count - 2);
+End;
+
+function TgList.GetCanPrevious: Boolean;
+Begin
+  Result := (Count > 1) And (FCurrentIndex > 0);
+End;
+
+function TgList.GetCount: Integer;
+Begin
+  Result := FList.Count;
+End;
+
+function TgList.GetCurrent: TgBase;
+Begin
+  if CurrentIndex = -1 then
+    raise EgList.CreateFmt('Attempted to get an item from an empty %s list.', [ClassName]);
+  Result := TgBase(FList[CurrentIndex]);
+End;
+
+function TgList.GetCurrentIndex: Integer;
+Begin
+  If FList.Count > 0 Then
+    Result := EnsureRange(FCurrentIndex, 0, FList.Count - 1)
+  Else
+    Result := - 1;
+End;
+
+function TgList.GetEnumerator: TgListEnumerator;
+Begin
+  Result := TgListEnumerator.Create(Self);
+End;
+
+function TgList.GetEOL: Boolean;
+Begin
+  Result := Max(FCurrentIndex, 0) = FList.Count;
+End;
+
+function TgList.GetHasItems: Boolean;
 begin
   Result := Count > 0;
 end;
 
-function TgList<T>.GetIsFiltered: Boolean;
+function TgList.GetIsFiltered: Boolean;
 begin
   Result := gosFiltered In FObjectStates;
 end;
 
-procedure TgList<T>.SetIsFiltered(const AValue: Boolean);
+function TgList.GetItemClass: TgBaseClass;
+begin
+  Result := FItemClass;
+end;
+
+function TgList.GetItems(AIndex : Integer): TgBase;
+Begin
+  if InRange(AIndex, 0, FList.Count - 1) then
+    Result := TgBase(FList[AIndex])
+  Else
+    Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
+End;
+
+procedure TgList.Last;
+Begin
+  FCurrentIndex := FList.Count;
+End;
+
+procedure TgList.Next;
+Begin
+  If (FList.Count > 0) And (FCurrentIndex < FList.Count) Then
+    FCurrentIndex := CurrentIndex + 1
+  Else
+    Raise EgList.Create('Failed attempt to move past end of list.');
+End;
+
+procedure TgList.Previous;
+Begin
+  If (FList.Count > 0) And (FCurrentIndex > -1) Then
+    FCurrentIndex := CurrentIndex - 1
+  Else
+    Raise EgList.Create('Failed attempt to move past end of list.');
+End;
+
+procedure TgList.SetCurrentIndex(const AIndex: Integer);
+Begin
+  If (FList.Count > 0) And InRange(AIndex, 0, FList.Count - 1) Then
+    FCurrentIndex := AIndex
+  Else
+    Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
+End;
+
+procedure TgList.SetIsFiltered(const AValue: Boolean);
 begin
   If AValue Then
     Include(FObjectStates, gosFiltered)
@@ -1547,22 +1606,35 @@ begin
     Exclude(FObjectStates, gosFiltered);
 end;
 
-procedure TgList<T>.SetWhere(const AValue: String);
+procedure TgList.SetItemClass(const Value: TgBaseClass);
 begin
-  FWhere := AValue;
+  FItemClass := Value;
 end;
 
-procedure TgList<T>.SetOrderBy(const AValue: String);
+procedure TgList.SetItems(AIndex : Integer; const AValue: TgBase);
+Begin
+  if InRange(AIndex, 0, FList.Count - 1) then
+    FList[AIndex] := AValue
+  Else
+    Raise EgList.CreateFmt('Failed to set the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
+End;
+
+procedure TgList.SetOrderBy(const AValue: String);
 begin
   FOrderBy := AValue;
 end;
 
-procedure TgList<T>.Sort;
+procedure TgList.SetWhere(const AValue: String);
+begin
+  FWhere := AValue;
+end;
+
+procedure TgList.Sort;
 begin
   // TODO -cMM: TgList.Sort default body inserted
 end;
 
-constructor TgListEnumerator<T>.Create(AList: TgList<T>);
+constructor TgListEnumerator.Create(AList: TgList);
 begin
   FList := AList;
   SavedCurrentIndex := FList.CurrentIndex;
@@ -1570,14 +1642,14 @@ begin
   FCurrentIndex := -1;
 end;
 
-function TgListEnumerator<T>.GetCurrent: T;
+function TgListEnumerator.GetCurrent: TgBase;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
-function TgListEnumerator<T>.MoveNext: Boolean;
+function TgListEnumerator.MoveNext: Boolean;
 begin
   If FList.Count = 0 Then
     Exit(False);

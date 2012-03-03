@@ -140,6 +140,7 @@ type
     procedure TearDown; override;
   published
     procedure Add;
+    procedure Assign;
     procedure BOL;
     procedure EOL;
     procedure CanAdd;
@@ -578,6 +579,20 @@ begin
     FBase2List.Add;
     FBase2List.Current.IntegerProperty := Counter;
   End;
+end;
+
+procedure TestTBase2List.Assign;
+var
+  NewBase2List: TBase2List;
+begin
+  Add3;
+  NewBase2List := TBase2List.Create;
+  try
+    NewBase2List.Assign(FBase2List);
+    CheckEquals(3, NewBase2List.Count, 'Should have copied 3 items.');
+  finally
+    NewBase2List.Free;
+  end;
 end;
 
 procedure TestTBase2List.BOL;
