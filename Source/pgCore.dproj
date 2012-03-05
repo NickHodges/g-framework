@@ -61,6 +61,7 @@
 			<DCC_RemoteDebug>true</DCC_RemoteDebug>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Cfg_1_Win32)'!=''">
+			<DCC_CBuilderOutput>None</DCC_CBuilderOutput>
 			<VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
 			<DCC_BplOutput>..\bin\$(Platform)\$(Config)</DCC_BplOutput>
 			<DCC_DcuOutput>..\DCU\$(Platform)\$(Config)</DCC_DcuOutput>
@@ -84,6 +85,8 @@
 			<DCCReference Include="dbrtl.dcp"/>
 			<DCCReference Include="DbxCommonDriver.dcp"/>
 			<DCCReference Include="gCore.pas"/>
+			<DCCReference Include="gExpressionEvaluator.pas"/>
+			<DCCReference Include="gParse.pas"/>
 			<BuildConfiguration Include="Release">
 				<Key>Cfg_2</Key>
 				<CfgParent>Base</CfgParent>

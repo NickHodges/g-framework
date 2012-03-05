@@ -19,8 +19,7 @@ uses
   TestFramework,
   GUITestRunner,
   TextTestRunner,
-  TestgCore in 'TestgCore.pas',
-  gCore in '..\gCore.pas';
+  TestgCore in 'TestgCore.pas';
 
 {$R *.RES}
 

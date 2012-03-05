@@ -35,6 +35,8 @@ requires
   DbxCommonDriver;
 
 contains
-  gCore in 'gCore.pas';
+  gCore in 'gCore.pas',
+  gExpressionEvaluator in 'gExpressionEvaluator.pas',
+  gParse in 'gParse.pas';
 
 end.

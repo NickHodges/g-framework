@@ -11,8 +11,9 @@ Uses
   Data.DBXPlatform,
   Xml.XMLDoc,
   Xml.XMLIntf,
-  Contnrs
-  ;
+  Contnrs,
+  System.Classes
+;
 
 type
   TCustomAttributeClass = class of TCustomAttribute;
@@ -52,8 +53,19 @@ type
     Property Value : Variant Read FValue;
   End;
 
-  TgObjectState = (GosInspecting, GosOriginalValues, gosLoaded, gosLoading, gosSaving, gosDeleting, gosFiltered);
+  TgObjectState = (Inspecting, OriginalValues, Loaded, Loading, Saving, Deleting);
   TgObjectStates = Set Of TgObjectState;
+
+  TgListState = (Ordered, Filtered);
+  TgListStates = Set of TgListState;
+
+  TgObjectType = (otObject, otList);
+
+  TgBaseStates = Record
+    case TgObjectType of
+      otObject: (ObjectStates: TgObjectStates);
+      otList: (ListStates: TgListStates);   
+  End;
 
   TgSerializerClass = class of TgSerializer;
   TgSerializer = Class(TObject)
@@ -102,9 +114,8 @@ type
     function GetIsInspecting: Boolean;
     procedure PopulateDefaultValues;
     procedure SetIsInspecting(Const AValue : Boolean);
-  private
-    FObjectStates: TgObjectStates;
   strict protected
+    FStates: TgBaseStates;
     /// <summary>TgBase.AutoCreate gets called by the Create constructor to instantiate
     /// object properties. You may override this method in a descendant class to alter
     /// its behavior.
@@ -273,14 +284,39 @@ type
     property Current: TgBase read GetCurrent;
   End;
 
+  TgOrderByItem = class(TObject)
+  strict private
+    FDescending: Boolean;
+    FPropertyName: String;
+  public
+    constructor Create(const AItemText: String);
+    property Descending: Boolean read FDescending write FDescending;
+    property PropertyName: String read FPropertyName write FPropertyName;
+  end;
+
   TgList = class(TgBase)
   strict private
+    FFilteredList: TList<TgBase>;
     FItemClass: TgBaseClass;
-    FList: TObjectList;
+    FList: TObjectList<TgBase>;
     FOrderBy: String;
+    FOrderByList: TObjectList<TgOrderByItem>;
     FWhere: String;
+
+    Type
+      TgListComparer = class(TComparer<TgBase>)
+      strict private
+        FOrderByList: TObjectList<TgOrderByItem>;
+      public
+        constructor Create(AOrderByList: TObjectList<TgOrderByItem>);
+        function Compare(const Left, Right: TgBase): Integer; override;
+      end;
+    
     function GetIsFiltered: Boolean;
+    function GetIsOrdered: Boolean;
+    function GetOrderByList: TObjectList<TgOrderByItem>;
     procedure SetIsFiltered(const AValue: Boolean);
+    procedure SetIsOrdered(const AValue: Boolean);
   private
     FCurrentIndex: Integer;
   strict protected
@@ -303,7 +339,7 @@ type
     procedure SetOrderBy(const AValue: String); virtual;
     procedure SetWhere(const AValue: String); virtual;
   public
-    constructor Create(AOwner : TgBase = Nil); override;
+    constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
     procedure Assign(ASource: TgBase); override;
     procedure Clear; virtual;
@@ -311,8 +347,10 @@ type
     function GetEnumerator: TgListEnumerator;
     procedure Sort;
     property IsFiltered: Boolean read GetIsFiltered write SetIsFiltered;
+    property IsOrdered: Boolean read GetIsOrdered write SetIsOrdered;
     property ItemClass: TgBaseClass read GetItemClass write SetItemClass;
     property Items[AIndex : Integer]: TgBase read GetItems write SetItems; default;
+    property OrderByList: TObjectList<TgOrderByItem> read GetOrderByList;
   published
     procedure Add; overload; virtual;
     procedure Delete; virtual;
@@ -362,7 +400,6 @@ type
   EgList = class(Exception)
   end;
 
-type
   TgSerializationHelperXMLList = class(TgSerializationHelperXMLBase)
   public
     class function BaseClass: TgBaseClass; override;
@@ -370,12 +407,15 @@ type
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerXML); override;
   end;
 
-type
   TgSerializationHelperJSONList = class(TgSerializationHelperJSONBase)
   public
     class function BaseClass: TgBaseClass; override;
     class procedure Serialize(AObject: TgBase;ASerializer: TgSerializerJSON); override;
     class procedure Deserialize(AObject: TgBase; AJSONObject: TJSONObject); override;
+  end;
+
+  TgBaseClassComparer = class(TComparer<TRTTIType>)
+    function Compare(const Left, Right: TRTTIType): Integer; override;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -386,7 +426,8 @@ Uses
   TypInfo,
   Variants,
   XML.XMLDOM,
-  Math
+  Math,
+  gExpressionEvaluator
 ;
 
 Const
@@ -396,6 +437,28 @@ Const
 {$IFDEF CPUX64}
   PROPSLOT_MASK    = $FF00000000000000;
 {$ENDIF CPUX64}
+
+type
+  TgBaseExpressionEvaluator = Class(TgExpressionEvaluator)
+  Strict Private
+    FModel : TgBase;
+  Strict Protected
+    Function GetValue(Const AVariableName : String) : Variant; Override;
+  Public
+    Constructor Create(AModel : TgBase); Reintroduce; Virtual;
+  End;
+
+Function Eval(Const AExpression : String; ABase : TgBase) : Variant;
+Var
+  ExpressionEvaluator : TgBaseExpressionEvaluator;
+Begin
+  ExpressionEvaluator := TgBaseExpressionEvaluator.Create(ABase);
+  Try
+    Result := ExpressionEvaluator.Evaluate(AExpression);
+  Finally
+    ExpressionEvaluator.Free;
+  End;
+End;
 
 function IsField(P: Pointer): Boolean; inline;
 begin
@@ -683,7 +746,7 @@ End;
 
 function TgBase.GetIsInspecting: Boolean;
 Begin
-  Result := GosInspecting In FObjectStates;
+  Result := TgObjectState.Inspecting In FStates.ObjectStates;
 End;
 
 function TgBase.GetValues(Const APath : String): Variant;
@@ -727,9 +790,9 @@ end;
 procedure TgBase.SetIsInspecting(Const AValue : Boolean);
 Begin
   If AValue Then
-    Include(FObjectStates, GosInspecting)
+    Include(FStates.ObjectStates, TgObjectState.Inspecting)
   Else
-    Exclude(FObjectStates, GosInspecting);
+    Exclude(FStates.ObjectStates, TgObjectState.Inspecting);
 End;
 
 procedure TgBase.SetValues(Const APath : String; AValue : Variant);
@@ -740,12 +803,25 @@ End;
 
 class procedure G.Initialize;
 var
+  BaseTypes: TList<TRTTIType>;
   RTTIType: TRTTIType;
+  Comparer: TgBaseClassComparer;
 begin
-  for RTTIType in FRTTIContext.GetTypes do
-  begin
+  //Make sure the types are in ancestral order
+  BaseTypes := TList<TRTTIType>.Create;
+  try
+    for RTTIType in FRTTIContext.GetTypes do
     if RTTIType.IsInstance And RTTIType.AsInstance.MetaclassType.InheritsFrom(TgBase) then
-    Begin
+      BaseTypes.Add(RTTIType);
+    Comparer := TgBaseClassComparer.Create;
+    try
+      BaseTypes.Sort(Comparer);  
+    finally
+      Comparer.Free;
+    end;
+    //Then initialize the structure caches
+    for RTTIType in BaseTypes do
+    begin
       InitializeProperties(RTTIType);
       InitializeAttributes(RTTIType);
       InitializeObjectProperties(RTTIType);
@@ -754,8 +830,13 @@ begin
       InitializeMethodByName(RTTIType);
       InitializeRecordProperty(RTTIType);
       InitializeSerializableProperties(RTTIType);
-    End
-    Else If RTTIType.IsInstance And RTTIType.AsInstance.MetaclassType.InheritsFrom(TgSerializationHelper) And Not (RTTIType.AsInstance.MetaclassType = TgSerializationHelper) Then
+    end;
+  finally
+    BaseTypes.Free;
+  end;
+  for RTTIType in FRTTIContext.GetTypes do
+  begin
+    If RTTIType.IsInstance And RTTIType.AsInstance.MetaclassType.InheritsFrom(TgSerializationHelper) And Not (RTTIType.AsInstance.MetaclassType = TgSerializationHelper) Then
       InitializeSerializationHelpers(RTTIType);
   end;
 end;
@@ -1445,17 +1526,20 @@ begin
   Result := T(Inherited GetCurrent);
 end;
 
-constructor TgList.Create(AOwner : TgBase = Nil);
+constructor TgList.Create(AOwner: TgBase = Nil);
 Begin
   Inherited Create(AOwner);
-  FList := TObjectList.Create;
+  FList := TObjectList<TgBase>.Create;
+  FFilteredList := TList<TgBase>.Create();
   FCurrentIndex := -1;
 End;
 
 destructor TgList.Destroy;
 Begin
-  Inherited;
+  FOrderByList.Free;
+  FFilteredList.Free;
   FList.Free;
+  Inherited;
 End;
 
 procedure TgList.Add;
@@ -1544,19 +1628,18 @@ End;
 
 procedure TgList.Filter;
 begin
-{
   If Not IsFiltered And ( Where > '' ) Then
   Begin
-    Last;
-    While Not BOL Do
+    FFilteredList.Clear;
+    First;
+    while Not EOL do
     Begin
-      If Not Eval( Where, Current ) Then
-        Delete;
-      Previous;
+      if Eval(Where, Current) then
+        FFilteredList.Add(Current);
+      Next;
     End;
     IsFiltered := True;
   End;
-}
 end;
 
 procedure TgList.First;
@@ -1593,7 +1676,7 @@ function TgList.GetCurrent: TgBase;
 Begin
   if CurrentIndex = -1 then
     raise EgList.CreateFmt('Attempted to get an item from an empty %s list.', [ClassName]);
-  Result := TgBase(FList[CurrentIndex]);
+  Result := FList[CurrentIndex];
 End;
 
 function TgList.GetCurrentIndex: Integer;
@@ -1621,7 +1704,12 @@ end;
 
 function TgList.GetIsFiltered: Boolean;
 begin
-  Result := gosFiltered In FObjectStates;
+  Result := TgListState.Filtered In FStates.ListStates;
+end;
+
+function TgList.GetIsOrdered: Boolean;
+begin
+  Result := TgListState.Ordered In FStates.ListStates;
 end;
 
 function TgList.GetItemClass: TgBaseClass;
@@ -1632,10 +1720,17 @@ end;
 function TgList.GetItems(AIndex : Integer): TgBase;
 Begin
   if InRange(AIndex, 0, FList.Count - 1) then
-    Result := TgBase(FList[AIndex])
+    Result := FList[AIndex]
   Else
     Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
+
+function TgList.GetOrderByList: TObjectList<TgOrderByItem>;
+begin
+  If Not Assigned( FOrderByList ) Then
+    FOrderByList := TObjectList<TgOrderByItem>.Create;
+  Result := FOrderByList;
+end;
 
 procedure TgList.Last;
 Begin
@@ -1669,9 +1764,17 @@ End;
 procedure TgList.SetIsFiltered(const AValue: Boolean);
 begin
   If AValue Then
-    Include(FObjectStates, gosFiltered)
+    Include(FStates.ListStates, TgListState.Filtered)
   Else
-    Exclude(FObjectStates, gosFiltered);
+    Exclude(FStates.ListStates, TgListState.Filtered);
+end;
+
+procedure TgList.SetIsOrdered(const AValue: Boolean);
+begin
+  If AValue Then
+    Include(FStates.ListStates, TgListState.Ordered)
+  Else
+    Exclude(FStates.ListStates, TgListState.Ordered);
 end;
 
 procedure TgList.SetItemClass(const Value: TgBaseClass);
@@ -1688,8 +1791,26 @@ Begin
 End;
 
 procedure TgList.SetOrderBy(const AValue: String);
+var
+  StringList: TStringList;
+  ItemText: String;
+  Item: TgOrderByItem;
 begin
   FOrderBy := AValue;
+  IsOrdered := False;
+  OrderByList.Clear;
+  StringList := TStringList.Create;
+  try
+    StringList.StrictDelimiter := True;
+    StringList.CommaText := AValue;
+    For ItemText In StringList Do
+    Begin
+      Item := TgOrderByItem.Create( ItemText );
+      OrderByList.Add( Item );
+    End;
+  finally
+    StringList.Free;
+  end;
 end;
 
 procedure TgList.SetWhere(const AValue: String);
@@ -1698,8 +1819,20 @@ begin
 end;
 
 procedure TgList.Sort;
+var
+  Comparer: TgListComparer;
 begin
-  // TODO -cMM: TgList.Sort default body inserted
+  if (Count > 0) then
+  Begin
+//    EnsureOrderByDefault;
+    Comparer := TgListComparer.Create(FOrderByList);
+    try
+      FList.Sort(Comparer);
+    finally
+      Comparer.Free;
+    end;
+    IsOrdered := True;
+  End;
 end;
 
 constructor TgListEnumerator.Create(AList: TgList);
@@ -1828,6 +1961,96 @@ begin
   end;
 end;
 
+function TgBaseClassComparer.Compare(const Left, Right: TRTTIType): Integer;
+begin
+  if Left = Right then
+    Result := 0
+  Else if Left.AsInstance.MetaclassType.InheritsFrom(Right.AsInstance.MetaclassType) then
+    Result := -1
+  Else if Right.AsInstance.MetaclassType.InheritsFrom(Left.AsInstance.MetaclassType) then
+    Result := 1
+  Else
+    Result := 0;
+end;
+
+Constructor TgBaseExpressionEvaluator.Create(AModel : TgBase);
+Begin
+  Assert(Assigned(AModel), 'No model assigned');
+  Inherited Create;
+  FModel := AModel;
+End;
+
+Function TgBaseExpressionEvaluator.GetValue(Const AVariableName : String) : Variant;
+Begin
+  Result := FModel[AVariableName];
+End;
+
+constructor TgOrderByItem.Create(const AItemText: String);
+var
+  PosOfSpace: Integer;
+  Direction: String;
+  TrimmedItemText: String;
+begin
+  TrimmedItemText := Trim( AItemText );
+  PosOfSpace := Pos( ' ', TrimmedItemText );
+  If PosOfSpace > 0 Then
+  Begin
+    PropertyName := Trim( Copy( TrimmedItemText, 1, PosOfSpace ) );
+    Direction := Trim( Copy( TrimmedItemText, PosOfSpace, MaxInt ) );
+    If SameText( Direction, 'DESC' ) Then
+      Descending := True
+    Else If SameText( Direction, 'ASC' ) Then
+      Descending := False
+    Else
+      Raise EgList.CreateFmt( '''%s'' is an invalid Order By direction.', [Direction] );
+  End
+  Else
+  Begin
+    PropertyName := TrimmedItemText;
+    Descending := False;
+  End;
+end;
+
+constructor TgList.TgListComparer.Create(AOrderByList: TObjectList<TgOrderByItem>);
+begin
+  inherited Create;
+  FOrderByList := AOrderByList;
+end;
+
+function TgList.TgListComparer.Compare(const Left, Right: TgBase): Integer;
+Var
+  Value1 : Variant;
+  Value2 : Variant;
+  PropertyName: String;
+  OrderByItem: TgOrderByItem;
+Begin
+  Result := 0;
+  If FOrderByList.Count > 0 Then
+  Begin
+    For OrderByItem In FOrderByList Do
+    Begin
+      PropertyName := OrderByItem.PropertyName;
+      Value1 := Left[PropertyName];
+      Value2 := Right[PropertyName];
+      If VarIsType(Value1, varString) Then
+      Begin
+        Value1 := UpperCase(Value1);
+        Value2 := UpperCase(Value2);
+      End;
+      If Value1 <> Value2 Then
+      Begin
+        If Value1 < Value2 Then
+          Result := -1
+        Else If Value1 > Value2 Then
+          Result := 1;
+        If OrderByItem.Descending Then
+          Result := Result * -1;
+        Exit;
+      End;
+    End;
+  End;
+end;
+
 Initialization
   TgSerializationHelperXMLBase.BaseClass;
   TgSerializationHelperXMLList.BaseClass;
@@ -1835,3 +2058,4 @@ Initialization
   TgSerializationHelperJSONList.BaseClass;
 
 end.
+
