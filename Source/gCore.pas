@@ -12,7 +12,11 @@ Uses
   Xml.XMLDoc,
   Xml.XMLIntf,
   Contnrs,
-  System.Classes
+  System.Classes,
+  gExpressionConstants,
+  gExpressionLiterals,
+  gExpressionOperators,
+  gExpressionFunctions
 ;
 
 type
@@ -342,6 +346,7 @@ type
 
     function GetIsFiltered: Boolean;
     function GetIsOrdered: Boolean;
+    function GetList: TList<TgBase>;
     function GetOrderByList: TObjectList<TgOrderByItem>;
     procedure SetIsFiltered(const AValue: Boolean);
     procedure SetIsOrdered(const AValue: Boolean);
@@ -397,6 +402,7 @@ type
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
     property HasItems: Boolean read GetHasItems;
+    property List: TList<TgBase> read GetList;
     [ExcludeFeature([Serializable])]
     property OrderBy: String read FOrderBy write SetOrderBy;
     [ExcludeFeature([Serializable])]
@@ -1578,6 +1584,8 @@ End;
 
 procedure TgList.Add;
 Begin
+  if IsFiltered then
+    raise EgList.Create('Cannot add to a filtered list.');
   FCurrentIndex := FList.Add(ItemClass.Create(Self));
 End;
 
@@ -1596,12 +1604,16 @@ end;
 
 procedure TgList.Clear;
 begin
+  if IsFiltered then
+    raise EgList.Create('Cannot clear a filtered list.');
   FList.Clear;
   FCurrentIndex := -1;
 end;
 
 procedure TgList.Delete;
 Begin
+  if IsFiltered then
+    raise EgList.Create('Cannot delete from a filtered list.');
   if CurrentIndex > -1 then
     FList.Delete(CurrentIndex)
   Else
@@ -1683,7 +1695,7 @@ End;
 
 function TgList.GetBOL: Boolean;
 Begin
-  Result := Min(FCurrentIndex, FList.Count - 1) = - 1;
+  Result := Min(FCurrentIndex, List.Count - 1) = - 1;
 End;
 
 function TgList.GetCanAdd: Boolean;
@@ -1703,20 +1715,20 @@ End;
 
 function TgList.GetCount: Integer;
 Begin
-  Result := FList.Count;
+  Result := List.Count;
 End;
 
 function TgList.GetCurrent: TgBase;
 Begin
   if CurrentIndex = -1 then
     raise EgList.CreateFmt('Attempted to get an item from an empty %s list.', [ClassName]);
-  Result := FList[CurrentIndex];
+  Result := List[CurrentIndex];
 End;
 
 function TgList.GetCurrentIndex: Integer;
 Begin
-  If FList.Count > 0 Then
-    Result := EnsureRange(FCurrentIndex, 0, FList.Count - 1)
+  If List.Count > 0 Then
+    Result := EnsureRange(FCurrentIndex, 0, List.Count - 1)
   Else
     Result := - 1;
 End;
@@ -1728,7 +1740,7 @@ End;
 
 function TgList.GetEOL: Boolean;
 Begin
-  Result := Max(FCurrentIndex, 0) = FList.Count;
+  Result := Max(FCurrentIndex, 0) = List.Count;
 End;
 
 function TgList.GetHasItems: Boolean;
@@ -1753,11 +1765,19 @@ end;
 
 function TgList.GetItems(AIndex : Integer): TgBase;
 Begin
-  if InRange(AIndex, 0, FList.Count - 1) then
-    Result := FList[AIndex]
+  if InRange(AIndex, 0, List.Count - 1) then
+    Result := List[AIndex]
   Else
-    Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
+    Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, List.Count - 1]);
 End;
+
+function TgList.GetList: TList<TgBase>;
+begin
+  if IsFiltered then
+    Result := FFilteredList
+  Else
+    Result := FList;
+end;
 
 function TgList.GetOrderByList: TObjectList<TgOrderByItem>;
 begin
@@ -1768,12 +1788,12 @@ end;
 
 procedure TgList.Last;
 Begin
-  FCurrentIndex := FList.Count;
+  FCurrentIndex := List.Count;
 End;
 
 procedure TgList.Next;
 Begin
-  If (FList.Count > 0) And (FCurrentIndex < FList.Count) Then
+  If (List.Count > 0) And (FCurrentIndex < List.Count) Then
     FCurrentIndex := CurrentIndex + 1
   Else
     Raise EgList.Create('Failed attempt to move past end of list.');
@@ -1781,7 +1801,7 @@ End;
 
 procedure TgList.Previous;
 Begin
-  If (FList.Count > 0) And (FCurrentIndex > -1) Then
+  If (List.Count > 0) And (FCurrentIndex > -1) Then
     FCurrentIndex := CurrentIndex - 1
   Else
     Raise EgList.Create('Failed attempt to move past end of list.');
@@ -1789,10 +1809,10 @@ End;
 
 procedure TgList.SetCurrentIndex(const AIndex: Integer);
 Begin
-  If (FList.Count > 0) And InRange(AIndex, 0, FList.Count - 1) Then
+  If (List.Count > 0) And InRange(AIndex, 0, List.Count - 1) Then
     FCurrentIndex := AIndex
   Else
-    Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
+    Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, List.Count - 1]);
 End;
 
 procedure TgList.SetIsFiltered(const AValue: Boolean);
@@ -1800,7 +1820,11 @@ begin
   If AValue Then
     Include(FStates.ListStates, TgListState.Filtered)
   Else
+  Begin
     Exclude(FStates.ListStates, TgListState.Filtered);
+    FFilteredList.Clear;
+  End;
+  FCurrentIndex := -1;
 end;
 
 procedure TgList.SetIsOrdered(const AValue: Boolean);
@@ -1818,10 +1842,10 @@ end;
 
 procedure TgList.SetItems(AIndex : Integer; const AValue: TgBase);
 Begin
-  if InRange(AIndex, 0, FList.Count - 1) then
+  if InRange(AIndex, 0, List.Count - 1) then
     FList[AIndex] := AValue
   Else
-    Raise EgList.CreateFmt('Failed to set the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
+    Raise EgList.CreateFmt('Failed to set the item at index %d, because the valid range is between 0 and %d.', [AIndex, List.Count - 1]);
 End;
 
 procedure TgList.SetOrderBy(const AValue: String);
@@ -1861,7 +1885,7 @@ begin
 //    EnsureOrderByDefault;
     Comparer := TgListComparer.Create(FOrderByList);
     try
-      FList.Sort(Comparer);
+      List.Sort(Comparer);
     finally
       Comparer.Free;
     end;

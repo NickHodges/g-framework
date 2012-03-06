@@ -167,6 +167,7 @@ type
     procedure SerializeJSON;
     procedure DeserializeXML;
     procedure DeserializeJSON;
+    procedure Filter;
     procedure SetValue;
     procedure Sort;
     procedure TestCreate(BOL: Integer; const Value: string);
@@ -914,6 +915,15 @@ begin
   'gCore.TBase2","IntegerProperty":"3","StringProperty":"12345"}]}';
   FBase2List.Deserialize(TgSerializerJSON, JSONString);
   CheckEquals(3, FBase2List.Items[2].IntegerProperty);
+end;
+
+procedure TestTBase2List.Filter;
+begin
+  Add3;
+  FBase2List.Where := 'IntegerProperty > 1';
+  FBase2List.Filter;
+  CheckEquals(2, FBase2List.Count);
+  CheckEquals(2, FBase2List.Current.IntegerProperty);
 end;
 
 procedure TestTBase2List.SetValueInvalidIndex;

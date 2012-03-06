@@ -100,7 +100,6 @@ implementation
 Uses
     Variants
   , StrUtils
-  , gCommon
   ;
 
 { TFunction }
