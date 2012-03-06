@@ -271,19 +271,6 @@ type
   EgParse = class(Exception)
   end;
 
-  TgListEnumerator = class(TObject)
-  strict private
-    FCurrentIndex: Integer;
-    FList: TgList;
-    SavedCurrentIndex: Integer;
-  strict protected
-    function GetCurrent: TgBase;
-  public
-    constructor Create(AList: TgList);
-    function MoveNext: Boolean;
-    property Current: TgBase read GetCurrent;
-  End;
-
   TgOrderByItem = class(TObject)
   strict private
     FDescending: Boolean;
@@ -304,6 +291,18 @@ type
     FWhere: String;
 
     Type
+      TgListEnumerator = record
+      private
+        FCurrentIndex: Integer;
+        FList: TgList;
+        SavedCurrentIndex: Integer;
+        function GetCurrent: TgBase;
+      public
+        procedure Init(AList: TgList);
+        function MoveNext: Boolean;
+        property Current: TgBase read GetCurrent;
+      End;
+
       TgListComparer = class(TComparer<TgBase>)
       strict private
         FOrderByList: TObjectList<TgOrderByItem>;
@@ -311,7 +310,7 @@ type
         constructor Create(AOrderByList: TObjectList<TgOrderByItem>);
         function Compare(const Left, Right: TgBase): Integer; override;
       end;
-    
+
     function GetIsFiltered: Boolean;
     function GetIsOrdered: Boolean;
     function GetOrderByList: TObjectList<TgOrderByItem>;
@@ -375,23 +374,28 @@ type
     property Where: String read FWhere write SetWhere;
   end;
 
-  TgListEnumerator<T: TgBase> = class(TgListEnumerator)
-  strict protected
-    function GetCurrent: T;
-  public
-    constructor Create(AList: TgList<T>);
-    property Current: T read GetCurrent;
-  End;
 
  TgList<T: TgBase> = class(TgList)
   Strict Protected
+    type
+      TgListEnumerator = record
+      private
+        FCurrentIndex: Integer;
+        FList: TgList<T>;
+        SavedCurrentIndex: Integer;
+        function GetCurrent: T;
+      public
+        procedure Init(AList: TgList<T>);
+        function MoveNext: Boolean;
+        property Current: T read GetCurrent;
+      End;
     function GetCurrent: T;
     function GetItems(AIndex : Integer): T; reintroduce; virtual;
     procedure SetItems(AIndex : Integer; const AValue: T); reintroduce; virtual;
     function GetItemClass: TgBaseClass; override;
   Public
     class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
-    function GetEnumerator: TgListEnumerator<T>;
+    function GetEnumerator: TgListEnumerator;
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   Published
     property Current: T read GetCurrent;
@@ -1476,6 +1480,8 @@ begin
   Result := TgSerializerXML;
 end;
 
+{ TgList<T> }
+
 class function TgList<T>.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
 begin
   Result := inherited FeatureExclusions(ARTTIProperty);
@@ -1504,9 +1510,9 @@ Begin
   Inherited SetItems(AIndex, AValue);
 End;
 
-function TgList<T>.GetEnumerator: TgListEnumerator<T>;
+function TgList<T>.GetEnumerator: TgListEnumerator;
 Begin
-  Result := TgListEnumerator<T>.Create(Self);
+  Result.Init(Self);
 End;
 
 function TgList<T>.GetItemClass: TgBaseClass;
@@ -1516,15 +1522,7 @@ begin
   Result := inherited GetItemClass;
 end;
 
-constructor TgListEnumerator<T>.Create(AList: TgList<T>);
-begin
-  Inherited Create(AList);
-end;
-
-function TgListEnumerator<T>.GetCurrent: T;
-begin
-  Result := T(Inherited GetCurrent);
-end;
+{ TgList }
 
 constructor TgList.Create(AOwner: TgBase = Nil);
 Begin
@@ -1689,7 +1687,7 @@ End;
 
 function TgList.GetEnumerator: TgListEnumerator;
 Begin
-  Result := TgListEnumerator.Create(Self);
+  Result.Init(Self);
 End;
 
 function TgList.GetEOL: Boolean;
@@ -1835,7 +1833,9 @@ begin
   End;
 end;
 
-constructor TgListEnumerator.Create(AList: TgList);
+{ TgList.TgListEnumerator }
+
+procedure TgList.TgListEnumerator.Init(AList: TgList);
 begin
   FList := AList;
   SavedCurrentIndex := FList.CurrentIndex;
@@ -1843,14 +1843,14 @@ begin
   FCurrentIndex := -1;
 end;
 
-function TgListEnumerator.GetCurrent: TgBase;
+function TgList.TgListEnumerator.GetCurrent: TgBase;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
-function TgListEnumerator.MoveNext: Boolean;
+function TgList.TgListEnumerator.MoveNext: Boolean;
 begin
   If FList.Count = 0 Then
     Exit(False);
@@ -1863,6 +1863,8 @@ begin
   Result := Not FList.EOL;
   FList.CurrentIndex := SavedCurrentIndex;
 end;
+
+{ TgSerializationHelperXMLList }
 
 class function TgSerializationHelperXMLList.BaseClass: TgBaseClass;
 begin
@@ -2049,6 +2051,37 @@ Begin
       End;
     End;
   End;
+end;
+
+{ TgList<T>.TgListEnumerator }
+
+function TgList<T>.TgListEnumerator.GetCurrent: T;
+begin
+  FList.CurrentIndex := FCurrentIndex;
+  Result := FList.Current;
+  FList.CurrentIndex := SavedCurrentIndex;
+end;
+
+procedure TgList<T>.TgListEnumerator.Init(AList: TgList<T>);
+begin
+  FList := AList;
+  SavedCurrentIndex := FList.CurrentIndex;
+  FList.First;
+  FCurrentIndex := -1;
+end;
+
+function TgList<T>.TgListEnumerator.MoveNext: Boolean;
+begin
+  If FList.Count = 0 Then
+    Exit(False);
+  if FCurrentIndex > -1 then
+  Begin
+    FList.CurrentIndex := FCurrentIndex;
+    FList.Next;
+  End;
+  Inc(FCurrentIndex);
+  Result := Not FList.EOL;
+  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 Initialization
