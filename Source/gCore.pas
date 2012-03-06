@@ -271,19 +271,6 @@ type
   EgParse = class(Exception)
   end;
 
-  TgListEnumerator = class(TObject)
-  strict private
-    FCurrentIndex: Integer;
-    FList: TgList;
-    SavedCurrentIndex: Integer;
-  strict protected
-    function GetCurrent: TgBase;
-  public
-    constructor Create(AList: TgList);
-    function MoveNext: Boolean;
-    property Current: TgBase read GetCurrent;
-  End;
-
   TgOrderByItem = class(TObject)
   strict private
     FDescending: Boolean;
@@ -294,6 +281,36 @@ type
     property PropertyName: String read FPropertyName write FPropertyName;
   end;
 
+  ///	<summary>
+  ///	  This class will be used to cursor through a list of
+  ///	  <see cref="gCore|TgBase" /> classes and will also be used to support
+  ///	  selection lists in the user Interface
+  ///	</summary>
+  ///	<remarks>
+  ///	  <para>
+  ///	    This maintains a cursor in the list of
+  ///	    <see cref="gCore|TgList.Current">Current</see> and can be moved by
+  ///	    setting the <see cref="gCore|TgList.CurrentIndex">CurrentIndex</see>,
+  ///	    and the Count Property will tell you how many items are in the list
+  ///	  </para>
+  ///	  <para>
+  ///	    Filtering is achived by using the
+  ///	    <see cref="gCore|TgList.Where">Where</see> property and Sorting can
+  ///	    be achived by setting the
+  ///	    <see cref="gCore|TgList.OrderBy">OrderBy</see> property.
+  ///	  </para>
+  ///	  <para>
+  ///	    To Check status or Change the Current  Item use:
+  ///	  </para>
+  ///	  <para>
+  ///	    <ul><li><see cref="gCore|TgList.First">First</see></li><li><see cref="gCore|TgList.Last">Last</see></li><li><see cref="gCore|TgList.Next">Next</see>, <see cref="gCore|TgList.CanNext">CanNext</see>, <see cref="gCore|TgList.EOL">EOL</see></li><li><see cref="gCore|TgList.Previous">Previous</see>, <see cref="gCore|TgList.CanPrevious">CanPrevious</see>,
+  ///	    <see cref="gCore|TgList.BOL">BOL</see></li><li><see cref="gCore|TgList.HasItems">HasItems</see></li>
+  ///     </ul>
+  ///	  </para>
+  ///	  <para>
+  ///	    To use Add to append a new item or Delete to remove the current Item
+  ///	  </para>
+  ///	</remarks>
   TgList = class(TgBase)
   strict private
     FFilteredList: TList<TgBase>;
@@ -302,8 +319,19 @@ type
     FOrderBy: String;
     FOrderByList: TObjectList<TgOrderByItem>;
     FWhere: String;
-
     Type
+      TgListEnumerator = record
+      private
+        FCurrentIndex: Integer;
+        FList: TgList;
+        SavedCurrentIndex: Integer;
+        function GetCurrent: TgBase;
+      public
+        procedure Init(AList: TgList);
+        function MoveNext: Boolean;
+        property Current: TgBase read GetCurrent;
+      End;
+
       TgListComparer = class(TComparer<TgBase>)
       strict private
         FOrderByList: TObjectList<TgOrderByItem>;
@@ -311,7 +339,7 @@ type
         constructor Create(AOrderByList: TObjectList<TgOrderByItem>);
         function Compare(const Left, Right: TgBase): Integer; override;
       end;
-    
+
     function GetIsFiltered: Boolean;
     function GetIsOrdered: Boolean;
     function GetOrderByList: TObjectList<TgOrderByItem>;
@@ -375,23 +403,38 @@ type
     property Where: String read FWhere write SetWhere;
   end;
 
-  TgListEnumerator<T: TgBase> = class(TgListEnumerator)
-  strict protected
-    function GetCurrent: T;
-  public
-    constructor Create(AList: TgList<T>);
-    property Current: T read GetCurrent;
-  End;
 
+ ///	<summary>
+ ///	  Decendant class of <see cref="gCore|TgList" /> but the
+ ///	  <see cref="gCore|TgList&lt;T&gt;.Current">Current</see>
+ ///	  property as well as the for in operator will be native types
+ ///	  of T as well as introducing a <see cref="gCore|TgList&lt;T&gt;.Items">Items[]</see> property
+ ///	</summary>
+ ///	<typeparam name="T">
+ ///	  would be the decendant class of <see cref="gCore|TgBase">TgBase</see> to be Managed by this list
+ ///	</typeparam>
  TgList<T: TgBase> = class(TgList)
   Strict Protected
+    type
+      E = class(Exception);
+      TgListEnumerator = record
+      private
+        FCurrentIndex: Integer;
+        FList: TgList<T>;
+        SavedCurrentIndex: Integer;
+        function GetCurrent: T;
+      public
+        procedure Init(AList: TgList<T>);
+        function MoveNext: Boolean;
+        property Current: T read GetCurrent;
+      End;
     function GetCurrent: T;
     function GetItems(AIndex : Integer): T; reintroduce; virtual;
     procedure SetItems(AIndex : Integer; const AValue: T); reintroduce; virtual;
     function GetItemClass: TgBaseClass; override;
   Public
     class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
-    function GetEnumerator: TgListEnumerator<T>;
+    function GetEnumerator: TgListEnumerator;
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   Published
     property Current: T read GetCurrent;
@@ -1473,6 +1516,8 @@ begin
   Result := TgSerializerXML;
 end;
 
+{ TgList<T> }
+
 class function TgList<T>.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
 begin
   Result := inherited FeatureExclusions(ARTTIProperty);
@@ -1501,9 +1546,9 @@ Begin
   Inherited SetItems(AIndex, AValue);
 End;
 
-function TgList<T>.GetEnumerator: TgListEnumerator<T>;
+function TgList<T>.GetEnumerator: TgListEnumerator;
 Begin
-  Result := TgListEnumerator<T>.Create(Self);
+  Result.Init(Self);
 End;
 
 function TgList<T>.GetItemClass: TgBaseClass;
@@ -1513,15 +1558,7 @@ begin
   Result := inherited GetItemClass;
 end;
 
-constructor TgListEnumerator<T>.Create(AList: TgList<T>);
-begin
-  Inherited Create(AList);
-end;
-
-function TgListEnumerator<T>.GetCurrent: T;
-begin
-  Result := T(Inherited GetCurrent);
-end;
+{ TgList }
 
 constructor TgList.Create(AOwner: TgBase = Nil);
 Begin
@@ -1686,7 +1723,7 @@ End;
 
 function TgList.GetEnumerator: TgListEnumerator;
 Begin
-  Result := TgListEnumerator.Create(Self);
+  Result.Init(Self);
 End;
 
 function TgList.GetEOL: Boolean;
@@ -1832,7 +1869,9 @@ begin
   End;
 end;
 
-constructor TgListEnumerator.Create(AList: TgList);
+{ TgList.TgListEnumerator }
+
+procedure TgList.TgListEnumerator.Init(AList: TgList);
 begin
   FList := AList;
   SavedCurrentIndex := FList.CurrentIndex;
@@ -1840,14 +1879,14 @@ begin
   FCurrentIndex := -1;
 end;
 
-function TgListEnumerator.GetCurrent: TgBase;
+function TgList.TgListEnumerator.GetCurrent: TgBase;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
-function TgListEnumerator.MoveNext: Boolean;
+function TgList.TgListEnumerator.MoveNext: Boolean;
 begin
   If FList.Count = 0 Then
     Exit(False);
@@ -1860,6 +1899,8 @@ begin
   Result := Not FList.EOL;
   FList.CurrentIndex := SavedCurrentIndex;
 end;
+
+{ TgSerializationHelperXMLList }
 
 class function TgSerializationHelperXMLList.BaseClass: TgBaseClass;
 begin
@@ -1897,6 +1938,8 @@ begin
     ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
   End;
 end;
+
+{ TgSerializationHelperJSONList }
 
 class function TgSerializationHelperJSONList.BaseClass: TgBaseClass;
 begin
@@ -1958,6 +2001,8 @@ begin
   end;
 end;
 
+{ TgBaseClassComparer }
+
 function TgBaseClassComparer.Compare(const Left, Right: TRTTIType): Integer;
 begin
   if Left = Right then
@@ -1981,6 +2026,8 @@ Function TgBaseExpressionEvaluator.GetValue(Const AVariableName : String) : Vari
 Begin
   Result := FModel[AVariableName];
 End;
+
+{ TgOrderByItem }
 
 constructor TgOrderByItem.Create(const AItemText: String);
 var
@@ -2046,6 +2093,37 @@ Begin
       End;
     End;
   End;
+end;
+
+{ TgList<T>.TgListEnumerator }
+
+function TgList<T>.TgListEnumerator.GetCurrent: T;
+begin
+  FList.CurrentIndex := FCurrentIndex;
+  Result := FList.Current;
+  FList.CurrentIndex := SavedCurrentIndex;
+end;
+
+procedure TgList<T>.TgListEnumerator.Init(AList: TgList<T>);
+begin
+  FList := AList;
+  SavedCurrentIndex := FList.CurrentIndex;
+  FList.First;
+  FCurrentIndex := -1;
+end;
+
+function TgList<T>.TgListEnumerator.MoveNext: Boolean;
+begin
+  If FList.Count = 0 Then
+    Exit(False);
+  if FCurrentIndex > -1 then
+  Begin
+    FList.CurrentIndex := FCurrentIndex;
+    FList.Next;
+  End;
+  Inc(FCurrentIndex);
+  Result := Not FList.EOL;
+  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 Initialization
