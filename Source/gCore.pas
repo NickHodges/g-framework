@@ -1204,11 +1204,8 @@ Begin
 End;
 
 procedure DefaultValue.Execute(ABase: TgBase);
-var
-  TempValue: TValue;
 begin
-  TempValue := TValue.FromVariant(Value);
-  RTTIProperty.SetValue(ABase, TempValue);
+  ABase[RTTIProperty.Name] := Value;
 end;
 
 constructor TgSerializer.Create;
