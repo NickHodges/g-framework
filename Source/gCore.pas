@@ -281,6 +281,36 @@ type
     property PropertyName: String read FPropertyName write FPropertyName;
   end;
 
+  ///	<summary>
+  ///	  This class will be used to cursor through a list of
+  ///	  <see cref="gCore|TgBase" /> classes and will also be used to support
+  ///	  selection lists in the user Interface
+  ///	</summary>
+  ///	<remarks>
+  ///	  <para>
+  ///	    This maintains a cursor in the list of
+  ///	    <see cref="gCore|TgList.Current">Current</see> and can be moved by
+  ///	    setting the <see cref="gCore|TgList.CurrentIndex">CurrentIndex</see>,
+  ///	    and the Count Property will tell you how many items are in the list
+  ///	  </para>
+  ///	  <para>
+  ///	    Filtering is achived by using the
+  ///	    <see cref="gCore|TgList.Where">Where</see> property and Sorting can
+  ///	    be achived by setting the
+  ///	    <see cref="gCore|TgList.OrderBy">OrderBy</see> property.
+  ///	  </para>
+  ///	  <para>
+  ///	    To Check status or Change the Current  Item use:
+  ///	  </para>
+  ///	  <para>
+  ///	    <ul><li><see cref="gCore|TgList.First">First</see></li><li><see cref="gCore|TgList.Last">Last</see></li><li><see cref="gCore|TgList.Next">Next</see>, <see cref="gCore|TgList.CanNext">CanNext</see>, <see cref="gCore|TgList.EOL">EOL</see></li><li><see cref="gCore|TgList.Previous">Previous</see>, <see cref="gCore|TgList.CanPrevious">CanPrevious</see>,
+  ///	    <see cref="gCore|TgList.BOL">BOL</see></li><li><see cref="gCore|TgList.HasItems">HasItems</see></li>
+  ///     </ul>
+  ///	  </para>
+  ///	  <para>
+  ///	    To use Add to append a new item or Delete to remove the current Item
+  ///	  </para>
+  ///	</remarks>
   TgList = class(TgBase)
   strict private
     FFilteredList: TList<TgBase>;
@@ -289,7 +319,6 @@ type
     FOrderBy: String;
     FOrderByList: TObjectList<TgOrderByItem>;
     FWhere: String;
-
     Type
       TgListEnumerator = record
       private
@@ -375,9 +404,19 @@ type
   end;
 
 
+ ///	<summary>
+ ///	  Decendant class of <see cref="gCore|TgList" /> but the
+ ///	  <see cref="gCore|TgList&lt;T&gt;.Current">Current</see>
+ ///	  property as well as the for in operator will be native types
+ ///	  of T as well as introducing a <see cref="gCore|TgList&lt;T&gt;.Items">Items[]</see> property
+ ///	</summary>
+ ///	<typeparam name="T">
+ ///	  would be the decendant class of <see cref="gCore|TgBase">TgBase</see> to be Managed by this list
+ ///	</typeparam>
  TgList<T: TgBase> = class(TgList)
   Strict Protected
     type
+      E = class(Exception);
       TgListEnumerator = record
       private
         FCurrentIndex: Integer;
@@ -1903,6 +1942,8 @@ begin
   End;
 end;
 
+{ TgSerializationHelperJSONList }
+
 class function TgSerializationHelperJSONList.BaseClass: TgBaseClass;
 begin
   Result := TgList;
@@ -1963,6 +2004,8 @@ begin
   end;
 end;
 
+{ TgBaseClassComparer }
+
 function TgBaseClassComparer.Compare(const Left, Right: TRTTIType): Integer;
 begin
   if Left = Right then
@@ -1986,6 +2029,8 @@ Function TgBaseExpressionEvaluator.GetValue(Const AVariableName : String) : Vari
 Begin
   Result := FModel[AVariableName];
 End;
+
+{ TgOrderByItem }
 
 constructor TgOrderByItem.Create(const AItemText: String);
 var
