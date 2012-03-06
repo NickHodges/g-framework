@@ -311,6 +311,7 @@ type
   ///	    To use Add to append a new item or Delete to remove the current Item
   ///	  </para>
   ///	</remarks>
+ ///  <seealso cref="gCore|TgList{T}" />
   TgList = class(TgBase)
   strict private
     FFilteredList: TList<TgBase>;
@@ -406,13 +407,14 @@ type
 
  ///	<summary>
  ///	  Decendant class of <see cref="gCore|TgList" /> but the
- ///	  <see cref="gCore|TgList&lt;T&gt;.Current">Current</see>
+ ///	  <see cref="gCore|TgList{T}.Current">Current</see>
  ///	  property as well as the for in operator will be native types
- ///	  of T as well as introducing a <see cref="gCore|TgList&lt;T&gt;.Items">Items[]</see> property
+ ///	  of T as well as introducing a <see cref="gCore|TgList{T}.Items">Items</see> property
  ///	</summary>
  ///	<typeparam name="T">
  ///	  would be the decendant class of <see cref="gCore|TgBase">TgBase</see> to be Managed by this list
  ///	</typeparam>
+ ///  <seealso cref="gCore|TgList" />
  TgList<T: TgBase> = class(TgList)
   Strict Protected
     type
