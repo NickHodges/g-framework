@@ -43,9 +43,12 @@ type
   TBase2 = Class(TgBase)
   strict private
     FIntegerProperty: Integer;
+    FStringProperty: TgString5;
   published
     [DefaultValue(2)]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
+    [DefaultValue('12345')]
+    property StringProperty: TgString5 read FStringProperty write FStringProperty;
   End;
 
   TBase3 = Class(TBase2)
@@ -164,7 +167,9 @@ type
     procedure SerializeJSON;
     procedure DeserializeXML;
     procedure DeserializeJSON;
+    procedure Filter;
     procedure SetValue;
+    procedure Sort;
     procedure TestCreate(BOL: Integer; const Value: string);
   end;
 
@@ -330,17 +335,19 @@ begin
     '      <IntegerProperty>6</IntegerProperty>'#13#10 + //10
     '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
     '        <IntegerProperty>2</IntegerProperty>'#13#10 + //12
-    '      </ObjectProperty>'#13#10 + //13
-    '      <String5>98765</String5>'#13#10 + //14
-    '      <Phone>(444) 444-4444</Phone>'#13#10 + //15
-    '    </ManuallyConstructedObjectProperty>'#13#10 + //16
-    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //17
-    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //18
-    '    </ObjectProperty>'#13#10 + //19
-    '    <String5>12345</String5>'#13#10 + //20
-    '    <Phone>(555) 555-5555</Phone>'#13#10 + //21
-    '  </Base>'#13#10 + //22
-    '</xml>'#13#10; //23
+    '        <StringProperty>12345</StringProperty>'#13#10 + //13
+    '      </ObjectProperty>'#13#10 + //14
+    '      <String5>98765</String5>'#13#10 + //15
+    '      <Phone>(444) 444-4444</Phone>'#13#10 + //16
+    '    </ManuallyConstructedObjectProperty>'#13#10 + //17
+    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //18
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //19
+    '      <StringProperty>12345</StringProperty>'#13#10 + //20
+    '    </ObjectProperty>'#13#10 + //21
+    '    <String5>12345</String5>'#13#10 + //22
+    '    <Phone>(555) 555-5555</Phone>'#13#10 + //23
+    '  </Base>'#13#10 + //24
+    '</xml>'#13#10; //25
   Base.Deserialize(TgSerializerXML, XMLString);
   CheckEquals('12345', Base.String5);
   CheckEquals('(555) 555-5555', Base.Phone);
@@ -362,9 +369,10 @@ begin
     'allyConstructedObjectProperty":{"ClassName":"TestgCore.TBase","BooleanProp'+
     'erty":"False","DateProperty":"12/30/1899","DateTimeProperty":"12/30/1899 0'+
     '0:00:00","IntegerProperty":"6","ObjectProperty":{"ClassName":"TestgCore.TB'+
-    'ase2","IntegerProperty":"2"},"String5":"98765","Phone":"(444) 444-4444"},"'+
-    'ObjectProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"},"St'+
-    'ring5":"12345","Phone":"(555) 555-5555"}';
+    'ase2","IntegerProperty":"2","StringProperty":"12345"},"String5":"98765","P'+
+    'hone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCore.TBase2","'+
+    'IntegerProperty":"2","StringProperty":"12345"},"String5":"12345","Phone":"'+
+    '(555) 555-5555"}';
   Base.Deserialize(TgSerializerJSON, JSONString);
   CheckEquals('12345', Base.String5);
   CheckEquals('(555) 555-5555', Base.Phone);
@@ -402,17 +410,19 @@ begin
     '      <IntegerProperty>6</IntegerProperty>'#13#10 + //10
     '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
     '        <IntegerProperty>2</IntegerProperty>'#13#10 + //12
-    '      </ObjectProperty>'#13#10 + //13
-    '      <String5>98765</String5>'#13#10 + //14
-    '      <Phone>(444) 444-4444</Phone>'#13#10 + //15
-    '    </ManuallyConstructedObjectProperty>'#13#10 + //16
-    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //17
-    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //18
-    '    </ObjectProperty>'#13#10 + //19
-    '    <String5>12345</String5>'#13#10 + //20
-    '    <Phone>(555) 555-5555</Phone>'#13#10 + //21
-    '  </Base>'#13#10 + //22
-    '</xml>'#13#10; //23
+    '        <StringProperty>12345</StringProperty>'#13#10 + //13
+    '      </ObjectProperty>'#13#10 + //14
+    '      <String5>98765</String5>'#13#10 + //15
+    '      <Phone>(444) 444-4444</Phone>'#13#10 + //16
+    '    </ManuallyConstructedObjectProperty>'#13#10 + //17
+    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //18
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //19
+    '      <StringProperty>12345</StringProperty>'#13#10 + //20
+    '    </ObjectProperty>'#13#10 + //21
+    '    <String5>12345</String5>'#13#10 + //22
+    '    <Phone>(555) 555-5555</Phone>'#13#10 + //23
+    '  </Base>'#13#10 + //24
+    '</xml>'#13#10; //25
   CheckEquals(XMLString, Base.Serialize(TgSerializerXML));
 end;
 
@@ -434,9 +444,10 @@ begin
     'allyConstructedObjectProperty":{"ClassName":"TestgCore.TBase","BooleanProp'+
     'erty":"False","DateProperty":"12/30/1899","DateTimeProperty":"12/30/1899 0'+
     '0:00:00","IntegerProperty":"6","ObjectProperty":{"ClassName":"TestgCore.TB'+
-    'ase2","IntegerProperty":"2"},"String5":"98765","Phone":"(444) 444-4444"},"'+
-    'ObjectProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"},"St'+
-    'ring5":"12345","Phone":"(555) 555-5555"}';
+    'ase2","IntegerProperty":"2","StringProperty":"12345"},"String5":"98765","P'+
+    'hone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCore.TBase2","'+
+    'IntegerProperty":"2","StringProperty":"12345"},"String5":"12345","Phone":"'+
+    '(555) 555-5555"}';
   CheckEquals(JSONString, Base.Serialize(TgSerializerJSON));
 end;
 
@@ -840,15 +851,18 @@ begin
     '  <Base2List classname="TestgCore.TBase2List">'#13#10 + //1
     '    <Base2 classname="TestgCore.TBase2">'#13#10 + //2
     '      <IntegerProperty>1</IntegerProperty>'#13#10 + //3
-    '    </Base2>'#13#10 + //4
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //5
-    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //6
-    '    </Base2>'#13#10 + //7
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //8
-    '      <IntegerProperty>3</IntegerProperty>'#13#10 + //9
-    '    </Base2>'#13#10 + //10
-    '  </Base2List>'#13#10 + //11
-    '</xml>'#13#10; //12
+    '      <StringProperty>12345</StringProperty>'#13#10 + //4
+    '    </Base2>'#13#10 + //5
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //6
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //7
+    '      <StringProperty>12345</StringProperty>'#13#10 + //8
+    '    </Base2>'#13#10 + //9
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //10
+    '      <IntegerProperty>3</IntegerProperty>'#13#10 + //11
+    '      <StringProperty>12345</StringProperty>'#13#10 + //12
+    '    </Base2>'#13#10 + //13
+    '  </Base2List>'#13#10 + //14
+    '</xml>'#13#10; //15
   CheckEquals(XMLString, FBase2List.Serialize(TgSerializerXML));
 end;
 
@@ -858,9 +872,10 @@ var
 begin
   Add3;
   JSONString :=
-  '{"ClassName":"TestgCore.TBase2List","List":[{"ClassName":"TestgCore.TBase2",'+
-  '"IntegerProperty":"1"},{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"'+
-  '},{"ClassName":"TestgCore.TBase2","IntegerProperty":"3"}]}';
+  '{"ClassName":"TestgCore.TBase2List","List":[{"ClassName":"TestgCore.TBase2'+
+  '","IntegerProperty":"1","StringProperty":"12345"},{"ClassName":"TestgCore.'+
+  'TBase2","IntegerProperty":"2","StringProperty":"12345"},{"ClassName":"Test'+
+  'gCore.TBase2","IntegerProperty":"3","StringProperty":"12345"}]}';
   CheckEquals(JSONString, FBase2List.Serialize(TgSerializerJSON));
 end;
 
@@ -873,15 +888,18 @@ begin
     '  <Base2List classname="TestgCore.TBase2List">'#13#10 + //1
     '    <Base2 classname="TestgCore.TBase2">'#13#10 + //2
     '      <IntegerProperty>1</IntegerProperty>'#13#10 + //3
-    '    </Base2>'#13#10 + //4
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //5
-    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //6
-    '    </Base2>'#13#10 + //7
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //8
-    '      <IntegerProperty>3</IntegerProperty>'#13#10 + //9
-    '    </Base2>'#13#10 + //10
-    '  </Base2List>'#13#10 + //11
-    '</xml>'#13#10; //12
+    '      <StringProperty>12345</StringProperty>'#13#10 + //4
+    '    </Base2>'#13#10 + //5
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //6
+    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //7
+    '      <StringProperty>12345</StringProperty>'#13#10 + //8
+    '    </Base2>'#13#10 + //9
+    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //10
+    '      <IntegerProperty>3</IntegerProperty>'#13#10 + //11
+    '      <StringProperty>12345</StringProperty>'#13#10 + //12
+    '    </Base2>'#13#10 + //13
+    '  </Base2List>'#13#10 + //14
+    '</xml>'#13#10; //15
   FBase2List.Deserialize(TgSerializerXML, XMLString);
   CheckEquals(3, FBase2List.Items[2].IntegerProperty);
 end;
@@ -891,11 +909,21 @@ var
   JSONString: string;
 begin
   JSONString :=
-  '{"ClassName":"TestgCore.TBase2List","List":[{"ClassName":"TestgCore.TBase2",'+
-  '"IntegerProperty":"1"},{"ClassName":"TestgCore.TBase2","IntegerProperty":"2"'+
-  '},{"ClassName":"TestgCore.TBase2","IntegerProperty":"3"}]}';
+  '{"ClassName":"TestgCore.TBase2List","List":[{"ClassName":"TestgCore.TBase2'+
+  '","IntegerProperty":"1","StringProperty":"12345"},{"ClassName":"TestgCore.'+
+  'TBase2","IntegerProperty":"2","StringProperty":"12345"},{"ClassName":"Test'+
+  'gCore.TBase2","IntegerProperty":"3","StringProperty":"12345"}]}';
   FBase2List.Deserialize(TgSerializerJSON, JSONString);
   CheckEquals(3, FBase2List.Items[2].IntegerProperty);
+end;
+
+procedure TestTBase2List.Filter;
+begin
+  Add3;
+  FBase2List.Where := 'IntegerProperty > 1';
+  FBase2List.Filter;
+  CheckEquals(2, FBase2List.Count);
+  CheckEquals(2, FBase2List.Current.IntegerProperty);
 end;
 
 procedure TestTBase2List.SetValueInvalidIndex;
@@ -918,6 +946,19 @@ begin
   FBase2List := TBase2List.Create;
 end;
 
+procedure TestTBase2List.Sort;
+begin
+  Add3;
+  FBase2List.OrderBy := 'StringProperty, IntegerProperty DESC';
+  FBase2List.Sort;
+  FBase2List.First;
+  CheckEquals(3, FBase2List.Current.IntegerProperty);
+  FBase2List.Next;
+  CheckEquals(2, FBase2List.Current.IntegerProperty);
+  FBase2List.Next;
+  CheckEquals(1, FBase2List.Current.IntegerProperty);
+end;
+
 procedure TestTBase2List.TearDown;
 begin
   FBase2List.Free;
@@ -936,6 +977,8 @@ initialization
   RegisterTest(TestTgString5.Suite);
   RegisterTest(TestTBase2List.Suite);
 end.
+
+
 
 
 

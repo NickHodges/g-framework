@@ -70,7 +70,7 @@ type
   strict private
     FUnknownTokenClass: TgTokenClass;
   protected
-    function CompareStrings(const S1: string; const S2: string): Integer; override;
+  function CompareStrings(const S1: string; const S2: string): Integer; override;
   public
     Constructor Create;
     function ClassifyNextSymbol(const AString: String; AStringIndex: Integer; out ASymbol: String): TgTokenClass;
@@ -204,46 +204,101 @@ end;
 
 function TgTokenRegistry.ClassifyNextSymbol(const AString: String; AStringIndex: Integer; out ASymbol: String): TgTokenClass;
 Var
-  InputString : String;
-  TokenIndex : Integer;
-  SymbolLength : Integer;
-  SymbolCompare: Boolean;
+  CanExit: Boolean;
+  Counter: Integer;
   IsSystem: Boolean;
+  SymbolLength : Integer;
+  TempSymbol: string;
+  TempTokenIndex: Integer;
+  TokenIndex : Integer;
 const
   SPseudoSystemObject = 'SYSTEM.';
 begin
-  InputString := UpperCase(Copy( AString, AStringIndex, MaxInt ));
-  IsSystem := StartsStr( SPseudoSystemObject, InputString );
+  IsSystem := StartsText( SPseudoSystemObject, Copy(AString, AStringIndex, Length(SPseudoSystemObject)));
   If IsSystem Then
-    InputString := Copy( InputString, Length( SPseudoSystemObject ) + 1, MaxInt );
-  repeat
-    If Not Find(InputString, TokenIndex) Then
-      TokenIndex := Max(TokenIndex - 1, 0);
-    ASymbol := Strings[TokenIndex];
-    SymbolLength := Length( ASymbol );
-    SymbolCompare := StartsText( ASymbol, InputString );
-    InputString := Copy( InputString, 1, Min( SymbolLength, Length( InputString ) ) - 1 );
-    If SymbolCompare Then
-      Break;
-  until InputString = '';
-  If SymbolCompare And Not ( ( Length( InputString ) > SymbolLength ) And Assigned( UnknownTokenClass ) And UnknownTokenClass.ValidSymbol( Copy( InputString, 1, SymbolLength + 1 ) ) ) Then
+    AStringIndex := AStringIndex + Length( SPseudoSystemObject );
+  Counter := 1;
+  CanExit := False;
+  Repeat
+
+    Repeat
+
+      //Find the closest token
+      Find(UpperCase(Copy(AString, AStringIndex, Counter)), TokenIndex);
+
+      //If Find says we're at the end, then get out
+      If TokenIndex = Count Then
+      Begin
+        CanExit := True;
+        SymbolLength := 0;
+        Counter := 0;
+        Break;
+      End
+      Else
+      Begin
+        //Grab its symbol
+        ASymbol := Strings[TokenIndex];
+        SymbolLength := Length(ASymbol);
+        //Compare the next symbol in the string with the symbol in the list
+        Counter := 1;
+        While (Counter <= SymbolLength) And (UpperCase(AString[AStringIndex + Counter - 1]) = ASymbol[Counter]) Do
+          Inc(Counter);
+
+        //There is no match
+        If (Counter <= SymbolLength) And (UpperCase(AString[AStringIndex + Counter - 1]) < ASymbol[Counter]) Then
+        Begin
+          CanExit := True;
+          Break;
+        End;
+      End;
+
+    Until CanExit Or (Counter > SymbolLength);
+
+    //If we found a match check one more character
+    If (Counter > SymbolLength) Then
+    Begin
+      If ((AStringIndex + Counter - 1) <= Length(AString)) Then
+      Begin
+        Find(Copy(AString, AStringIndex, Counter), TempTokenIndex);
+        If TempTokenIndex < Count Then
+          TempSymbol := Strings[TempTokenIndex];
+        CanExit := (TempTokenIndex = Count) Or Not StartsText(TempSymbol, Copy(AString, AStringIndex, Length(TempSymbol)));
+      End
+      Else
+        CanExit := True;
+    End;
+
+  Until CanExit;
+
+  //If we matched the symbol, check one character past the symbol to see if we could be referring to a valid variable name
+  If Counter > SymbolLength Then
+  Begin
+   If (AStringIndex + Counter > Length(AString)) Or Not Assigned(UnknownTokenClass) Or Not UnknownTokenClass.ValidSymbol(Copy(AString, AStringIndex, Counter)) Then
     Result := TgTokenClass(Objects[TokenIndex])
-  Else If Assigned(UnknownTokenClass) Then
-    Result := UnknownTokenClass
+   Else
+    Result := UnknownTokenClass;
+  End
   Else
-    Raise EgParse.CreateFmt('Symbol ''%s'' not found.', [InputString]);
+  Begin
+    If Assigned(UnknownTokenClass) Then
+      Result := UnknownTokenClass
+    Else
+      Raise EgParse.CreateFmt('Symbol ''%s'' not found.', [Copy(AString, AStringIndex, 50)]);
+  End;
+
   If IsSystem Then
     ASymbol := 'System.' + ASymbol;
+ 
 end;
 
 function TgTokenRegistry.CompareStrings(const S1: string; const S2: string): Integer;
 begin
-  If S1 = S2 Then
-    Result := 0
-  Else If S1 >  S2 Then
-    Result := 1
-  Else
-    Result := -1;
+If S1 = S2 Then
+  Result := 0
+Else If S1 >  S2 Then
+  Result := 1
+Else
+  Result := -1;
 end;
 
 procedure TgTokenRegistry.RegisterToken(const ASymbol: String; ATokenClass: TgTokenClass);
