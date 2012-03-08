@@ -113,6 +113,22 @@ type
   /// create in G
   /// </summary>
   TgBase = class(TObject)
+  public
+    type
+      /// <summary>
+      /// Raised when a <see cref="TgBase" /> is assigned to another <see cref="TgBase"
+      /// /> and there is a failure in that process
+      /// </summary>
+      EgAssign = class(Exception)
+      end;
+      /// <summary>
+      ///   Used to return a path error for <see cref="TgBase.DoGetValues" /> and <see
+      ///   cref="TgBase.DoSetValues" /> used by the <see cref="TgBase.Values" />
+      ///
+      /// </summary>
+      EgValue = class(Exception)
+      end;
+
   strict private
     FOwner: TgBase;
     function GetIsInspecting: Boolean;
@@ -166,6 +182,16 @@ type
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
     procedure Validate; virtual;
     property IsInspecting: Boolean read GetIsInspecting write SetIsInspecting;
+
+    ///	<summary>
+    ///	  This property is used to get and set values for any published
+    ///	  property on this structure or any <see cref="TgBase" /> structure
+    ///	  owned by a published class property
+    ///	</summary>
+    ///	<param name="APath">
+    ///	  Local properties are just their name, but when using this on a
+    ///	  <see cref="TgBase" /> class decendant
+    ///	</param>
     property Values[Const APath : String]: Variant read GetValues write SetValues; default;
   published
     [ExcludeFeature([Serializable])]
@@ -276,12 +302,6 @@ type
     class function VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; static;
   end;
 
-  EgValue = class(Exception)
-  end;
-
-  EgAssign = class(Exception)
-  end;
-
   TgSerializationHelperComparer = class(TComparer<TPair<TgBaseClass, TgSerializationHelperClass>>)
     function Compare(const Left, Right: TPair<TgBaseClass, TgSerializationHelperClass>): Integer; override;
   end;
@@ -308,6 +328,9 @@ type
   end;
 
   TgOrderByItem = class(TObject)
+  public
+    type
+      EgOrderByItem = class(Exception);
   strict private
     FDescending: Boolean;
     FPropertyName: String;
@@ -347,7 +370,13 @@ type
   ///	    To use Add to append a new item or Delete to remove the current Item
   ///	  </para>
   ///	</remarks>
+ ///  <seealso cref="gCore|TgList{T}" />
   TgList = class(TgBase)
+  public
+    type
+      /// <summary> This is the general exception for a <see cref="TgList" />
+      /// </summary>
+      EgList = class(Exception);
   strict private
     FFilteredList: TList<TgBase>;
     FItemClass: TgBaseClass;
@@ -356,7 +385,10 @@ type
     FOrderByList: TObjectList<TgOrderByItem>;
     FWhere: String;
     Type
-      TgListEnumerator = record
+
+      /// <summary> Structure used by the <see cref="GetEnumerator" /> to allow For-in
+      /// loops</summary>
+      TgEnumerator = record
       private
         FCurrentIndex: Integer;
         FList: TgList;
@@ -368,7 +400,9 @@ type
         property Current: TgBase read GetCurrent;
       End;
 
-      TgListComparer = class(TComparer<TgBase>)
+      /// <summary> Internal structure used by the <see cref="OrderBy" />  to sort the items contained in this list
+      /// </summary>
+      TgComparer = class(TComparer<TgBase>)
       strict private
         FOrderByList: TObjectList<TgOrderByItem>;
       public
@@ -408,8 +442,13 @@ type
     destructor Destroy; override;
     procedure Assign(ASource: TgBase); override;
     procedure Clear; virtual;
+
+    ///	<summary>
+    ///	  In combination with the <see cref="where" /> property this will create a sub list of
+    ///	  the main list to cursor through.
+    ///	</summary>
     procedure Filter; virtual;
-    function GetEnumerator: TgListEnumerator;
+    function GetEnumerator: TgEnumerator;
     procedure Sort;
     property IsFiltered: Boolean read GetIsFiltered write SetIsFiltered;
     property IsOrdered: Boolean read GetIsOrdered write SetIsOrdered;
@@ -437,6 +476,29 @@ type
     property List: TList<TgBase> read GetList;
     [ExcludeFeature([Serializable])]
     property OrderBy: String read FOrderBy write SetOrderBy;
+    ///	<summary>
+    ///	  After setting this property with a proper value you'll need to use
+    ///	  the <see cref="Filter" /> method to create the new filtered list
+    ///	</summary>
+    /// <example>
+    ///	  <code lang="Delphi">
+    ///  type
+    ///    TgMine = class(TgCore)
+    ///    private
+    ///      FID: Integer;
+    ///    published
+    ///      property ID: Integer read FID write FID;
+    ///    end;
+    ///	 var List: TgList;
+    ///  begin
+    ///    List := TgList;
+    ///    List.ItemClass := TgMine;
+    ///    List.Where := 'ID = 12';
+    ///    List.Filter;
+    ///    List.Free;
+    ///  end;
+    ///	  </code>
+    /// </example>
     [ExcludeFeature([Serializable])]
     property Where: String read FWhere write SetWhere;
   end;
@@ -444,19 +506,28 @@ type
 
  ///	<summary>
  ///	  Decendant class of <see cref="gCore|TgList" /> but the
- ///	  <see cref="gCore|TgList&lt;T&gt;.Current">Current</see>
+ ///	  <see cref="gCore|TgList{T}.Current">Current</see>
  ///	  property as well as the for in operator will be native types
- ///	  of T as well as introducing a <see cref="gCore|TgList&lt;T&gt;.Items">Items[]</see> property
+ ///	  of T as well as introducing a <see cref="gCore|TgList{T}.Items">Items</see> property
  ///	</summary>
  ///	<typeparam name="T">
  ///	  would be the decendant class of <see cref="gCore|TgBase">TgBase</see> to be Managed by this list
  ///	</typeparam>
  ///  <seealso cref="gCore|TgList">TgList</seealso>
  TgList<T: TgBase> = class(TgList)
+  Public
+    type
+      EgList = class(Exception);
   Strict Protected
     type
-      E = class(Exception);
-      TgListEnumerator = record
+
+      /// <summary> Structure used by the <see cref="GetEnumerator" /> to allow For-in
+      /// loops.</summary>
+      /// <remarks> This Enumerator is necessary because of the generic type of the <see
+      /// cref="TgList{T}" />
+      ///
+      /// </remarks>
+      TgEnumerator = record
       private
         FCurrentIndex: Integer;
         FList: TgList<T>;
@@ -473,14 +544,11 @@ type
     function GetItemClass: TgBaseClass; override;
   Public
     class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
-    function GetEnumerator: TgListEnumerator;
+    function GetEnumerator: TgEnumerator;
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   Published
     property Current: T read GetCurrent;
   End;
-
-  EgList = class(Exception)
-  end;
 
   TgSerializationHelperXMLList = class(TgSerializationHelperXMLBase)
   public
@@ -1789,7 +1857,7 @@ Begin
   Inherited SetItems(AIndex, AValue);
 End;
 
-function TgList<T>.GetEnumerator: TgListEnumerator;
+function TgList<T>.GetEnumerator: TgEnumerator;
 Begin
   Result.Init(Self);
 End;
@@ -1970,7 +2038,7 @@ Begin
     Result := - 1;
 End;
 
-function TgList.GetEnumerator: TgListEnumerator;
+function TgList.GetEnumerator: TgEnumerator;
 Begin
   Result.Init(Self);
 End;
@@ -2115,12 +2183,12 @@ end;
 
 procedure TgList.Sort;
 var
-  Comparer: TgListComparer;
+  Comparer: TgComparer;
 begin
   if (Count > 0) then
   Begin
 //    EnsureOrderByDefault;
-    Comparer := TgListComparer.Create(FOrderByList);
+    Comparer := TgComparer.Create(FOrderByList);
     try
       List.Sort(Comparer);
     finally
@@ -2130,9 +2198,9 @@ begin
   End;
 end;
 
-{ TgList.TgListEnumerator }
+{ TgList.TgEnumerator }
 
-procedure TgList.TgListEnumerator.Init(AList: TgList);
+procedure TgList.TgEnumerator.Init(AList: TgList);
 begin
   FList := AList;
   SavedCurrentIndex := FList.CurrentIndex;
@@ -2140,14 +2208,14 @@ begin
   FCurrentIndex := -1;
 end;
 
-function TgList.TgListEnumerator.GetCurrent: TgBase;
+function TgList.TgEnumerator.GetCurrent: TgBase;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
-function TgList.TgListEnumerator.MoveNext: Boolean;
+function TgList.TgEnumerator.MoveNext: Boolean;
 begin
   If FList.Count = 0 Then
     Exit(False);
@@ -2307,7 +2375,7 @@ begin
     Else If SameText( Direction, 'ASC' ) Then
       Descending := False
     Else
-      Raise EgList.CreateFmt( '''%s'' is an invalid Order By direction.', [Direction] );
+      Raise EgOrderByItem.CreateFmt( '''%s'' is an invalid Order By direction.', [Direction] );
   End
   Else
   Begin
@@ -2316,13 +2384,13 @@ begin
   End;
 end;
 
-constructor TgList.TgListComparer.Create(AOrderByList: TObjectList<TgOrderByItem>);
+constructor TgList.TgComparer.Create(AOrderByList: TObjectList<TgOrderByItem>);
 begin
   inherited Create;
   FOrderByList := AOrderByList;
 end;
 
-function TgList.TgListComparer.Compare(const Left, Right: TgBase): Integer;
+function TgList.TgComparer.Compare(const Left, Right: TgBase): Integer;
 Var
   Value1 : Variant;
   Value2 : Variant;
@@ -2356,16 +2424,16 @@ Begin
   End;
 end;
 
-{ TgList<T>.TgListEnumerator }
+{ TgList<T>.TgEnumerator }
 
-function TgList<T>.TgListEnumerator.GetCurrent: T;
+function TgList<T>.TgEnumerator.GetCurrent: T;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
-procedure TgList<T>.TgListEnumerator.Init(AList: TgList<T>);
+procedure TgList<T>.TgEnumerator.Init(AList: TgList<T>);
 begin
   FList := AList;
   SavedCurrentIndex := FList.CurrentIndex;
@@ -2373,7 +2441,7 @@ begin
   FCurrentIndex := -1;
 end;
 
-function TgList<T>.TgListEnumerator.MoveNext: Boolean;
+function TgList<T>.TgEnumerator.MoveNext: Boolean;
 begin
   If FList.Count = 0 Then
     Exit(False);

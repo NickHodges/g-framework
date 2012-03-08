@@ -17,6 +17,10 @@ uses
 type
   // Test methods for class TgBase
 
+  ///	<summary>
+  ///	  This is a example structure which will automaticly limit all
+  ///	  assignements to the first 5 characters of the text
+  ///	</summary>
   TgString5 = record
   strict private
     FValue: String;
@@ -28,6 +32,10 @@ type
     property Value: String read GetValue write SetValue;
   end;
 
+  ///	<summary>
+  ///	  This is a example which should automaticly format any value assigned
+  ///	  into a phone number
+  ///	</summary>
   TPhoneString = record
   strict private
     FValue: String;
@@ -187,13 +195,13 @@ begin
   CheckEquals('Test', Base['StringProperty'], 'Non-Object Property');
   CheckEquals('Test', Base['ManuallyConstructedObjectProperty.StringProperty'], 'Object Property');
   // If the property doesn't exist, raise an exception
-  CheckException(UndeclaredProperty, EgValue);
+  CheckException(UndeclaredProperty, TgBase.EgValue);
   // If the path extends beyond an ordinal property, raise an exception
-  CheckException(PathExtendsBeyondOrdinalProperty, EgValue);
+  CheckException(PathExtendsBeyondOrdinalProperty, TgBase.EgValue);
   // If the path ends with an object property, raise an exception
-  CheckException(PathEndsWithAnObjectProperty, EgValue);
+  CheckException(PathEndsWithAnObjectProperty, TgBase.EgValue);
   // If the property is not readable, raise an exception
-  CheckException(PropertyNotReadable, EgValue);
+  CheckException(PropertyNotReadable, TgBase.EgValue);
   // Can we get an Active Value?
   Base.String5 := '123456789';
   CheckEquals('12345', Base['String5'], 'Active Value');
@@ -261,13 +269,13 @@ begin
   Base['ManuallyConstructedObjectProperty.StringProperty'] := 'Test2';
   CheckEquals('Test2', Base.ManuallyConstructedObjectProperty.StringProperty, 'Object Property');
   // If the property doesn't exist, raise an exception
-  CheckException(SetUndeclaredProperty, EgValue);
+  CheckException(SetUndeclaredProperty, TgBase.EgValue);
   // If the path extends beyond a non-object property, raise an exception
-  CheckException(SetPathExtendsBeyondOrdinalProperty, EgValue);
+  CheckException(SetPathExtendsBeyondOrdinalProperty, TgBase.EgValue);
   // If the path ends with an object property, raise an exception
-  CheckException(SetPathEndsWithAnObjectProperty, EgValue);
+  CheckException(SetPathEndsWithAnObjectProperty, TgBase.EgValue);
   // If the property is not writeable, raise an exception
-  CheckException(PropertyNotWriteable, EgValue);
+  CheckException(PropertyNotWriteable, TgBase.EgValue);
   // Call a method
   Base['SetUnwriteableIntegerProperty'] := '';
   CheckEquals(10, Base.UnwriteableIntegerProperty);
@@ -678,7 +686,7 @@ end;
 
 procedure TestTBase2List.Current;
 begin
-  CheckException(CurrentOnEmptyList, EgList, 'Calling Current on an empty list should cause an exception.');
+  CheckException(CurrentOnEmptyList,TgList.EgList, 'Calling Current on an empty list should cause an exception.');
   Add3;
   FBase2List.CurrentIndex := 1;
   CheckEquals(2, FBase2List.Current.IntegerProperty, 'If there are items in the list, Current returns the item at CurrentIndex (zero based).');
@@ -698,8 +706,8 @@ begin
   CheckEquals(1, FBase2List.CurrentIndex, 'When Current is Last, and it gets deleted, CurrentIndex matched the new Last');
   FBase2List.CurrentIndex := 0;
   CheckEquals(0, FBase2List.CurrentIndex, 'Setting CurrentIndex to a valid value should allow you to get that same value.');
-  CheckException(SetCurrentIndexTooLow, EgList, 'CurrentIndex must be greater than or equal to 0.');
-  CheckException(SetCurrentIndexTooHigh, EgList, 'CurrentIndex must be less than or equal to Count - 1.');
+  CheckException(SetCurrentIndexTooLow, TgList.EgList, 'CurrentIndex must be greater than or equal to 0.');
+  CheckException(SetCurrentIndexTooHigh, TgList.EgList, 'CurrentIndex must be less than or equal to Count - 1.');
 end;
 
 procedure TestTBase2List.CurrentOnEmptyList;
@@ -710,7 +718,7 @@ end;
 
 procedure TestTBase2List.Delete;
 begin
-  CheckException(DeleteFromEmptyList, EgList, 'The Delete method may not be called from an empty list.');
+  CheckException(DeleteFromEmptyList, TgList.EgList, 'The Delete method may not be called from an empty list.');
   Add3;
   FBase2List.CurrentIndex := 1;
   FBase2List.Delete;
@@ -736,7 +744,7 @@ procedure TestTBase2List.GetItem;
 begin
   Add3;
   CheckEquals(2, FBase2List.Items[1].IntegerProperty, 'Get the 2nd item in the array');
-  CheckException(GetItemInvalidIndex, EgList, 'Invalid Index');
+  CheckException(GetItemInvalidIndex, TgList.EgList, 'Invalid Index');
 end;
 
 procedure TestTBase2List.SetItem;
@@ -744,7 +752,7 @@ begin
   Add3;
   FBase2List.Items[1].IntegerProperty := 22;
   CheckEquals(22, FBase2List.Items[1].IntegerProperty, 'Get the 2nd item in the array');
-  CheckException(SetItemInvalidIndex, EgList, 'Invalid Index');
+  CheckException(SetItemInvalidIndex, TgList.EgList, 'Invalid Index');
 end;
 
 procedure TestTBase2List.GetItemInvalidIndex;
@@ -771,7 +779,7 @@ begin
   Add3;
   CheckEquals(3, FBase2List.Values['Current.IntegerProperty'], 'Testing the inherited GetValue');
   CheckEquals(2, FBase2List.Values['[1].IntegerProperty'], 'Testing the overridden GetValues that looks for an index value');
-  CheckException(GetValueInvalidIndex, EgValue, 'Invalid Index');
+  CheckException(GetValueInvalidIndex, TgBase.EgValue, 'Invalid Index');
 end;
 
 procedure TestTBase2List.SetValue;
@@ -781,7 +789,7 @@ begin
   CheckEquals(1, FBase2List.Current.IntegerProperty, 'Testing the inherited SetValue');
   FBase2List.Values['[0].IntegerProperty'] := 2;
   CheckEquals(2, FBase2List[0].IntegerProperty, 'Testing the overriden SetValue looking for an index value.');
-  CheckException(SetValueInvalidIndex, EgValue, 'Invalid Index');
+  CheckException(SetValueInvalidIndex, TgBase.EgValue, 'Invalid Index');
 end;
 
 procedure TestTBase2List.GetValueInvalidIndex;
@@ -807,7 +815,7 @@ end;
 
 procedure TestTBase2List.Next;
 begin
-  CheckException(NextPastEOL, EgList, 'Exception calling on Empty List');
+  CheckException(NextPastEOL, TgList.EgList, 'Exception calling on Empty List');
   Add3;
   FBase2List.Last;
   FBase2List.Previous;
@@ -815,12 +823,12 @@ begin
   CheckEquals(2, FBase2List.CurrentIndex, 'Should be CurrentIndex2');
   FBase2List.Next;
   CheckTrue(FBase2List.EOL);
-  CheckException(NextPastEOL, EgList, 'Exception calling on EOL.');
+  CheckException(NextPastEOL, TgList.EgList, 'Exception calling on EOL.');
 end;
 
 procedure TestTBase2List.Previous;
 begin
-  CheckException(PreviousBeforeBOL, EgList, 'Exception calling on Empty List');
+  CheckException(PreviousBeforeBOL, TgList.EgList, 'Exception calling on Empty List');
   Add3;
   FBase2List.First;
   FBase2List.Next;
@@ -828,7 +836,7 @@ begin
   CheckEquals(0, FBase2List.CurrentIndex, 'CurrentIndex should be 0');
   FBase2List.Previous;
   CheckTrue(FBase2List.BOL);
-  CheckException(PreviousBeforeBOL, EgList, 'Exception calling on EOL.');
+  CheckException(PreviousBeforeBOL, TgList.EgList, 'Exception calling on EOL.');
 end;
 
 procedure TestTBase2List.NextPastEOL;
