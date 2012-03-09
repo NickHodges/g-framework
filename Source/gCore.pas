@@ -58,20 +58,6 @@ type
     Property Value : Variant Read FValue;
   End;
 
-  TgObjectState = (Inspecting, OriginalValues, Loaded, Loading, Saving, Deleting);
-  TgObjectStates = Set Of TgObjectState;
-
-  TgListState = (Ordered, Filtered);
-  TgListStates = Set of TgListState;
-
-  TgObjectType = (otObject, otList);
-
-  TgBaseStates = Record
-    case TgObjectType of
-      otObject: (ObjectStates: TgObjectStates);
-      otList: (ListStates: TgListStates);
-  End;
-
   TgSerializerClass = class of TgSerializer;
   TgSerializer = Class(TObject)
   Public
@@ -132,12 +118,10 @@ type
 
   strict private
     FOwner: TgBase;
-    function GetIsInspecting: Boolean;
-    procedure SetIsInspecting(Const AValue : Boolean);
   strict protected
-    FStates: TgBaseStates;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
+    function GetIsInspecting: Boolean; virtual;
     function GetValues(Const APath : String): Variant; virtual;
     /// <summary>TgBase.OwnerByClass walks up the Owner path looking for an owner whose
     /// class type matches the AClass parameter. This method gets used by the
@@ -148,6 +132,7 @@ type
     /// </returns>
     /// <param name="AClass"> (TgBaseClass) </param>
     function OwnerByClass(AClass: TgBaseClass): TgBase; virtual;
+    procedure SetIsInspecting(const AValue: Boolean); virtual;
     procedure SetValues(Const APath : String; AValue : Variant); virtual;
   public
     /// <summary>TgBase.Create instantiates a new G object, sets its owner and
@@ -365,19 +350,9 @@ type
   ///	</remarks>
  ///  <seealso cref="gCore|TgList{T}" />
   TgList = class(TgBase)
-  public
-    type
-      /// <summary> This is the general exception for a <see cref="TgList" />
-      /// </summary>
-      EgList = class(Exception);
-  strict private
-    FFilteredList: TList<TgBase>;
-    FItemClass: TgBaseClass;
-    FList: TObjectList<TgBase>;
-    FOrderBy: String;
-    FOrderByList: TObjectList<TgOrderByItem>;
-    FWhere: String;
     Type
+      TState = (lsInspecting, lsOrdered, lsFiltered);
+      TStates = Set of TState;
 
       /// <summary> Structure used by the <see cref="GetEnumerator" /> to allow For-in
       /// loops</summary>
@@ -403,6 +378,14 @@ type
         function Compare(const Left, Right: TgBase): Integer; override;
       end;
 
+  strict private
+    FFilteredList: TList<TgBase>;
+    FItemClass: TgBaseClass;
+    FList: TObjectList<TgBase>;
+    FOrderBy: String;
+    FOrderByList: TObjectList<TgOrderByItem>;
+    FWhere: String;
+    FStates: TStates;
     function GetIsFiltered: Boolean;
     function GetIsOrdered: Boolean;
     function GetList: TList<TgBase>;
@@ -423,14 +406,20 @@ type
     function GetCurrentIndex: Integer; virtual;
     function GetEOL: Boolean; virtual;
     function GetHasItems: Boolean; virtual;
+    function GetIsInspecting: Boolean; override;
     function GetItemClass: TgBaseClass; virtual;
     function GetItems(AIndex : Integer): TgBase; virtual;
     procedure SetCurrentIndex(const AIndex: Integer); virtual;
+    procedure SetIsInspecting(const AValue: Boolean); override;
     procedure SetItemClass(const Value: TgBaseClass); virtual;
     procedure SetItems(AIndex : Integer; const AValue: TgBase); virtual;
     procedure SetOrderBy(const AValue: String); virtual;
     procedure SetWhere(const AValue: String); virtual;
   public
+    type
+      /// <summary> This is the general exception for a <see cref="TgList" />
+      /// </summary>
+      EgList = class(Exception);
     constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
     procedure Assign(ASource: TgBase); override;
@@ -581,8 +570,12 @@ type
 
   TgObjectClass = class of TgObject;
   TgObject = class(TgBase)
+    type
+      TState = (osInspecting, osOriginalValues, osLoaded, osLoading, osSaving, osDeleting);
+      TStates = Set Of TState;
   strict private
     FOriginalValues: TgObject;
+    FStates: TStates;
     FValidationErrors: TgValidationErrors;
     function GetIsOriginalValues: Boolean;
     function GetOriginalValues: TgBase;
@@ -599,6 +592,8 @@ type
     function GetIsModified: Boolean; virtual;
     function GetIsValid: Boolean; virtual;
     procedure GetIsValidInternal; virtual;
+    function GetIsInspecting: Boolean; override;
+    procedure SetIsInspecting(const AValue: Boolean); override;
   public
     constructor Create(AOwner: TgBase = nil); override;
     destructor Destroy; override;
@@ -930,9 +925,9 @@ Begin
 End;
 
 function TgBase.GetIsInspecting: Boolean;
-Begin
-  Result := TgObjectState.Inspecting In FStates.ObjectStates;
-End;
+begin
+  Result := False;
+end;
 
 function TgBase.GetValues(Const APath : String): Variant;
 Begin
@@ -964,13 +959,10 @@ begin
   end;
 end;
 
-procedure TgBase.SetIsInspecting(Const AValue : Boolean);
-Begin
-  If AValue Then
-    Include(FStates.ObjectStates, TgObjectState.Inspecting)
-  Else
-    Exclude(FStates.ObjectStates, TgObjectState.Inspecting);
-End;
+procedure TgBase.SetIsInspecting(const AValue: Boolean);
+begin
+
+end;
 
 procedure TgBase.SetValues(Const APath : String; AValue : Variant);
 Begin
@@ -1193,7 +1185,7 @@ begin
     FPersistableProperties.TryGetValue(BaseClass, RTTIProperties);
     SetLength(RTTIProperties, Length(RTTIProperties) + 1);
     RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
-    FPersistableProperties.AddOrSetValue(BaseClass, RTTIProperties);  
+    FPersistableProperties.AddOrSetValue(BaseClass, RTTIProperties);
   end;
 end;
 
@@ -2056,12 +2048,17 @@ end;
 
 function TgList.GetIsFiltered: Boolean;
 begin
-  Result := TgListState.Filtered In FStates.ListStates;
+  Result := lsFiltered In FStates;
+end;
+
+function TgList.GetIsInspecting: Boolean;
+begin
+  Result := lsInspecting in FStates;
 end;
 
 function TgList.GetIsOrdered: Boolean;
 begin
-  Result := TgListState.Ordered In FStates.ListStates;
+  Result := lsOrdered In FStates;
 end;
 
 function TgList.GetItemClass: TgBaseClass;
@@ -2124,21 +2121,29 @@ End;
 procedure TgList.SetIsFiltered(const AValue: Boolean);
 begin
   If AValue Then
-    Include(FStates.ListStates, TgListState.Filtered)
+    Include(FStates, lsFiltered)
   Else
   Begin
-    Exclude(FStates.ListStates, TgListState.Filtered);
+    Exclude(FStates, lsFiltered);
     FFilteredList.Clear;
   End;
   FCurrentIndex := -1;
 end;
 
+procedure TgList.SetIsInspecting(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, lsInspecting)
+  Else
+    Exclude(FStates, lsInspecting);
+end;
+
 procedure TgList.SetIsOrdered(const AValue: Boolean);
 begin
   If AValue Then
-    Include(FStates.ListStates, TgListState.Ordered)
+    Include(FStates, lsOrdered)
   Else
-    Exclude(FStates.ListStates, TgListState.Ordered);
+    Exclude(FStates, lsOrdered);
 end;
 
 procedure TgList.SetItemClass(const Value: TgBaseClass);
@@ -2545,6 +2550,11 @@ begin
     SetLength(Result,  Length(Result) - 2);
 end;
 
+function TgObject.GetIsInspecting: Boolean;
+begin
+  Result := osInspecting in FStates;
+end;
+
 function TgObject.GetIsModified: Boolean;
 var
   RTTIProperty: TRTTIProperty;
@@ -2560,7 +2570,7 @@ end;
 
 function TgObject.GetIsOriginalValues: Boolean;
 begin
-  Result := TgObjectState.OriginalValues in FStates.ObjectStates;
+  Result := osOriginalValues in FStates;
 end;
 
 function TgObject.GetIsValid: Boolean;
@@ -2653,12 +2663,20 @@ Begin
     DefaultValue(Attribute).Execute(Self);
 End;
 
+procedure TgObject.SetIsInspecting(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, osInspecting)
+  Else
+    Exclude(FStates, osInspecting);
+end;
+
 procedure TgObject.SetIsOriginalValues(const AValue: Boolean);
 begin
   If AValue Then
-    Include(FStates.ObjectStates, TgObjectState.OriginalValues)
+    Include(FStates, osOriginalValues)
   Else
-    Exclude(FStates.ObjectStates, TgObjectState.OriginalValues);
+    Exclude(FStates, osOriginalValues);
 end;
 
 constructor TgValidationErrors.Create(AOwner: TgBase = Nil);
@@ -2772,6 +2790,7 @@ Initialization
   TgSerializationHelperJSONList.BaseClass;
 
 end.
+
 
 
 
