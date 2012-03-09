@@ -12,7 +12,7 @@ unit TestgCore;
 interface
 
 uses
-  TestFramework, gCore;
+  TestFramework, gCore, System.Rtti;
 
 type
   // Test methods for class TgBase
@@ -32,10 +32,16 @@ type
     property Value: String read GetValue write SetValue;
   end;
 
+  ValidatePhone = class(Validation)
+  public
+    procedure Execute(AObject: TgObject; ARTTIProperty: TRttiProperty); override;
+  end;
+
   ///	<summary>
   ///	  This is a example which should automaticly format any value assigned
   ///	  into a phone number
   ///	</summary>
+  [ValidatePhone]
   TPhoneString = record
   strict private
     FValue: String;
@@ -48,7 +54,7 @@ type
     property Value: String read GetValue write SetValue;
   end;
 
-  TBase2 = Class(TgBase)
+  TBase2 = class(TgObject)
   strict private
     FIntegerProperty: Integer;
     FStringProperty: TgString5;
@@ -65,7 +71,7 @@ type
   TBase2List = Class(TgList<TBase2>)
   End;
 
-  TBase = class(TgBase)
+  TBase = class(TgObject)
   strict private
     FBooleanProperty: Boolean;
     FDateProperty: TDate;
@@ -85,19 +91,25 @@ type
   published
     procedure SetUnwriteableIntegerProperty;
     property BooleanProperty: Boolean read FBooleanProperty write FBooleanProperty;
+    [Required]
     property DateProperty: TDate read FDateProperty write FDateProperty;
+    [Required]
     property DateTimeProperty: TDateTime read FDateTimeProperty write FDateTimeProperty;
     [DefaultValue(5)]
+    [Required]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
     property ManuallyConstructedObjectProperty: TBase read GetManuallyConstructedObjectProperty;
+    [Required]
     property ObjectProperty: TBase2 read FObjectProperty;
     [DefaultValue('Test')]
     [ExcludeFeature([Serializable])]
+    [Required]
     property StringProperty: String read FStringProperty write FStringProperty;
     [ExcludeFeature([AutoCreate])]
     property UnconstructedObjectProperty: TgBase read FUnconstructedObjectProperty write FUnconstructedObjectProperty;
     property UnreadableIntegerProperty: Integer write FUnreadableIntegerProperty;
     property UnwriteableIntegerProperty: Integer read FUnwriteableIntegerProperty;
+    [Required]
     property String5: TgString5 read FString5 write FString5;
     property Phone: TPhoneString read FPhone write FPhone;
   end;
@@ -125,6 +137,7 @@ type
     procedure SerializeXML;
     procedure SerializeJSON;
     procedure TestCreate;
+    procedure ValidateRequired;
   end;
 
   TestTgString5 = class(TTestCase)
@@ -486,6 +499,24 @@ end;
 procedure TestTBase.UndeclaredProperty;
 begin
   Base['ThisPropertyDoesNotExist'];
+end;
+
+procedure TestTBase.ValidateRequired;
+begin
+  Base.DateProperty := Date;
+  Base.DateTimeProperty := Now;
+  Base.IntegerProperty := 1;
+  Base.StringProperty := 'Hello';
+  Base.String5 := '12345';
+  Base.Phone := '1234567890';
+  CheckTrue(Base.IsValid);
+  Base.DateProperty := 0;
+  CheckFalse(Base.IsValid);
+  Check(Base.ValidationErrors['DateProperty'] > '');
+  Base.DateProperty := Date;
+  Base.DateTimeProperty := 0;
+  CheckFalse(Base.IsValid);
+  Check(Base.ValidationErrors['DateTimeProperty'] > '');
 end;
 
 destructor TBase.Destroy;
@@ -977,6 +1008,15 @@ procedure TestTBase2List.TestCreate(BOL: Integer; const Value: string);
 begin
   CheckEquals(0, FBase2List.Count, 'A list has no items after it gets created.');
   CheckEquals(-1, FBase2List.CurrentIndex, 'The CurrentIndex is set to -1 if there are no list items.');
+end;
+
+procedure ValidatePhone.Execute(AObject: TgObject; ARTTIProperty: TRttiProperty);
+var
+  ValueLength: Integer;
+begin
+  ValueLength := Length(AObject[ARTTIProperty.Name]);
+  if InRange(ValueLength, 1, 6) then
+    AObject.ValidationErrors[ARTTIProperty.Name] := 'A phone number must contain at least seven digits.';
 end;
 
 initialization

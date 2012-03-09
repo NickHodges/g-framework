@@ -27,6 +27,7 @@ type
   {$M-}
 
   TgList = class;
+  TgObject = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -132,15 +133,9 @@ type
   strict private
     FOwner: TgBase;
     function GetIsInspecting: Boolean;
-    procedure PopulateDefaultValues;
     procedure SetIsInspecting(Const AValue : Boolean);
   strict protected
     FStates: TgBaseStates;
-    /// <summary>TgBase.AutoCreate gets called by the Create constructor to instantiate
-    /// object properties. You may override this method in a descendant class to alter
-    /// its behavior.
-    /// </summary>
-    procedure AutoCreate; virtual;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetValues(Const APath : String): Variant; virtual;
@@ -162,10 +157,6 @@ type
     /// attribute with an AutoCreate</summary>
     /// <param name="AOwner"> (TgBase) </param>
     constructor Create(AOwner: TgBase = Nil); virtual;
-    /// <summary>TgBase.Destroy frees any automatically instantiated object properties
-    /// owned by the object,
-    /// then destroys itself.</summary>
-    destructor Destroy; override;
     procedure Assign(ASource : TgBase); virtual;
     procedure Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
     class function FeatureExclusions(ARTTIProperty: TRTTIProperty): TgFeatureExclusions; virtual;
@@ -180,7 +171,6 @@ type
     /// <param name="ABase"> (TgBase) </param>
     function Owns(ABase : TgBase): Boolean;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
-    procedure Validate; virtual;
     property IsInspecting: Boolean read GetIsInspecting write SetIsInspecting;
 
     ///	<summary>
@@ -219,18 +209,17 @@ type
     class function SerializerClass: TgSerializerClass; virtual; abstract;
   end;
 
-  TgCustomPropertyAttribute = class(TCustomAttribute)
-  strict private
-    FRTTIProperty: TRTTIProperty;
-    procedure SetRTTIProperty(const AValue: TRTTIProperty);
+  Validation = class(TCustomAttribute)
   public
-    property RTTIProperty: TRTTIProperty read FRTTIProperty write SetRTTIProperty;
+    procedure Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty); virtual; abstract;
   end;
 
-  Validate = class(TgCustomPropertyAttribute)
+  TgPropertyValidationAttribute = record
   public
-    procedure Execute(ABase: TgBase); virtual; abstract;
-  end;
+    RTTIProperty: TRTTIProperty;
+    ValidateAttribute: Validation;
+    procedure Execute(AObject: TgObject);
+  End;
 
   G = class(TObject)
   strict private
@@ -244,11 +233,12 @@ type
     FPersistableProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FPropertyByName: TDictionary<String, TRTTIProperty>;
+    FPropertyValidationAttributes: TDictionary<TgBaseClass, TArray<TgPropertyValidationAttribute>>;
     FRecordProperty: TDictionary<TRTTIProperty, TgRecordProperty>;
     FRTTIContext: TRTTIContext;
     FSerializableProperties: TDictionary < TgBaseClass, TArray < TRTTIProperty >>;
     FSerializationHelpers: TDictionary<TgSerializerClass, TList<TPair<TgBaseClass, TgSerializationHelperClass>>>;
-    FValidationAttributes: TDictionary<TgBaseClass, TArray<Validate>>;
+    FClassValidationAttributes: TDictionary<TgBaseClass, TArray<Validation>>;
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
   var
     class procedure Initialize; static;
@@ -284,6 +274,7 @@ type
     class function CompositeProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
     class function DisplayPropertyNames(AClass: TgBaseClass): TArray<String>; static;
     class procedure InitialializePersistableProperties(ARTTIType: TRTTIType); static;
+    class procedure InitializePropertyValidationAttributes(ARTTIType: TRTTIType); static;
     class function MethodByName(ABaseClass: TgBaseClass; const AName: String): TRTTIMethod; overload; static;
     class function MethodByName(ABase: TgBase; const AName: String): TRTTIMethod; overload; static;
     class function ObjectProperties(AInstance: TgBase): TArray<TRTTIProperty>; overload; static; inline;
@@ -293,12 +284,14 @@ type
     class function Properties(AClass: TgBaseClass): TArray<TRTTIProperty>; static;
     class function PropertyByName(AClass: TgBaseClass; const AName: String): TRTTIProperty; overload; static;
     class function PropertyByName(ABase: TgBase; const AName: String): TRTTIProperty; overload; static;
+    class function PropertyValidationAttributes(ABaseClass: TgBaseClass): TArray<TgPropertyValidationAttribute>; overload; static;
+    class function PropertyValidationAttributes(ABase: TgBase): TArray<TgPropertyValidationAttribute>; overload; static;
     class function RecordProperty(ARTTIProperty: TRTTIProperty): TgRecordProperty; static;
     class function SerializableProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; inline;
     class function SerializableProperties(AClass : TgBaseClass): TArray<TRTTIProperty>; overload;
     class function SerializationHelpers(ASerializerClass: TgSerializerClass; AObject: TgBase): TgSerializationHelperClass; static;
-    class function ValidationAttributes(AClass: TgBaseClass): TArray<Validate>; overload; static;
-    class function ValidationAttributes(ABase: TgBase): TArray<Validate>; overload; static;
+    class function ClassValidationAttributes(AClass: TgBaseClass): TArray<Validation>; overload; static;
+    class function ClassValidationAttributes(ABase: TgBase): TArray<Validation>; overload; static;
     class function VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; static;
   end;
 
@@ -594,13 +587,20 @@ type
     function GetIsOriginalValues: Boolean;
     function GetOriginalValues: TgBase;
     function GetValidationErrors: TgValidationErrors;
+    procedure PopulateDefaultValues;
     procedure SetIsOriginalValues(const AValue: Boolean);
   strict protected
+    /// <summary>TgObject.AutoCreate gets called by the Create constructor to instantiate
+    /// object properties. You may override this method in a descendant class to alter
+    /// its behavior.
+    /// </summary>
+    procedure AutoCreate; virtual;
     function GetDisplayName: String; virtual;
     function GetIsModified: Boolean; virtual;
     function GetIsValid: Boolean; virtual;
     procedure GetIsValidInternal; virtual;
   public
+    constructor Create(AOwner: TgBase = nil); override;
     destructor Destroy; override;
     function AllValidationErrors: String;
     class function DisplayPropertyNames: TArray<String>; inline;
@@ -608,7 +608,6 @@ type
     procedure InitializeOriginalValues; virtual;
     function IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean; overload;
     function IsPropertyModified(const APropertyName: string): Boolean; overload;
-    procedure Validate; override;
     property IsModified: Boolean read GetIsModified;
     property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
     property IsValid: Boolean read GetIsValid;
@@ -630,6 +629,15 @@ type
   end;
 
   EgValidation = class(Exception)
+  end;
+
+  Required = class(Validation)
+  strict private
+    FEnabled: Boolean;
+  public
+    constructor Create(AEnabled: Boolean = True);
+    procedure Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty); override;
+    property Enabled: Boolean read FEnabled;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -696,27 +704,6 @@ Begin
   End;
 End;
 
-procedure TgBase.AutoCreate;
-var
-  RTTIProperty: TRTTIProperty;
-  ObjectProperty : TgBase;
-  ObjectPropertyClass: TgBaseClass;
-  Value : TValue;
-  Field : Pointer;
-begin
-  for RTTIProperty in G.AutoCreateProperties(Self) do
-  Begin
-    ObjectPropertyClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
-    // See if there is a owner that can populate this property
-    ObjectProperty := OwnerByClass(ObjectPropertyClass);
-    if Not Assigned(ObjectProperty) then
-      ObjectProperty := ObjectPropertyClass.Create(Self);
-    Value := ObjectProperty;
-    Field := TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc;
-    Value.Cast(RTTIProperty.PropertyType.Handle).ExtractRawData(PByte(Self) + (IntPtr(Field) and (not PROPSLOT_MASK)));
-  End;
-end;
-
 function TgBase.OwnerByClass(AClass: TgBaseClass): TgBase;
 begin
   if Assigned(Owner) then
@@ -734,22 +721,6 @@ constructor TgBase.Create(AOwner: TgBase = Nil);
 begin
   inherited Create;
   FOwner := AOwner;
-  AutoCreate;
-  PopulateDefaultValues;
-end;
-
-destructor TgBase.Destroy;
-var
-  ObjectProperty: TgBase;
-  RTTIProperty: TRTTIProperty;
-begin
-  for RTTIProperty in G.AutoCreateProperties(Self) do
-  Begin
-    ObjectProperty := TgBase(RTTIProperty.GetValue(Self).AsObject);
-    if Owns(ObjectProperty) then
-      ObjectProperty.Free;
-  End;
-  inherited Destroy;
 end;
 
 procedure TgBase.Assign(ASource : TgBase);
@@ -981,14 +952,6 @@ Begin
   Result := Assigned(ABase) And (ABase.Owner = Self);
 End;
 
-procedure TgBase.PopulateDefaultValues;
-Var
-  Attribute : TCustomAttribute;
-Begin
-  For Attribute In G.Attributes(Self, DefaultValue) Do
-    DefaultValue(Attribute).Execute(Self);
-End;
-
 function TgBase.Serialize(ASerializerClass: TgSerializerClass): String;
 var
   Serializer: TgSerializer;
@@ -1013,22 +976,6 @@ procedure TgBase.SetValues(Const APath : String; AValue : Variant);
 Begin
   If Not DoSetValues(APath, AValue) Then
     Raise EgValue.CreateFmt('Path ''%s'' not found.', [APath]);
-End;
-
-procedure TgBase.Validate;
-Var
-  Attribute : gCore.Validate;
-//  RTTIProperty: TRTTIProperty;
-//  ObjectProperty : TgBase;
-Begin
-  For Attribute In G.ValidationAttributes(Self) Do
-    Attribute.Execute(Self);
-//  for RTTIProperty in CompositeProperties do
-//  Begin
-//    ObjectProperty := TgBase(Inspect(RTTIProperty));
-//    if Assigned(ObjectProperty) then
-//      ObjectProperty.Validate;
-//  End;
 End;
 
 class procedure G.Initialize;
@@ -1063,6 +1010,7 @@ begin
       InitializeCompositeProperties(RTTIType);
       InitializeVisibleProperties(RTTIType);
       InitializeDisplayPropertyNames(RTTIType);
+      InitializePropertyValidationAttributes(RTTIType);
     end;
   finally
     BaseTypes.Free;
@@ -1080,9 +1028,9 @@ var
   Pair : TPair<TgBaseClass, TCustomAttributeClass>;
   Attributes : TArray<TCustomAttribute>;
   RTTIProperty: TRTTIProperty;
-  ValidationAttributes : TArray<Validate>;
+  ClassValidationAttributes : TArray<Validation>;
 
-  procedure AddAttribute(AAttribute: TCustomAttribute);
+  procedure AddAttribute;
   begin
     Pair.Key := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
     Pair.Value := TCustomAttributeClass(Attribute.ClassType);
@@ -1091,20 +1039,21 @@ var
     Attributes[Length(Attributes) - 1] := Attribute;
     FAttributes.AddOrSetValue(Pair, Attributes);
 
-    if AAttribute.InheritsFrom(Validate) then
+    if Not Assigned (RTTIProperty) And Attribute.InheritsFrom(Validation) then
     Begin
-      FValidationAttributes.TryGetValue(Pair.Key, ValidationAttributes);
-      SetLength(ValidationAttributes, Length(Attributes) + 1);
-      ValidationAttributes[Length(Attributes) - 1] := Validate(AAttribute);
-      FValidationAttributes.AddOrSetValue(Pair.Key, ValidationAttributes);
+      FClassValidationAttributes.TryGetValue(Pair.Key, ClassValidationAttributes);
+      SetLength(ClassValidationAttributes, Length(Attributes) + 1);
+      ClassValidationAttributes[Length(Attributes) - 1] := Validation(Attribute);
+      FClassValidationAttributes.AddOrSetValue(Pair.Key, ClassValidationAttributes);
     End;
 
   end;
 
 begin
   // Add Class Attributes
+  RTTIProperty := Nil;
   for Attribute in ARTTIType.GetAttributes do
-    AddAttribute(Attribute);
+    AddAttribute;
   // Add Property Attributes
   for RTTIProperty in Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
   if RTTIProperty.Visibility = mvPublished then
@@ -1113,7 +1062,7 @@ begin
     begin
       if Attribute.InheritsFrom(TgPropertyAttribute) then
         TgPropertyAttribute(Attribute).RTTIProperty := RTTIProperty;
-      AddAttribute(Attribute);
+      AddAttribute;
     end;
   end;
 end;
@@ -1164,21 +1113,23 @@ begin
   FSerializableProperties := TDictionary < TgBaseClass, TArray < TRTTIProperty >>.Create();
   FRecordProperty := TDictionary<TRTTIProperty, TgRecordProperty>.Create();
   FSerializationHelpers := TDictionary<TgSerializerClass, TList<TPair<TgBaseClass, TgSerializationHelperClass>>>.Create();
-  FValidationAttributes := TDictionary<TgBaseClass, TArray<Validate>>.Create();
+  FClassValidationAttributes := TDictionary<TgBaseClass, TArray<Validation>>.Create();
   FCompositeProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FVisibleProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FDisplayPropertyNames := TDictionary<TgBaseClass, TArray<String>>.Create();
   FPersistableProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
+  FPropertyValidationAttributes := TDictionary<TgBaseClass, TArray<TgPropertyValidationAttribute>>.Create();
   Initialize;
 end;
 
 class destructor G.Destroy;
 begin
+  FreeAndNil(FPropertyValidationAttributes);
   FreeAndNil(FPersistableProperties);
   FreeAndNil(FDisplayPropertyNames);
   FreeAndNil(FVisibleProperties);
   FreeAndNil(FCompositeProperties);
-  FreeAndNil(FValidationAttributes);
+  FreeAndNil(FClassValidationAttributes);
   FreeAndNil(FSerializationHelpers);
   FreeAndNil(FRecordProperty);
   FreeAndNil(FMethodByName);
@@ -1249,9 +1200,18 @@ end;
 class procedure G.InitializeCompositeProperties(ARTTIType: TRTTIType);
 var
   BaseClass: TgBaseClass;
+  RTTIProperties: TArray<TRTTIProperty>;
+  RTTIProperty: TRTTIProperty;
 begin
   BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
-  FCompositeProperties.Add(BaseClass, G.SerializableProperties(BaseClass));
+  for RTTIProperty in ObjectProperties(BaseClass) do
+  if Not RTTIProperty.IsWritable then
+  begin
+    FCompositeProperties.TryGetValue(BaseClass, RTTIProperties);
+    SetLength(RTTIProperties, Length(RTTIProperties) + 1);
+    RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
+    FCompositeProperties.AddOrSetValue(BaseClass, RTTIProperties);
+  end;
 end;
 
 class procedure G.InitializeDisplayPropertyNames(ARTTIType: TRTTIType);
@@ -1343,6 +1303,37 @@ begin
   end;
 end;
 
+class procedure G.InitializePropertyValidationAttributes(ARTTIType: TRTTIType);
+var
+  RTTIProperty: TRTTIProperty;
+  Attribute: TCustomAttribute;
+  BaseClass: TgBaseClass;
+  PropertyValidationAttribute: TgPropertyValidationAttribute;
+  PropertyValidationAttributes: TArray<TgPropertyValidationAttribute>;
+
+  procedure AddAttribute;
+  begin
+    FPropertyValidationAttributes.TryGetValue(BaseClass, PropertyValidationAttributes);
+    SetLength(PropertyValidationAttributes, Length(PropertyValidationAttributes) + 1);
+    PropertyValidationAttribute.RTTIProperty := RTTIProperty;
+    PropertyValidationAttribute.ValidateAttribute := Validation(Attribute);
+    PropertyValidationAttributes[Length(PropertyValidationAttributes) - 1] := PropertyValidationAttribute;
+    FPropertyValidationAttributes.AddOrSetValue(BaseClass, PropertyValidationAttributes);
+  end;
+
+begin
+  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
+  for RTTIProperty in Properties(BaseClass) do
+  begin
+    for Attribute in RTTIProperty.GetAttributes do
+    if Attribute.InheritsFrom(Validation) then
+      AddAttribute;
+    for Attribute in RTTIProperty.PropertyType.GetAttributes do
+    if Attribute.InheritsFrom(Validation) then
+      AddAttribute;
+  end;
+end;
+
 class procedure G.InitializeRecordProperty(ARTTIType: TRTTIType);
 var
   CanAdd: Boolean;
@@ -1365,8 +1356,8 @@ begin
     end;
     if CanAdd then
     Begin
-      RecordProperty.Validator := RTTIProperty.PropertyType.AsRecord.GetMethod('Validate');
-      FRecordProperty.Add(RTTIProperty, RecordProperty);
+      RecordProperty.Validator := RTTIProperty.PropertyType.AsRecord.GetMethod('Validation');
+      FRecordProperty.AddOrSetValue(RTTIProperty, RecordProperty);
     End;
   end;
 end;
@@ -1490,6 +1481,16 @@ begin
   Result := PropertyByName(TgBaseClass(ABase.ClassType), AName);
 end;
 
+class function G.PropertyValidationAttributes(ABaseClass: TgBaseClass): TArray<TgPropertyValidationAttribute>;
+begin
+  FPropertyValidationAttributes.TryGetValue(ABaseClass, Result);
+end;
+
+class function G.PropertyValidationAttributes(ABase: TgBase): TArray<TgPropertyValidationAttribute>;
+begin
+  Result := PropertyValidationAttributes(TgBaseClass(ABase.ClassType));
+end;
+
 class function G.RecordProperty(ARTTIProperty: TRTTIProperty): TgRecordProperty;
 begin
   FRecordProperty.TryGetValue(ARTTIProperty, Result);
@@ -1522,14 +1523,14 @@ begin
   end;
 end;
 
-class function G.ValidationAttributes(AClass: TgBaseClass): TArray<Validate>;
+class function G.ClassValidationAttributes(AClass: TgBaseClass): TArray<Validation>;
 begin
-  FValidationAttributes.TryGetValue(AClass, Result);
+  FClassValidationAttributes.TryGetValue(AClass, Result);
 end;
 
-class function G.ValidationAttributes(ABase: TgBase): TArray<Validate>;
+class function G.ClassValidationAttributes(ABase: TgBase): TArray<Validation>;
 begin
-  Result := ValidationAttributes(TgBase(ABase.ClassType));
+  Result := ClassValidationAttributes(TgBase(ABase.ClassType));
 end;
 
 class function G.VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
@@ -2337,9 +2338,9 @@ begin
   if Left = Right then
     Result := 0
   Else if Left.AsInstance.MetaclassType.InheritsFrom(Right.AsInstance.MetaclassType) then
-    Result := -1
-  Else if Right.AsInstance.MetaclassType.InheritsFrom(Left.AsInstance.MetaclassType) then
     Result := 1
+  Else if Right.AsInstance.MetaclassType.InheritsFrom(Left.AsInstance.MetaclassType) then
+    Result := -1
   Else
     Result := 0;
 end;
@@ -2455,10 +2456,26 @@ begin
   FList.CurrentIndex := SavedCurrentIndex;
 end;
 
+constructor TgObject.Create(AOwner: TgBase = nil);
+begin
+  inherited;
+  AutoCreate;
+  PopulateDefaultValues;
+end;
+
 destructor TgObject.Destroy;
+var
+  ObjectProperty: TgObject;
+  RTTIProperty: TRTTIProperty;
 begin
   FOriginalValues.Free;
-  inherited Destroy;
+  for RTTIProperty in G.AutoCreateProperties(Self) do
+  Begin
+    ObjectProperty := TgObject(RTTIProperty.GetValue(Self).AsObject);
+    if Owns(ObjectProperty) then
+      ObjectProperty.Free;
+  End;
+  Inherited Destroy;
 end;
 
 function TgObject.AllValidationErrors: String;
@@ -2480,6 +2497,27 @@ begin
   finally
     StringList.Free;
   end;
+end;
+
+procedure TgObject.AutoCreate;
+var
+  RTTIProperty: TRTTIProperty;
+  ObjectProperty : TgBase;
+  ObjectPropertyClass: TgBaseClass;
+  Value : TValue;
+  Field : Pointer;
+begin
+  for RTTIProperty in G.AutoCreateProperties(Self) do
+  Begin
+    ObjectPropertyClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+    // See if there is a owner that can populate this property
+    ObjectProperty := OwnerByClass(ObjectPropertyClass);
+    if Not Assigned(ObjectProperty) then
+      ObjectProperty := ObjectPropertyClass.Create(Self);
+    Value := ObjectProperty;
+    Field := TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc;
+    Value.Cast(RTTIProperty.PropertyType.Handle).ExtractRawData(PByte(Self) + (IntPtr(Field) and (not PROPSLOT_MASK)));
+  End;
 end;
 
 class function TgObject.DisplayPropertyNames: TArray<String>;
@@ -2543,10 +2581,10 @@ end;
 
 procedure TgObject.GetIsValidInternal;
 var
-  Attribute: gCore.Validate;
+  PropertyValidationAttribute: TgPropertyValidationAttribute;
 begin
-  for Attribute in G.ValidationAttributes(Self) do
-    Attribute.Execute(Self);
+  for PropertyValidationAttribute in G.PropertyValidationAttributes(Self) do
+    PropertyValidationAttribute.Execute(Self);
 end;
 
 function TgObject.GetOriginalValues: TgBase;
@@ -2607,19 +2645,20 @@ begin
   Result := IsPropertyModified(G.PropertyByName(Self, APropertyName));
 end;
 
+procedure TgObject.PopulateDefaultValues;
+Var
+  Attribute : TCustomAttribute;
+Begin
+  For Attribute In G.Attributes(Self, DefaultValue) Do
+    DefaultValue(Attribute).Execute(Self);
+End;
+
 procedure TgObject.SetIsOriginalValues(const AValue: Boolean);
 begin
   If AValue Then
     Include(FStates.ObjectStates, TgObjectState.OriginalValues)
   Else
     Exclude(FStates.ObjectStates, TgObjectState.OriginalValues);
-end;
-
-procedure TgObject.Validate;
-begin
-  inherited Validate;
-  if HasValidationErrors then
-    raise EgValidation.Create(AllValidationErrors);
 end;
 
 constructor TgValidationErrors.Create(AOwner: TgBase = Nil);
@@ -2646,8 +2685,8 @@ begin
   Result := inherited DoGetValues(APath, AValue);
   if Not Result then
   Begin
-    TempString := VarToStr(AValue);
     Result := FDictionary.TryGetValue(APath, TempString);
+    AValue := TempString;
   End;
 end;
 
@@ -2682,15 +2721,48 @@ begin
     AStringList.Add(Pair.Key + ': ' + Pair.Value);
 end;
 
-procedure TgCustomPropertyAttribute.SetRTTIProperty(const AValue: TRTTIProperty);
-begin
-  FRTTIProperty := AValue;
-end;
-
 constructor DisplayPropertyNames.Create(AValue: TArray<String>);
 begin
   inherited Create;
   FValue := AValue;
+end;
+
+constructor Required.Create(AEnabled: Boolean = True);
+begin
+  inherited Create;
+  FEnabled := AEnabled;
+end;
+
+procedure Required.Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty);
+var
+  RaiseException: Boolean;
+  TempObject: TObject;
+  Value: Variant;
+begin
+  RaiseException := False;
+  if Enabled And ARTTIProperty.PropertyType.IsInstance then
+  begin
+    TempObject := ARTTIProperty.GetValue(AObject).AsObject;
+    if Not Assigned(TempObject) then
+      RaiseException := True;
+  end
+  Else
+  Begin
+    Value := AObject[ARTTIProperty.Name];
+    case VarType(Value) of
+      varSmallint, varInteger, varShortInt, varByte, varWord, varLongWord, varInt64, varUInt64, varSingle, varDouble, varCurrency, varDate :
+        if Value = 0 then RaiseException := True;
+      varUString :
+        if Value = '' then RaiseException := True;
+    end;
+  End;
+  if RaiseException then
+    AObject.ValidationErrors[ARTTIProperty.Name] := Format('%s is required.', [ARTTIProperty.Name]);
+end;
+
+procedure TgPropertyValidationAttribute.Execute(AObject: TgObject);
+begin
+  ValidateAttribute.Execute(AObject, RTTIProperty);
 end;
 
 Initialization
