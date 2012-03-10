@@ -91,25 +91,25 @@ type
   published
     procedure SetUnwriteableIntegerProperty;
     property BooleanProperty: Boolean read FBooleanProperty write FBooleanProperty;
-    [Required]
+    [IncludeFeatures([Required])]
     property DateProperty: TDate read FDateProperty write FDateProperty;
-    [Required]
+    [IncludeFeatures([Required])]
     property DateTimeProperty: TDateTime read FDateTimeProperty write FDateTimeProperty;
     [DefaultValue(5)]
-    [Required]
+    [IncludeFeatures([Required])]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
     property ManuallyConstructedObjectProperty: TBase read GetManuallyConstructedObjectProperty;
-    [Required]
+    [IncludeFeatures([Required])]
     property ObjectProperty: TBase2 read FObjectProperty;
     [DefaultValue('Test')]
-    [ExcludeFeature([Serializable])]
-    [Required]
+    [ExcludeFeatures([Serializable])]
+    [IncludeFeatures([Required])]
     property StringProperty: String read FStringProperty write FStringProperty;
-    [ExcludeFeature([AutoCreate])]
+    [ExcludeFeatures([AutoCreate])]
     property UnconstructedObjectProperty: TgBase read FUnconstructedObjectProperty write FUnconstructedObjectProperty;
     property UnreadableIntegerProperty: Integer write FUnreadableIntegerProperty;
     property UnwriteableIntegerProperty: Integer read FUnwriteableIntegerProperty;
-    [Required]
+    [IncludeFeatures([Required])]
     property String5: TgString5 read FString5 write FString5;
     property Phone: TPhoneString read FPhone write FPhone;
   end;

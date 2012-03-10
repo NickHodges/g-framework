@@ -35,15 +35,23 @@ type
     property RTTIProperty: TRTTIProperty read FRTTIProperty write FRTTIProperty;
   end;
 
-  TgFeature = (AutoCreate, Serializable, Visible, Composite);
-  TgFeatureExclusions = Set of TgFeature;
+  TgPropertyFeature = (AutoCreate, Composite, Required, Serializable, Visible);
+  TgPropertyFeatures = Set of TgPropertyFeature;
 
-  ExcludeFeature = class(TgPropertyAttribute)
+  ExcludeFeatures = class(TgPropertyAttribute)
   strict private
-    FFeatureExclusions: TgFeatureExclusions;
+    FFeatures: TgPropertyFeatures;
   public
-    constructor Create(AFeatureExclusions: TgFeatureExclusions);
-    property FeatureExclusions: TgFeatureExclusions read FFeatureExclusions;
+    constructor Create(AFeatures: TgPropertyFeatures);
+    property Features: TgPropertyFeatures read FFeatures;
+  end;
+
+  IncludeFeatures = class(TgPropertyAttribute)
+  strict private
+    FFeatures: TgPropertyFeatures;
+  public
+    constructor Create(AFeatures: TgPropertyFeatures);
+    property Features: TgPropertyFeatures read FFeatures;
   end;
 
   DefaultValue = class(TgPropertyAttribute)
@@ -138,13 +146,14 @@ type
     /// <summary>TgBase.Create instantiates a new G object, sets its owner and
     /// automatically
     /// instantiates any object properties descending from TgBase that don't have the
-    /// ExcludeFeature
+    /// ExcludeFeatures
     /// attribute with an AutoCreate</summary>
     /// <param name="AOwner"> (TgBase) </param>
     constructor Create(AOwner: TgBase = Nil); virtual;
     procedure Assign(ASource : TgBase); virtual;
     procedure Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
-    class function FeatureExclusions(ARTTIProperty: TRTTIProperty): TgFeatureExclusions; virtual;
+    class function ExcludeFeatures(ARTTIProperty: TRTTIProperty): TgPropertyFeatures; virtual;
+    class function IncludeFeatures(ARTTIProperty: TRTTIProperty): TgPropertyFeatures; virtual;
     class function FriendlyName: String;
     function GetFriendlyClassName: String;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
@@ -169,12 +178,12 @@ type
     ///	</param>
     property Values[Const APath : String]: Variant read GetValues write SetValues; default;
   published
-    [ExcludeFeature([Serializable])]
+    [ExcludeFeatures([Serializable, Visible])]
     property FriendlyClassName: String read GetFriendlyClassName;
     /// <summary>TgBase.Owner represents the object passed in the constructor. You may
     /// use the Owner object to "walk up" the model.
     /// </summary> type:TgBase
-    [ExcludeFeature([AutoCreate, Serializable])]
+    [ExcludeFeatures([AutoCreate, Composite, Serializable, Visible])]
     property Owner: TgBase read FOwner;
   end;
 
@@ -202,7 +211,7 @@ type
   TgPropertyValidationAttribute = record
   public
     RTTIProperty: TRTTIProperty;
-    ValidateAttribute: Validation;
+    ValidationAttribute: Validation;
     procedure Execute(AObject: TgObject);
   End;
 
@@ -224,6 +233,9 @@ type
     FSerializableProperties: TDictionary < TgBaseClass, TArray < TRTTIProperty >>;
     FSerializationHelpers: TDictionary<TgSerializerClass, TList<TPair<TgBaseClass, TgSerializationHelperClass>>>;
     FClassValidationAttributes: TDictionary<TgBaseClass, TArray<Validation>>;
+    FListProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
+    FOwnedAttributes: TObjectList;
+    FPropertyFeatures: TDictionary<TRTTIProperty, TgPropertyFeatures>;
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
   var
     class procedure Initialize; static;
@@ -233,21 +245,13 @@ type
     /// </summary>
     /// <param name="ARTTIType"> (TRTTIType) </param>
     class procedure InitializeAttributes(ARTTIType: TRTTIType); static;
-    /// <summary>G.InitializeAutoCreateProperties initializes the cache of auto created
-    /// properties for the ARTTIType parameter class passed in.
-    /// </summary>
-    /// <param name="ARTTIType"> (TRTTIType) </param>
-    class procedure InitializeAutoCreateProperties(ARTTIType: TRTTIType); static;
-    class procedure InitializeCompositeProperties(ARTTIType: TRTTIType); static;
     class procedure InitializeDisplayPropertyNames(ARTTIType: TRTTIType); static;
     class procedure InitializeMethodByName(ARTTIType: TRTTIType); static;
     class procedure InitializeObjectProperties(ARTTIType: TRTTIType); static;
     class procedure InitializeProperties(ARTTIType: TRTTIType); static;
     class procedure InitializePropertyByName(ARTTIType: TRTTIType); static;
     class procedure InitializeRecordProperty(ARTTIType: TRTTIType); static;
-    class procedure InitializeSerializableProperties(ARTTIType : TRttiType); static;
     class procedure InitializeSerializationHelpers(ARTTIType: TRTTIType); static;
-    class procedure InitializeVisibleProperties(ARTTIType: TRTTIType); static;
   public
     class constructor Create;
     class destructor Destroy;
@@ -277,6 +281,7 @@ type
     class function SerializationHelpers(ASerializerClass: TgSerializerClass; AObject: TgBase): TgSerializationHelperClass; static;
     class function ClassValidationAttributes(AClass: TgBaseClass): TArray<Validation>; overload; static;
     class function ClassValidationAttributes(ABase: TgBase): TArray<Validation>; overload; static;
+    class procedure InitializePropertyFeatures(ARTTIType: TRTTIType); static;
     class function VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; static;
   end;
 
@@ -449,14 +454,14 @@ type
     property CanNext: Boolean read GetCanNext;
     property CanPrevious: Boolean read GetCanPrevious;
     property Count: Integer read GetCount;
-    [ExcludeFeature([AutoCreate, Serializable])]
+    [ExcludeFeatures([AutoCreate, Serializable])]
     property Current: TgBase read GetCurrent;
-    [ExcludeFeature([Serializable])]
+    [ExcludeFeatures([Serializable])]
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
     property HasItems: Boolean read GetHasItems;
     property List: TList<TgBase> read GetList;
-    [ExcludeFeature([Serializable])]
+    [ExcludeFeatures([Serializable])]
     property OrderBy: String read FOrderBy write SetOrderBy;
     ///	<summary>
     ///	  After setting this property with a proper value you'll need to use
@@ -481,7 +486,7 @@ type
     ///  end;
     ///	  </code>
     /// </example>
-    [ExcludeFeature([Serializable])]
+    [ExcludeFeatures([Serializable])]
     property Where: String read FWhere write SetWhere;
   end;
 
@@ -525,7 +530,7 @@ type
     procedure SetItems(AIndex : Integer; const AValue: T); reintroduce; virtual;
     function GetItemClass: TgBaseClass; override;
   Public
-    class function FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions; override;
+    class function ExcludeFeatures(ARTTIProperty: TRttiProperty): TgPropertyFeatures; override;
     function GetEnumerator: TgEnumerator;
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   Published
@@ -607,11 +612,11 @@ type
     property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
     property IsValid: Boolean read GetIsValid;
   published
-    [ExcludeFeature([Visible])]
+    [ExcludeFeatures([Visible])]
     property DisplayName: String read GetDisplayName;
-    [ExcludeFeature([AutoCreate, Composite, Serializable, Visible])]
+    [ExcludeFeatures([AutoCreate, Composite, Serializable, Visible])]
     property OriginalValues: TgBase read GetOriginalValues;
-    [ExcludeFeature([AutoCreate, Composite, Serializable, Visible])]
+    [ExcludeFeatures([AutoCreate, Composite, Serializable, Visible])]
     property ValidationErrors: TgValidationErrors read GetValidationErrors;
   end;
 
@@ -626,7 +631,7 @@ type
   EgValidation = class(Exception)
   end;
 
-  Required = class(Validation)
+  ValidateRequired = class(Validation)
   strict private
     FEnabled: Boolean;
   public
@@ -899,15 +904,27 @@ Begin
   End;
 End;
 
-class function TgBase.FeatureExclusions(ARTTIProperty: TRTTIProperty): TgFeatureExclusions;
+class function TgBase.ExcludeFeatures(ARTTIProperty: TRTTIProperty): TgPropertyFeatures;
 var
   Attribute: TCustomAttribute;
 begin
   Result := [];
   for Attribute in ARTTIProperty.GetAttributes do
   Begin
-    if Attribute.InheritsFrom(ExcludeFeature) Then
-      Result := Result + ExcludeFeature(Attribute).FeatureExclusions;
+    if Attribute.InheritsFrom(gCore.ExcludeFeatures) Then
+      Result := Result + gCore.ExcludeFeatures(Attribute).Features;
+  End;
+end;
+
+class function TgBase.IncludeFeatures(ARTTIProperty: TRTTIProperty): TgPropertyFeatures;
+var
+  Attribute: TCustomAttribute;
+begin
+  Result := [];
+  for Attribute in ARTTIProperty.GetAttributes do
+  Begin
+    if Attribute.InheritsFrom(gCore.IncludeFeatures) Then
+      Result := Result + gCore.IncludeFeatures(Attribute).Features;
   End;
 end;
 
@@ -994,15 +1011,12 @@ begin
       InitializeProperties(RTTIType);
       InitializeAttributes(RTTIType);
       InitializeObjectProperties(RTTIType);
-      InitializeAutoCreateProperties(RTTIType);
       InitializePropertyByName(RTTIType);
       InitializeMethodByName(RTTIType);
       InitializeRecordProperty(RTTIType);
-      InitializeSerializableProperties(RTTIType);
-      InitializeCompositeProperties(RTTIType);
-      InitializeVisibleProperties(RTTIType);
       InitializeDisplayPropertyNames(RTTIType);
       InitializePropertyValidationAttributes(RTTIType);
+      InitializePropertyFeatures(RTTIType);
     end;
   finally
     BaseTypes.Free;
@@ -1059,25 +1073,6 @@ begin
   end;
 end;
 
-class procedure G.InitializeAutoCreateProperties(ARTTIType: TRTTIType);
-Var
-  RTTIProperty : TRTTIProperty;
-  BaseClass: TgBaseClass;
-  RTTIProperties: TArray<TRTTIProperty>;
-Begin
-  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
-  for RTTIProperty in G.ObjectProperties(BaseClass) do
-  begin
-    If Not RTTIProperty.IsWritable And IsField(TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc) And Not (AutoCreate In BaseClass.FeatureExclusions(RTTIProperty)) Then
-    Begin
-      FAutoCreateProperties.TryGetValue(BaseClass, RTTIProperties);
-      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
-      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
-      FAutoCreateProperties.AddOrSetValue(BaseClass, RTTIProperties);
-    End;
-  end;
-end;
-
 class procedure G.InitializeObjectProperties(ARTTIType: TRTTIType);
 Var
   RTTIProperty : TRTTIProperty;
@@ -1111,11 +1106,17 @@ begin
   FDisplayPropertyNames := TDictionary<TgBaseClass, TArray<String>>.Create();
   FPersistableProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FPropertyValidationAttributes := TDictionary<TgBaseClass, TArray<TgPropertyValidationAttribute>>.Create();
+  FListProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
+  FPropertyFeatures := TDictionary<TRTTIProperty, TgPropertyFeatures>.Create();
+  FOwnedAttributes := TObjectList.Create();
   Initialize;
 end;
 
 class destructor G.Destroy;
 begin
+  FreeAndNil(FOwnedAttributes);
+  FreeAndNil(FPropertyFeatures);
+  FreeAndNil(FListProperties);
   FreeAndNil(FPropertyValidationAttributes);
   FreeAndNil(FPersistableProperties);
   FreeAndNil(FDisplayPropertyNames);
@@ -1186,23 +1187,6 @@ begin
     SetLength(RTTIProperties, Length(RTTIProperties) + 1);
     RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
     FPersistableProperties.AddOrSetValue(BaseClass, RTTIProperties);
-  end;
-end;
-
-class procedure G.InitializeCompositeProperties(ARTTIType: TRTTIType);
-var
-  BaseClass: TgBaseClass;
-  RTTIProperties: TArray<TRTTIProperty>;
-  RTTIProperty: TRTTIProperty;
-begin
-  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
-  for RTTIProperty in ObjectProperties(BaseClass) do
-  if Not RTTIProperty.IsWritable then
-  begin
-    FCompositeProperties.TryGetValue(BaseClass, RTTIProperties);
-    SetLength(RTTIProperties, Length(RTTIProperties) + 1);
-    RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
-    FCompositeProperties.AddOrSetValue(BaseClass, RTTIProperties);
   end;
 end;
 
@@ -1308,7 +1292,7 @@ var
     FPropertyValidationAttributes.TryGetValue(BaseClass, PropertyValidationAttributes);
     SetLength(PropertyValidationAttributes, Length(PropertyValidationAttributes) + 1);
     PropertyValidationAttribute.RTTIProperty := RTTIProperty;
-    PropertyValidationAttribute.ValidateAttribute := Validation(Attribute);
+    PropertyValidationAttribute.ValidationAttribute := Validation(Attribute);
     PropertyValidationAttributes[Length(PropertyValidationAttributes) - 1] := PropertyValidationAttribute;
     FPropertyValidationAttributes.AddOrSetValue(BaseClass, PropertyValidationAttributes);
   end;
@@ -1354,31 +1338,6 @@ begin
   end;
 end;
 
-class procedure G.InitializeSerializableProperties(ARTTIType : TRttiType);
-Var
-  RTTIProperties: TArray<TRTTIProperty>;
-  RTTIProperty : TRTTIProperty;
-Begin
-  for RTTIProperty in G.Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
-  begin
-    if (RTTIProperty.Visibility = mvPublished) And RTTIProperty.IsReadable
-      And Not (Serializable In TgBaseClass(ARTTIType.AsInstance.MetaclassType).FeatureExclusions(RTTIProperty))
-      And
-        (
-            (RTTIProperty.PropertyType.IsInstance And RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgBase))
-          Or
-            (Not RTTIProperty.PropertyType.IsInstance And RTTIProperty.IsWritable)
-        )
-    then
-    begin
-      FSerializableProperties.TryGetValue(TgBaseClass(ARTTIType.AsInstance.MetaclassType), RTTIProperties);
-      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
-      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
-      FSerializableProperties.AddOrSetValue(TgBaseClass(ARTTIType.AsInstance.MetaclassType), RTTIProperties);
-    end;
-  end;
-End;
-
 class procedure G.InitializeSerializationHelpers(ARTTIType: TRTTIType);
 var
   BaseClass: TgBaseClass;
@@ -1403,23 +1362,6 @@ begin
     Comparer.Free;
   end;
   FSerializationHelpers.AddOrSetValue(SerializerClass, List);
-end;
-
-class procedure G.InitializeVisibleProperties(ARTTIType: TRTTIType);
-var
-  BaseClass: TgBaseClass;
-  RTTIProperties: TArray<TRTTIProperty>;
-  RTTIProperty: TRTTIProperty;
-begin
-  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
-  for RTTIProperty in Properties(BaseClass) do
-  if (RTTIProperty.Visibility = mvPublished) and Not (TgFeature.Visible in BaseClass.FeatureExclusions(RTTIProperty)) then
-  begin
-    FVisibleProperties.TryGetValue(BaseClass, RTTIProperties);
-    SetLength(RTTIProperties, Length(RTTIProperties) + 1);
-    RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
-    FVisibleProperties.AddOrSetValue(BaseClass, RTTIProperties);
-  end;
 end;
 
 class function G.MethodByName(ABaseClass: TgBaseClass; const AName: String): TRTTIMethod;
@@ -1525,15 +1467,98 @@ begin
   Result := ClassValidationAttributes(TgBase(ABase.ClassType));
 end;
 
+class procedure G.InitializePropertyFeatures(ARTTIType: TRTTIType);
+var
+  BaseClass: TgBaseClass;
+  RTTIProperty: TRTTIProperty;
+  Features : TgPropertyFeatures;
+  PropertyValidationAttribute: TgPropertyValidationAttribute;
+  PropertyValidationAttributes: TArray<TgPropertyValidationAttribute>;
+  RTTIProperties: TArray<TRTTIProperty>;
+begin
+  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
+  for RTTIProperty in Properties(BaseClass) do
+  begin
+    Features := [];
+    //AutoCreate
+    If RTTIProperty.PropertyType.IsInstance And Not RTTIProperty.IsWritable And IsField(TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc) Then
+      Include(Features, AutoCreate);
+
+    //Composite
+    If RTTIProperty.PropertyType.IsInstance And Not RTTIProperty.IsWritable Then
+      Include(Features, Composite);
+
+    //Serializable
+    if RTTIProperty.IsReadable
+      And
+        (
+            (RTTIProperty.PropertyType.IsInstance And RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgBase))
+          Or
+            (Not RTTIProperty.PropertyType.IsInstance And RTTIProperty.IsWritable)
+        ) Then
+      Include(Features, Serializable);
+
+    //Visible
+    Include(Features, Visible);
+
+    Features := Features - BaseClass.ExcludeFeatures(RTTIProperty) + BaseClass.IncludeFeatures(RTTIProperty);
+
+    FPropertyFeatures.AddOrSetValue(RTTIProperty, Features);
+
+    if AutoCreate in Features then
+    Begin
+      FAutoCreateProperties.TryGetValue(BaseClass, RTTIProperties);
+      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
+      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
+      FAutoCreateProperties.AddOrSetValue(BaseClass, RTTIProperties);
+    End;
+
+    if Composite in Features then
+    begin
+      FCompositeProperties.TryGetValue(BaseClass, RTTIProperties);
+      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
+      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
+      FCompositeProperties.AddOrSetValue(BaseClass, RTTIProperties);
+    end;
+
+    if Required in Features then
+    begin
+      PropertyValidationAttribute.RTTIProperty := RTTIProperty;
+      PropertyValidationAttribute.ValidationAttribute := ValidateRequired.Create;
+      FOwnedAttributes.Add(PropertyValidationAttribute.ValidationAttribute);
+      FPropertyValidationAttributes.TryGetValue(BaseClass, PropertyValidationAttributes);
+      SetLength(PropertyValidationAttributes, Length(PropertyValidationAttributes) + 1);
+      PropertyValidationAttributes[Length(PropertyValidationAttributes) - 1] := PropertyValidationAttribute;
+      FPropertyValidationAttributes.AddOrSetValue(BaseClass, PropertyValidationAttributes);
+    end;
+
+    if Serializable in Features then
+    begin
+      FSerializableProperties.TryGetValue(BaseClass, RTTIProperties);
+      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
+      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
+      FSerializableProperties.AddOrSetValue(BaseClass, RTTIProperties);
+    end;
+
+    if Visible in Features then
+    begin
+      FVisibleProperties.TryGetValue(BaseClass, RTTIProperties);
+      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
+      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
+      FVisibleProperties.AddOrSetValue(BaseClass, RTTIProperties);
+    end;
+  end;
+end;
+
 class function G.VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
 begin
   FVisibleProperties.TryGetValue(ABaseClass, Result);
 end;
 
-constructor ExcludeFeature.Create(AFeatureExclusions: TgFeatureExclusions);
+constructor ExcludeFeatures.Create(AFeatures: TgPropertyFeatures);
 begin
   inherited Create;
-  FFeatureExclusions := AFeatureExclusions;
+  FFeatures := AFeatures;
 end;
 
 Constructor DefaultValue.Create(Const AValue : String);
@@ -1828,11 +1853,11 @@ end;
 
 { TgList<T> }
 
-class function TgList<T>.FeatureExclusions(ARTTIProperty: TRttiProperty): TgFeatureExclusions;
+class function TgList<T>.ExcludeFeatures(ARTTIProperty: TRttiProperty): TgPropertyFeatures;
 begin
-  Result := inherited FeatureExclusions(ARTTIProperty);
+  Result := inherited ExcludeFeatures(ARTTIProperty);
   if SameText(ARTTIProperty.Name, 'Current') then
-    Result := Result + [TgFeature.AutoCreate, TgFeature.Serializable];
+    Result := Result + [AutoCreate, Serializable];
 end;
 
 function TgList<T>.GetCurrent: T;
@@ -2745,13 +2770,13 @@ begin
   FValue := AValue;
 end;
 
-constructor Required.Create(AEnabled: Boolean = True);
+constructor ValidateRequired.Create(AEnabled: Boolean = True);
 begin
   inherited Create;
   FEnabled := AEnabled;
 end;
 
-procedure Required.Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty);
+procedure ValidateRequired.Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty);
 var
   RaiseException: Boolean;
   TempObject: TObject;
@@ -2775,12 +2800,18 @@ begin
     end;
   End;
   if RaiseException then
-    AObject.ValidationErrors[ARTTIProperty.Name] := Format('%s is required.', [ARTTIProperty.Name]);
+    AObject.ValidationErrors[ARTTIProperty.Name] := Format('%s is ValidateRequired.', [ARTTIProperty.Name]);
 end;
 
 procedure TgPropertyValidationAttribute.Execute(AObject: TgObject);
 begin
-  ValidateAttribute.Execute(AObject, RTTIProperty);
+  ValidationAttribute.Execute(AObject, RTTIProperty);
+end;
+
+constructor IncludeFeatures.Create(AFeatures: TgPropertyFeatures);
+begin
+  inherited Create;
+  FFeatures := AFeatures;
 end;
 
 Initialization
@@ -2790,7 +2821,4 @@ Initialization
   TgSerializationHelperJSONList.BaseClass;
 
 end.
-
-
-
 
