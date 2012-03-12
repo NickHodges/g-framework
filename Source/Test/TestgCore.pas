@@ -91,25 +91,22 @@ type
   published
     procedure SetUnwriteableIntegerProperty;
     property BooleanProperty: Boolean read FBooleanProperty write FBooleanProperty;
-    [IncludeFeatures([Required])]
+    [Required]
     property DateProperty: TDate read FDateProperty write FDateProperty;
-    [IncludeFeatures([Required])]
+    [Required]
     property DateTimeProperty: TDateTime read FDateTimeProperty write FDateTimeProperty;
-    [DefaultValue(5)]
-    [IncludeFeatures([Required])]
+    [DefaultValue(5)] [Required]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
     property ManuallyConstructedObjectProperty: TBase read GetManuallyConstructedObjectProperty;
-    [IncludeFeatures([Required])]
+    [Required]
     property ObjectProperty: TBase2 read FObjectProperty;
-    [DefaultValue('Test')]
-    [ExcludeFeatures([Serializable])]
-    [IncludeFeatures([Required])]
+    [DefaultValue('Test')] [NotSerializable] [Required]
     property StringProperty: String read FStringProperty write FStringProperty;
-    [ExcludeFeatures([AutoCreate])]
+    [NotAutoCreate]
     property UnconstructedObjectProperty: TgBase read FUnconstructedObjectProperty write FUnconstructedObjectProperty;
     property UnreadableIntegerProperty: Integer write FUnreadableIntegerProperty;
     property UnwriteableIntegerProperty: Integer read FUnwriteableIntegerProperty;
-    [IncludeFeatures([Required])]
+    [Required]
     property String5: TgString5 read FString5 write FString5;
     property Phone: TPhoneString read FPhone write FPhone;
   end;
@@ -511,12 +508,24 @@ begin
   Base.Phone := '1234567890';
   CheckTrue(Base.IsValid);
   Base.DateProperty := 0;
-  CheckFalse(Base.IsValid);
-  Check(Base.ValidationErrors['DateProperty'] > '');
+  CheckFalse(Base.IsValid, 'Base.IsValid (DateProperty)');
+  Check(Base.ValidationErrors['DateProperty'] > '', 'Base.ValidationErrors[''DateProperty''] > ''''');
   Base.DateProperty := Date;
   Base.DateTimeProperty := 0;
-  CheckFalse(Base.IsValid);
-  Check(Base.ValidationErrors['DateTimeProperty'] > '');
+  CheckFalse(Base.IsValid, 'Base.IsValid (DateTimeProperty)');
+  Check(Base.ValidationErrors['DateTimeProperty'] > '', 'Base.ValidationErrors[''DateTimeProperty''] > ''''');
+  Base.DateTimeProperty := Now;
+  Base.IntegerProperty := 0;
+  CheckFalse(Base.IsValid, 'Base.IsValid (DateProperty)');
+  Check(Base.ValidationErrors['IntegerProperty'] > '', 'Base.ValidationErrors[''Integer''] > ''''');
+  Base.IntegerProperty := 1;
+  Base.StringProperty := '';
+  CheckFalse(Base.IsValid, 'Base.IsValid (StringProperty)');
+  Check(Base.ValidationErrors['StringProperty'] > '', 'Base.ValidationErrors[''StringProperty''] > ''''');
+  Base.StringProperty := 'Hello';
+  Base.String5 := '';
+  CheckFalse(Base.IsValid, 'Base.IsValid (String5)');
+  Check(Base.ValidationErrors['String5'] > '', 'Base.ValidationErrors[''String5''] > ''''');
 end;
 
 destructor TBase.Destroy;
