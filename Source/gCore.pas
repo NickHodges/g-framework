@@ -27,8 +27,15 @@ type
   TgBase = class;
   {$M-}
 
+  TgPersistentObjectClass = class of TgPersistentObject;
+  TgTransactionIsolationLevel = ( ilReadCommitted, ilSnapshot, ilSerializable );
+
   TgList = class;
   TgObject = class;
+
+
+  TgPersistentObject = class;
+  TgPersistenceManager = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -263,6 +270,7 @@ type
     FClassValidationAttributes: TDictionary<TgBaseClass, TArray<Validation>>;
     FListProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FOwnedAttributes: TObjectList;
+    FPersistenceManagers: TDictionary<TgPersistentObjectClass, TgPersistenceManager>;
     FPropertyAttributes: TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>;
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
   var
@@ -313,6 +321,7 @@ type
     class procedure InitializeCompositeProperties(ARTTIType: TRTTIType); static;
     class procedure InitializeSerializableProperties(ARTTIType: TRTTIType); static;
     class procedure InitializeVisibleProperties(ARTTIType: TRTTIType); static;
+    class function PersistenceManagers(APersistentObjectClass: TgPersistentObjectClass): TgPersistenceManager; static;
     class function PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>; static;
     class function VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; static;
   end;
@@ -611,22 +620,17 @@ type
       TState = (osInspecting, osOriginalValues, osLoaded, osLoading, osSaving, osDeleting);
       TStates = Set Of TState;
   strict private
-    FOriginalValues: TgObject;
-    FStates: TStates;
     FValidationErrors: TgValidationErrors;
-    function GetIsOriginalValues: Boolean;
-    function GetOriginalValues: TgBase;
     function GetValidationErrors: TgValidationErrors;
     procedure PopulateDefaultValues;
-    procedure SetIsOriginalValues(const AValue: Boolean);
   strict protected
+    FStates: TStates;
     /// <summary>TgObject.AutoCreate gets called by the Create constructor to instantiate
     /// object properties. You may override this method in a descendant class to alter
     /// its behavior.
     /// </summary>
     procedure AutoCreate; virtual;
     function GetDisplayName: String; virtual;
-    function GetIsModified: Boolean; virtual;
     function GetIsValid: Boolean; virtual;
     procedure GetIsValidInternal; virtual;
     function GetIsInspecting: Boolean; override;
@@ -637,17 +641,10 @@ type
     function AllValidationErrors: String;
     class function DisplayPropertyNames: TArray<String>; inline;
     function HasValidationErrors: Boolean;
-    procedure InitializeOriginalValues; virtual;
-    function IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean; overload;
-    function IsPropertyModified(const APropertyName: string): Boolean; overload;
-    property IsModified: Boolean read GetIsModified;
-    property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
     property IsValid: Boolean read GetIsValid;
   published
     [NotVisible]
     property DisplayName: String read GetDisplayName;
-    [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible]
-    property OriginalValues: TgBase read GetOriginalValues;
     [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible]
     property ValidationErrors: TgValidationErrors read GetValidationErrors;
   end;
@@ -661,6 +658,78 @@ type
   end;
 
   EgValidation = class(Exception)
+  end;
+
+  TgPersistenceManager = class(TgObject)
+  strict private
+    FForClass: TgPersistentObjectClass;
+  public
+    procedure Commit(AObject: TgBase); virtual; abstract;
+    procedure DeleteObject(AObject: TgPersistentObject); virtual; abstract;
+    procedure LoadObject(AObject: TgPersistentObject); virtual; abstract;
+    procedure RollBack(AObject: TgBase); virtual; abstract;
+    procedure SaveObject(AObject: TgPersistentObject); virtual; abstract;
+    procedure StartTransaction(AObject: TgBase; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); virtual; abstract;
+    property ForClass: TgPersistentObjectClass read FForClass write FForClass;
+  End;
+
+  TgPersistentObject = class(TgObject)
+
+    type
+      E = Class(Exception)
+      End;
+
+  strict private
+    FOriginalValues: TgPersistentObject;
+    function GetIsDeleting: Boolean;
+    function GetIsOriginalValues: Boolean;
+    function GetIsSaving: Boolean;
+    function GetOriginalValues: TgBase;
+    class function GetPersistenceManager: TgPersistenceManager;
+    procedure SetIsDeleting(const AValue: Boolean);
+    procedure SetIsOriginalValues(const AValue: Boolean);
+    procedure SetIsSaving(const AValue: Boolean);
+  strict protected
+    procedure DoDelete; virtual;
+    procedure DoLoad; virtual;
+    procedure DoSave; virtual;
+    function GetCanDelete: Boolean; virtual;
+    function GetCanSave: Boolean; virtual;
+    function GetIsModified: Boolean; virtual;
+  public
+    destructor Destroy; override;
+    procedure InitializeOriginalValues; virtual;
+    function IsPropertyModified(const APropertyName: string): Boolean; overload;
+    function IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean; overload;
+    property IsDeleting: Boolean read GetIsDeleting write SetIsDeleting;
+    property IsModified: Boolean read GetIsModified;
+    property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
+    property IsSaving: Boolean read GetIsSaving write SetIsSaving;
+    property PersistenceManager: TgPersistenceManager read GetPersistenceManager;
+  published
+    procedure Delete; virtual;
+    [NotVisible]
+    function Load: Boolean; virtual;
+    procedure Save; virtual;
+    [NotVisible]
+    property CanDelete: Boolean read GetCanDelete;
+    [NotVisible]
+    property CanSave: Boolean read GetCanSave;
+    [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible]
+    property OriginalValues: TgBase read GetOriginalValues;
+  end;
+
+  TgIdentityObject<T> = class(TgPersistentObject)
+  strict private
+    FID: T;
+  strict protected
+    function GetID: T;
+    procedure SetID(const AValue: T);
+  published
+    property ID: T read GetID write SetID;
+  end;
+
+  TgIDObject = class(TgIdentityObject<Integer>)
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -1162,11 +1231,13 @@ begin
   FListProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FOwnedAttributes := TObjectList.Create();
   FPropertyAttributes := TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>.Create();
+  FPersistenceManagers := TDictionary<TgPersistentObjectClass, TgPersistenceManager>.Create();
   Initialize;
 end;
 
 class destructor G.Destroy;
 begin
+  FreeAndNil(FPersistenceManagers);
   FreeAndNil(FPropertyAttributes);
   FreeAndNil(FOwnedAttributes);
   FreeAndNil(FListProperties);
@@ -1285,15 +1356,15 @@ end;
 class procedure G.InitializeProperties(ARTTIType: TRTTIType);
 var
   RTTIProperties: TArray<TRTTIProperty>;
-  TempClass: TgBaseClass;
+  BaseClass: TgBaseClass;
   RTTIProperty: TRTTIProperty;
   Counter: Integer;
   Replaced: Boolean;
 begin
-  TempClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
+  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
   //Include all the ancestor properties
-  If TempClass <> TgBase Then
-    FProperties.TryGetValue(TgBaseClass(TempClass.ClassParent), RTTIProperties);
+  If BaseClass <> TgBase Then
+    FProperties.TryGetValue(TgBaseClass(BaseClass.ClassParent), RTTIProperties);
   //For each new property
   for RTTIProperty in ARTTIType.GetDeclaredProperties do
   if RTTIProperty.Visibility = mvPublished then
@@ -1316,18 +1387,20 @@ begin
       RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
     End;
   end;
-  FProperties.AddOrSetValue(TempClass, RTTIProperties);
+  FProperties.AddOrSetValue(BaseClass, RTTIProperties);
 end;
 
 class procedure G.InitializePropertyByName(ARTTIType: TRTTIType);
 var
+  BaseClass: TgBaseClass;
   RTTIProperty: TRTTIProperty;
   Key : String;
 begin
-  for RTTIProperty in G.Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
+  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
+  for RTTIProperty in G.Properties(BaseClass) do
   if RTTIProperty.Visibility = mvPublished then
   begin
-    Key := ARTTIType.AsInstance.MetaclassType.ClassName + '.' + UpperCase(RTTIProperty.Name);
+    Key := BaseClass.ClassName + '.' + UpperCase(RTTIProperty.Name);
     FPropertyByName.Add(Key, RTTIProperty);
   end;
 end;
@@ -1604,6 +1677,11 @@ begin
     RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
     FVisibleProperties.AddOrSetValue(BaseClass, RTTIProperties);
   end;
+end;
+
+class function G.PersistenceManagers(APersistentObjectClass: TgPersistentObjectClass): TgPersistenceManager;
+begin
+  FPersistenceManagers.TryGetValue(APersistentObjectClass, Result);
 end;
 
 class function G.PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>;
@@ -2429,7 +2507,7 @@ begin
   Else if Right.AsInstance.MetaclassType.InheritsFrom(Left.AsInstance.MetaclassType) then
     Result := -1
   Else
-    Result := 0;
+    Result := CompareText(Left.AsInstance.MetaclassType.ClassName, Right.AsInstance.MetaclassType.ClassName)
 end;
 
 Constructor TgBaseExpressionEvaluator.Create(AModel : TgBase);
@@ -2555,7 +2633,6 @@ var
   ObjectProperty: TgObject;
   RTTIProperty: TRTTIProperty;
 begin
-  FOriginalValues.Free;
   for RTTIProperty in G.AutoCreateProperties(Self) do
   Begin
     ObjectProperty := TgObject(RTTIProperty.GetValue(Self).AsObject);
@@ -2637,24 +2714,6 @@ begin
   Result := osInspecting in FStates;
 end;
 
-function TgObject.GetIsModified: Boolean;
-var
-  RTTIProperty: TRTTIProperty;
-begin
-  Result := False;
-  for RTTIProperty in G.PersistableProperties(Self) do
-  Begin
-    Result := IsPropertyModified(RTTIProperty);
-    if Result then
-      Exit;
-  end;
-end;
-
-function TgObject.GetIsOriginalValues: Boolean;
-begin
-  Result := osOriginalValues in FStates;
-end;
-
 function TgObject.GetIsValid: Boolean;
 var
   ObjectProperty: TgObject;
@@ -2679,19 +2738,9 @@ begin
     PropertyValidationAttribute.Execute(Self);
 end;
 
-function TgObject.GetOriginalValues: TgBase;
-begin
-  if Not IsInspecting And Not Assigned(FOriginalValues) then
-  Begin
-    FOriginalValues := TgObjectClass(Self.ClassType).Create(Owner);
-    FOriginalValues.IsOriginalValues := True;
-  End;
-  Result := FOriginalValues;
-end;
-
 function TgObject.GetValidationErrors: TgValidationErrors;
 begin
-  if Not IsInspecting And Not IsOriginalValues And Not Assigned(FValidationErrors) then
+  if Not IsInspecting And Not Assigned(FValidationErrors) then
     FValidationErrors := TgValidationErrors.Create;
   Result := FValidationErrors;
 end;
@@ -2717,26 +2766,6 @@ begin
   End;
 end;
 
-procedure TgObject.InitializeOriginalValues;
-begin
-  OriginalValues.Assign(Self);
-end;
-
-function TgObject.IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean;
-begin
-  If Not ARTTIProperty.PropertyType.IsInstance Then
-    Result := Not (ARTTIProperty.GetValue(Self).AsVariant = ARTTIProperty.GetValue(OriginalValues).AsVariant)
-  Else if ARTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgObject) then
-    Result := TgObject(ARTTIProperty.GetValue(Self).AsObject).IsModified
-  Else
-    Result := False;
-end;
-
-function TgObject.IsPropertyModified(const APropertyName: string): Boolean;
-begin
-  Result := IsPropertyModified(G.PropertyByName(Self, APropertyName));
-end;
-
 procedure TgObject.PopulateDefaultValues;
 Var
   Attribute : TCustomAttribute;
@@ -2751,14 +2780,6 @@ begin
     Include(FStates, osInspecting)
   Else
     Exclude(FStates, osInspecting);
-end;
-
-procedure TgObject.SetIsOriginalValues(const AValue: Boolean);
-begin
-  If AValue Then
-    Include(FStates, osOriginalValues)
-  Else
-    Exclude(FStates, osOriginalValues);
 end;
 
 constructor TgValidationErrors.Create(AOwner: TgBase = Nil);
@@ -2880,6 +2901,169 @@ constructor TgPropertyAttributeClassKey.Create(ARTTIProperty: TRttiProperty; AAt
 begin
   RTTIProperty := ARTTIProperty;
   AttributeClass := AAttributeClass;
+end;
+
+function TgIdentityObject<T>.GetID: T;
+begin
+  Result := FID;
+end;
+
+procedure TgIdentityObject<T>.SetID(const AValue: T);
+begin
+  FID := AValue;
+end;
+
+destructor TgPersistentObject.Destroy;
+begin
+  FreeAndNil(FOriginalValues);
+  inherited Destroy;
+end;
+
+procedure TgPersistentObject.Delete;
+begin
+  IsDeleting := True;
+  try
+    If CanDelete Then
+      DoDelete
+    Else
+      Raise E.CreateFmt('Cannot DoDelete ''%s'' object.', [ClassName]);
+  finally
+    IsDeleting := False;
+  end;
+end;
+
+procedure TgPersistentObject.DoDelete;
+begin
+  PersistenceManager.DeleteObject(Self);
+end;
+
+procedure TgPersistentObject.DoLoad;
+begin
+  PersistenceManager.LoadObject(Self);
+end;
+
+procedure TgPersistentObject.DoSave;
+begin
+  PersistenceManager.SaveObject(Self);
+end;
+
+function TgPersistentObject.GetCanDelete: Boolean;
+begin
+{ TODO : Create a real implementation }
+  Result := True;
+end;
+
+function TgPersistentObject.GetCanSave: Boolean;
+begin
+  Result := IsModified;
+  If Result And Not IsValid Then
+    Raise EgValidation.Create( AllValidationErrors );
+end;
+
+function TgPersistentObject.GetIsDeleting: Boolean;
+begin
+  Result := osDeleting in FStates;
+end;
+
+function TgPersistentObject.GetIsModified: Boolean;
+var
+  RTTIProperty: TRTTIProperty;
+begin
+  Result := False;
+  for RTTIProperty in G.PersistableProperties(Self) do
+  Begin
+    Result := IsPropertyModified(RTTIProperty);
+    if Result then
+      Exit;
+  end;
+end;
+
+function TgPersistentObject.GetIsOriginalValues: Boolean;
+begin
+  Result := osOriginalValues in FStates;
+end;
+
+function TgPersistentObject.GetIsSaving: Boolean;
+begin
+  Result := osSaving in FStates;
+end;
+
+function TgPersistentObject.GetOriginalValues: TgBase;
+begin
+  if Not IsInspecting And Not Assigned(FOriginalValues) then
+  Begin
+    FOriginalValues := TgPersistentObjectClass(Self.ClassType).Create(Owner);
+    FOriginalValues.IsOriginalValues := True;
+  End;
+  Result := FOriginalValues;
+end;
+
+class function TgPersistentObject.GetPersistenceManager: TgPersistenceManager;
+begin
+  Result := G.PersistenceManagers(Self);
+  if Not Assigned(Result) then
+    raise E.CreateFmt('%s has no persistence manager.', [ClassName]);
+end;
+
+procedure TgPersistentObject.InitializeOriginalValues;
+begin
+  OriginalValues.Assign(Self);
+end;
+
+function TgPersistentObject.IsPropertyModified(const APropertyName: string): Boolean;
+begin
+  Result := IsPropertyModified(G.PropertyByName(Self, APropertyName));
+end;
+
+function TgPersistentObject.IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean;
+begin
+  If Not ARTTIProperty.PropertyType.IsInstance Then
+    Result := Not (ARTTIProperty.GetValue(Self).AsVariant = ARTTIProperty.GetValue(OriginalValues).AsVariant)
+  Else if ARTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgPersistentObject) then
+    Result := TgPersistentObject(ARTTIProperty.GetValue(Self).AsObject).IsModified
+  Else
+    Result := False;
+end;
+
+function TgPersistentObject.Load: Boolean;
+begin
+  DoLoad;
+  Result := True;
+end;
+
+procedure TgPersistentObject.Save;
+begin
+  IsSaving := True;
+  try
+    If CanSave Then
+      DoSave;
+  finally
+    IsSaving := False;
+  End;
+end;
+
+procedure TgPersistentObject.SetIsDeleting(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, osDeleting)
+  Else
+    Exclude(FStates, osDeleting);  
+end;
+
+procedure TgPersistentObject.SetIsOriginalValues(const AValue: Boolean);
+begin
+  If AValue Then
+    Include(FStates, osOriginalValues)
+  Else
+    Exclude(FStates, osOriginalValues);
+end;
+
+procedure TgPersistentObject.SetIsSaving(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, osSaving)
+  else
+    Exclude(FStates, osSaving);  
 end;
 
 Initialization
