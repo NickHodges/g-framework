@@ -1063,32 +1063,6 @@ Begin
   End;
 End;
 
-// TODO: IncludeFeatures
-//// TODO: ExcludeFeatures
-////class function TgBase.ExcludeFeatures(ARTTIProperty: TRTTIProperty): TgPropertyFeatures;
-////var
-////Attribute: TCustomAttribute;
-////begin
-////Result := [];
-////for Attribute in ARTTIProperty.GetAttributes do
-////Begin
-////  if Attribute.InheritsFrom(gCore.ExcludeFeatures) Then
-////    Result := Result + gCore.ExcludeFeatures(Attribute).Features;
-////End;
-////end;
-//
-//class function TgBase.IncludeFeatures(ARTTIProperty: TRTTIProperty): TgPropertyFeatures;
-//var
-//Attribute: TCustomAttribute;
-//begin
-//Result := [];
-//for Attribute in ARTTIProperty.GetAttributes do
-//Begin
-//  if Attribute.InheritsFrom(gCore.IncludeFeatures) Then
-//    Result := Result + gCore.IncludeFeatures(Attribute).Features;
-//End;
-//end;
-
 class function TgBase.FriendlyName: String;
 Begin
   if SameText(UnitName, TgBase.UnitName) then
@@ -1701,7 +1675,7 @@ var
 begin
   BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
   for RTTIProperty in ObjectProperties(BaseClass) do
-  if Not RTTIProperty.IsWritable And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, NotComposite))) = 0) then
+  if (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, Composite))) > 0) Or (Not RTTIProperty.IsWritable And Not BaseClass.InheritsFrom(TgIdentityObject) And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, NotComposite))) = 0)) then
   begin
     FCompositeProperties.TryGetValue(BaseClass, RTTIProperties);
     SetLength(RTTIProperties, Length(RTTIProperties) + 1);
@@ -3157,6 +3131,8 @@ end;
 function TgIdentityObject.Load: Boolean;
 begin
   DoLoad;
+  if IsLoaded then
+    InitializeOriginalValues;
   Result := IsLoaded;
 end;
 
@@ -3329,6 +3305,4 @@ Initialization
   TgSerializationHelperJSONList.BaseClass;
 
 end.
-
-
 
