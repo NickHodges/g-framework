@@ -27,15 +27,16 @@ type
   TgBase = class;
   {$M-}
 
-  TgPersistentObjectClass = class of TgPersistentObject;
   TgTransactionIsolationLevel = ( ilReadCommitted, ilSnapshot, ilSerializable );
 
   TgList = class;
   TgObject = class;
 
 
-  TgPersistentObject = class;
+  TgIdentityObjectClass = class of TgIdentityObject;
+  TgIdentityObject = class;
   TgPersistenceManager = class;
+
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -270,7 +271,7 @@ type
     FClassValidationAttributes: TDictionary<TgBaseClass, TArray<Validation>>;
     FListProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FOwnedAttributes: TObjectList;
-    FPersistenceManagers: TDictionary<TgPersistentObjectClass, TgPersistenceManager>;
+    FPersistenceManagers: TDictionary<TgIdentityObjectClass, TgPersistenceManager>;
     FPropertyAttributes: TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>;
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
   var
@@ -284,13 +285,21 @@ type
     class procedure InitializeDisplayPropertyNames(ARTTIType: TRTTIType); static;
     class procedure InitializeMethodByName(ARTTIType: TRTTIType); static;
     class procedure InitializeObjectProperties(ARTTIType: TRTTIType); static;
+    class procedure InitializePersistenceManagers(ARTTIType: TRTTIType); static;
     class procedure InitializeProperties(ARTTIType: TRTTIType); static;
     class procedure InitializePropertyByName(ARTTIType: TRTTIType); static;
     class procedure InitializeRecordProperty(ARTTIType: TRTTIType); static;
     class procedure InitializeSerializationHelpers(ARTTIType: TRTTIType); static;
+    class procedure InitializeAutoCreate(ARTTIType: TRTTIType); static;
+    class procedure InitializeCompositeProperties(ARTTIType: TRTTIType); static;
+    class procedure InitializeSerializableProperties(ARTTIType: TRTTIType); static;
+    class procedure InitializeVisibleProperties(ARTTIType: TRTTIType); static;
+    class procedure InitializePersistableProperties(ARTTIType: TRTTIType); static;
+    class procedure InitializePropertyValidationAttributes(ARTTIType: TRTTIType); static;
   public
     class constructor Create;
     class destructor Destroy;
+    class function ApplicationPath: String; static;
     class function Attributes(ABaseClass: TgBaseClass; AAttributeClass: TCustomAttributeClass): TArray<TCustomAttribute>; overload; static;
     class function Attributes(ABase: TgBase; AAttributeClass: TCustomAttributeClass): Tarray<TCustomAttribute>; overload; static;
     class function AutoCreateProperties(AInstance: TgBase): TArray<TRTTIProperty>; overload; static; inline;
@@ -298,8 +307,6 @@ type
     class function CompositeProperties(AClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function CompositeProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
     class function DisplayPropertyNames(AClass: TgBaseClass): TArray<String>; static;
-    class procedure InitialializePersistableProperties(ARTTIType: TRTTIType); static;
-    class procedure InitializePropertyValidationAttributes(ARTTIType: TRTTIType); static;
     class function MethodByName(ABaseClass: TgBaseClass; const AName: String): TRTTIMethod; overload; static;
     class function MethodByName(ABase: TgBase; const AName: String): TRTTIMethod; overload; static;
     class function ObjectProperties(AInstance: TgBase): TArray<TRTTIProperty>; overload; static; inline;
@@ -317,11 +324,9 @@ type
     class function SerializationHelpers(ASerializerClass: TgSerializerClass; AObject: TgBase): TgSerializationHelperClass; static;
     class function ClassValidationAttributes(AClass: TgBaseClass): TArray<Validation>; overload; static;
     class function ClassValidationAttributes(ABase: TgBase): TArray<Validation>; overload; static;
-    class procedure InitializeAutoCreate(ARTTIType: TRTTIType); static;
-    class procedure InitializeCompositeProperties(ARTTIType: TRTTIType); static;
-    class procedure InitializeSerializableProperties(ARTTIType: TRTTIType); static;
-    class procedure InitializeVisibleProperties(ARTTIType: TRTTIType); static;
-    class function PersistenceManagers(APersistentObjectClass: TgPersistentObjectClass): TgPersistenceManager; static;
+    class function DataPath: String; static;
+    class function PersistenceManagerPath: String; static;
+    class function PersistenceManagers(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager; static;
     class function PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>; static;
     class function VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; static;
   end;
@@ -662,31 +667,33 @@ type
 
   TgPersistenceManager = class(TgObject)
   strict private
-    FForClass: TgPersistentObjectClass;
+    FForClass: TgIdentityObjectClass;
   public
-    procedure Commit(AObject: TgBase); virtual; abstract;
-    procedure DeleteObject(AObject: TgPersistentObject); virtual; abstract;
-    procedure LoadObject(AObject: TgPersistentObject); virtual; abstract;
-    procedure RollBack(AObject: TgBase); virtual; abstract;
-    procedure SaveObject(AObject: TgPersistentObject); virtual; abstract;
-    procedure StartTransaction(AObject: TgBase; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); virtual; abstract;
-    property ForClass: TgPersistentObjectClass read FForClass write FForClass;
+    procedure Commit(AObject: TgIdentityObject); virtual; abstract;
+    procedure DeleteObject(AObject: TgIdentityObject); virtual; abstract;
+    procedure LoadObject(AObject: TgIdentityObject); virtual; abstract;
+    procedure RollBack(AObject: TgIdentityObject); virtual; abstract;
+    procedure SaveObject(AObject: TgIdentityObject); virtual; abstract;
+    procedure StartTransaction(AObject: TgIdentityObject; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); virtual; abstract;
+    property ForClass: TgIdentityObjectClass read FForClass write FForClass;
   End;
 
-  TgPersistentObject = class(TgObject)
+  TgIdentityObject = class(TgObject)
 
     type
       E = Class(Exception)
       End;
 
   strict private
-    FOriginalValues: TgPersistentObject;
+    FID: Variant;
+    FOriginalValues: TgIdentityObject;
     function GetIsDeleting: Boolean;
+    function GetIsLoaded: Boolean;
     function GetIsOriginalValues: Boolean;
     function GetIsSaving: Boolean;
     function GetOriginalValues: TgBase;
-    class function GetPersistenceManager: TgPersistenceManager;
     procedure SetIsDeleting(const AValue: Boolean);
+    procedure SetIsLoaded(const AValue: Boolean);
     procedure SetIsOriginalValues(const AValue: Boolean);
     procedure SetIsSaving(const AValue: Boolean);
   strict protected
@@ -695,22 +702,29 @@ type
     procedure DoSave; virtual;
     function GetCanDelete: Boolean; virtual;
     function GetCanSave: Boolean; virtual;
+    function GetID: Variant;
     function GetIsModified: Boolean; virtual;
+    procedure SetID(const AValue: Variant);
   public
     destructor Destroy; override;
+    procedure Commit;
     procedure InitializeOriginalValues; virtual;
     function IsPropertyModified(const APropertyName: string): Boolean; overload;
     function IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean; overload;
+    class function PersistenceManager: TgPersistenceManager;
+    procedure Rollback;
+    procedure StartTransaction(ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
     property IsDeleting: Boolean read GetIsDeleting write SetIsDeleting;
+    property IsLoaded: Boolean read GetIsLoaded write SetIsLoaded;
     property IsModified: Boolean read GetIsModified;
     property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
     property IsSaving: Boolean read GetIsSaving write SetIsSaving;
-    property PersistenceManager: TgPersistenceManager read GetPersistenceManager;
   published
     procedure Delete; virtual;
     [NotVisible]
     function Load: Boolean; virtual;
     procedure Save; virtual;
+    property ID: Variant read GetID write SetID;
     [NotVisible]
     property CanDelete: Boolean read GetCanDelete;
     [NotVisible]
@@ -719,9 +733,7 @@ type
     property OriginalValues: TgBase read GetOriginalValues;
   end;
 
-  TgIdentityObject<T> = class(TgPersistentObject)
-  strict private
-    FID: T;
+  TgIdentityObject<T> = class(TgIdentityObject)
   strict protected
     function GetID: T;
     procedure SetID(const AValue: T);
@@ -732,7 +744,31 @@ type
   TgIDObject = class(TgIdentityObject<Integer>)
   end;
 
+  TgPersistenceManagerFile = class(TgPersistenceManager)
+
+    type
+      E = class(Exception)
+      end;
+
+  strict private
+    function Filename: String;
+    procedure LoadList(const AList: TgList<TgIdentityObject>);
+    function Locate(const AList: TgList<TgIdentityObject>; AObject: TgIdentityObject): Boolean;
+    procedure SaveList(const AList: TgList<TgIdentityObject>);
+  public
+    procedure Commit(AObject: TgIdentityObject); override;
+    procedure StartTransaction(AObject: TgIdentityObject; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); override;
+    procedure RollBack(AObject: TgIdentityObject); override;
+    procedure LoadObject(AObject: TgIdentityObject); override;
+    procedure SaveObject(AObject: TgIdentityObject); override;
+    procedure DeleteObject(AObject: TgIdentityObject); override;
+  end;
+
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
+
+Function FileToString(AFileName : String) : String;
+
+Procedure StringToFile(const AString, AFileName : String);
 
 implementation
 
@@ -741,7 +777,8 @@ Uses
   Variants,
   XML.XMLDOM,
   Math,
-  gExpressionEvaluator
+  gExpressionEvaluator,
+  StrUtils
 ;
 
 Const
@@ -794,6 +831,31 @@ Begin
     AHead := APath;
     ATail := '';
   End;
+End;
+
+Function FileToString(AFileName : String) : String;
+Var
+  StringStream : TStringStream;
+Begin
+  StringStream := TStringStream.Create('');
+  try
+    StringStream.LoadFromFile(AFileName);
+    Result := StringStream.DataString;
+  finally
+    StringStream.Free;
+  end;
+End;
+
+Procedure StringToFile(const AString, AFileName : String);
+Var
+  StringStream : TStringStream;
+Begin
+  StringStream := TStringStream.Create(AString);
+  try
+    StringStream.SaveToFile(AFileName);
+  finally
+    StringStream.Free;
+  end;
 End;
 
 function TgBase.OwnerByClass(AClass: TgBaseClass): TgBase;
@@ -1092,6 +1154,11 @@ var
   RTTIType: TRTTIType;
   Comparer: TgBaseClassComparer;
 begin
+  for RTTIType in FRTTIContext.GetTypes do
+  begin
+    If RTTIType.IsInstance And RTTIType.AsInstance.MetaclassType.InheritsFrom(TgSerializationHelper) And Not (RTTIType.AsInstance.MetaclassType = TgSerializationHelper) Then
+      InitializeSerializationHelpers(RTTIType);
+  end;
   //Make sure the types are in ancestral order
   BaseTypes := TList<TRTTIType>.Create;
   try
@@ -1119,14 +1186,11 @@ begin
       InitializeCompositeProperties(RTTIType);
       InitializeSerializableProperties(RTTIType);
       InitializeVisibleProperties(RTTIType);
+      InitializePersistableProperties(RTTIType);
+      InitializePersistenceManagers(RTTIType);
     end;
   finally
     BaseTypes.Free;
-  end;
-  for RTTIType in FRTTIContext.GetTypes do
-  begin
-    If RTTIType.IsInstance And RTTIType.AsInstance.MetaclassType.InheritsFrom(TgSerializationHelper) And Not (RTTIType.AsInstance.MetaclassType = TgSerializationHelper) Then
-      InitializeSerializationHelpers(RTTIType);
   end;
 end;
 
@@ -1231,12 +1295,16 @@ begin
   FListProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FOwnedAttributes := TObjectList.Create();
   FPropertyAttributes := TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>.Create();
-  FPersistenceManagers := TDictionary<TgPersistentObjectClass, TgPersistenceManager>.Create();
+  FPersistenceManagers := TDictionary<TgIdentityObjectClass, TgPersistenceManager>.Create();
   Initialize;
 end;
 
 class destructor G.Destroy;
+var
+  PersistenceManager : TgPersistenceManager;
 begin
+  for PersistenceManager in FPersistenceManagers.Values do
+    PersistenceManager.Free;
   FreeAndNil(FPersistenceManagers);
   FreeAndNil(FPropertyAttributes);
   FreeAndNil(FOwnedAttributes);
@@ -1257,6 +1325,11 @@ begin
   FreeAndNil(FAttributes);
   FreeAndNil(FProperties);
   FRTTIContext.Free;
+end;
+
+class function G.ApplicationPath: String;
+begin
+  Result := IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0))) + '..');
 end;
 
 class function G.Attributes(ABaseClass: TgBaseClass; AAttributeClass: TCustomAttributeClass): TArray<TCustomAttribute>;
@@ -1298,7 +1371,7 @@ begin
   FDisplayPropertyNames.TryGetValue(AClass, Result);
 end;
 
-class procedure G.InitialializePersistableProperties(ARTTIType: TRTTIType);
+class procedure G.InitializePersistableProperties(ARTTIType: TRTTIType);
 var
   BaseClass: TgBaseClass;
   RTTIProperties: TArray<TRTTIProperty>;
@@ -1593,6 +1666,11 @@ begin
   Result := ClassValidationAttributes(TgBase(ABase.ClassType));
 end;
 
+class function G.DataPath: String;
+begin
+  Result := IncludeTrailingPathDelimiter(ApplicationPath + 'Data');
+end;
+
 class procedure G.InitializeAutoCreate(ARTTIType: TRTTIType);
 Var
   RTTIProperty : TRTTIProperty;
@@ -1630,6 +1708,35 @@ begin
     RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
     FCompositeProperties.AddOrSetValue(BaseClass, RTTIProperties);
   end;
+end;
+
+class procedure G.InitializePersistenceManagers(ARTTIType: TRTTIType);
+var
+  FileName: string;
+  IdentityObjectClass: TgIdentityObjectClass;
+  PersistenceManager: TgPersistenceManager;
+begin
+  IdentityObjectClass := TgIdentityObjectClass(ARTTIType.AsInstance.MetaclassType);
+  if (IdentityObjectClass <> TgIdentityObject) And IdentityObjectClass.InheritsFrom(TgIdentityObject) then
+  Begin
+    FileName := Format('%s%s.xml', [G.PersistenceManagerPath, IdentityObjectClass.FriendlyName]);
+    FileName := ReplaceText(ReplaceText(FileName, '<', '('), '>', ')');
+    if FileExists(FileName) then
+    Begin
+ { TODO : We need a real implementation here. }
+      PersistenceManager := TgPersistenceManagerFile.Create;
+      PersistenceManager.ForClass := IdentityObjectClass;
+      FPersistenceManagers.AddOrSetValue(IdentityObjectClass, PersistenceManager);
+    End
+    Else
+    Begin
+      ForceDirectories(G.PersistenceManagerPath);
+      PersistenceManager := TgPersistenceManagerFile.Create;
+      PersistenceManager.ForClass := IdentityObjectClass;
+      FPersistenceManagers.AddOrSetValue(IdentityObjectClass, PersistenceManager);
+      StringToFile(PersistenceManager.Serialize(TgSerializerXML), FileName);
+    End;
+  End;
 end;
 
 class procedure G.InitializeSerializableProperties(ARTTIType: TRTTIType);
@@ -1679,9 +1786,14 @@ begin
   end;
 end;
 
-class function G.PersistenceManagers(APersistentObjectClass: TgPersistentObjectClass): TgPersistenceManager;
+class function G.PersistenceManagerPath: String;
 begin
-  FPersistenceManagers.TryGetValue(APersistentObjectClass, Result);
+  Result := IncludeTrailingPathDelimiter(ApplicationPath + 'PersistenceManagers');
+end;
+
+class function G.PersistenceManagers(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager;
+begin
+  FPersistenceManagers.TryGetValue(AIdentityObjectClass, Result);
 end;
 
 class function G.PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>;
@@ -1988,7 +2100,7 @@ class function TgList<T>.AddAttributes(ARTTIProperty: TRttiProperty): System.TAr
 begin
   Result := inherited AddAttributes(ARTTIProperty);
   if SameText(ARTTIProperty.Name, 'Current') then
-  Begin  
+  Begin
     SetLength(Result, Length(Result) + 2);
     Result[Length(Result) - 2] := NotAutoCreate.Create;
     Result[Length(Result) - 1] := NotSerializable.Create;
@@ -2810,7 +2922,7 @@ begin
       AValue := TempString
     else
       AValue := '';
-    Result := True;  
+    Result := True;
   End;
 end;
 
@@ -2905,21 +3017,28 @@ end;
 
 function TgIdentityObject<T>.GetID: T;
 begin
-  Result := FID;
+//  Result := Inherited GetID;
+  Result := TValue.FromVariant(inherited ID).AsType<T>;
 end;
 
 procedure TgIdentityObject<T>.SetID(const AValue: T);
 begin
-  FID := AValue;
+//  Inherited SetID(AValue);
+  inherited ID := TValue.From<T>(AValue).AsVariant;
 end;
 
-destructor TgPersistentObject.Destroy;
+destructor TgIdentityObject.Destroy;
 begin
   FreeAndNil(FOriginalValues);
   inherited Destroy;
 end;
 
-procedure TgPersistentObject.Delete;
+procedure TgIdentityObject.Commit;
+begin
+  PersistenceManager.Commit(Self);
+end;
+
+procedure TgIdentityObject.Delete;
 begin
   IsDeleting := True;
   try
@@ -2932,40 +3051,50 @@ begin
   end;
 end;
 
-procedure TgPersistentObject.DoDelete;
+procedure TgIdentityObject.DoDelete;
 begin
   PersistenceManager.DeleteObject(Self);
 end;
 
-procedure TgPersistentObject.DoLoad;
+procedure TgIdentityObject.DoLoad;
 begin
   PersistenceManager.LoadObject(Self);
 end;
 
-procedure TgPersistentObject.DoSave;
+procedure TgIdentityObject.DoSave;
 begin
   PersistenceManager.SaveObject(Self);
 end;
 
-function TgPersistentObject.GetCanDelete: Boolean;
+function TgIdentityObject.GetCanDelete: Boolean;
 begin
 { TODO : Create a real implementation }
   Result := True;
 end;
 
-function TgPersistentObject.GetCanSave: Boolean;
+function TgIdentityObject.GetCanSave: Boolean;
 begin
   Result := IsModified;
   If Result And Not IsValid Then
     Raise EgValidation.Create( AllValidationErrors );
 end;
 
-function TgPersistentObject.GetIsDeleting: Boolean;
+function TgIdentityObject.GetID: Variant;
+begin
+  Result := FID;
+end;
+
+function TgIdentityObject.GetIsDeleting: Boolean;
 begin
   Result := osDeleting in FStates;
 end;
 
-function TgPersistentObject.GetIsModified: Boolean;
+function TgIdentityObject.GetIsLoaded: Boolean;
+begin
+  Result := osLoaded in FStates;
+end;
+
+function TgIdentityObject.GetIsModified: Boolean;
 var
   RTTIProperty: TRTTIProperty;
 begin
@@ -2978,60 +3107,65 @@ begin
   end;
 end;
 
-function TgPersistentObject.GetIsOriginalValues: Boolean;
+function TgIdentityObject.GetIsOriginalValues: Boolean;
 begin
   Result := osOriginalValues in FStates;
 end;
 
-function TgPersistentObject.GetIsSaving: Boolean;
+function TgIdentityObject.GetIsSaving: Boolean;
 begin
   Result := osSaving in FStates;
 end;
 
-function TgPersistentObject.GetOriginalValues: TgBase;
+function TgIdentityObject.GetOriginalValues: TgBase;
 begin
   if Not IsInspecting And Not Assigned(FOriginalValues) then
   Begin
-    FOriginalValues := TgPersistentObjectClass(Self.ClassType).Create(Owner);
+    FOriginalValues := TgIdentityObjectClass(Self.ClassType).Create(Owner);
     FOriginalValues.IsOriginalValues := True;
   End;
   Result := FOriginalValues;
 end;
 
-class function TgPersistentObject.GetPersistenceManager: TgPersistenceManager;
+class function TgIdentityObject.PersistenceManager: TgPersistenceManager;
 begin
   Result := G.PersistenceManagers(Self);
   if Not Assigned(Result) then
     raise E.CreateFmt('%s has no persistence manager.', [ClassName]);
 end;
 
-procedure TgPersistentObject.InitializeOriginalValues;
+procedure TgIdentityObject.InitializeOriginalValues;
 begin
   OriginalValues.Assign(Self);
 end;
 
-function TgPersistentObject.IsPropertyModified(const APropertyName: string): Boolean;
+function TgIdentityObject.IsPropertyModified(const APropertyName: string): Boolean;
 begin
   Result := IsPropertyModified(G.PropertyByName(Self, APropertyName));
 end;
 
-function TgPersistentObject.IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean;
+function TgIdentityObject.IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean;
 begin
   If Not ARTTIProperty.PropertyType.IsInstance Then
     Result := Not (ARTTIProperty.GetValue(Self).AsVariant = ARTTIProperty.GetValue(OriginalValues).AsVariant)
-  Else if ARTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgPersistentObject) then
-    Result := TgPersistentObject(ARTTIProperty.GetValue(Self).AsObject).IsModified
+  Else if ARTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityObject) then
+    Result := TgIdentityObject(ARTTIProperty.GetValue(Self).AsObject).IsModified
   Else
     Result := False;
 end;
 
-function TgPersistentObject.Load: Boolean;
+function TgIdentityObject.Load: Boolean;
 begin
   DoLoad;
-  Result := True;
+  Result := IsLoaded;
 end;
 
-procedure TgPersistentObject.Save;
+procedure TgIdentityObject.Rollback;
+begin
+  PersistenceManager.RollBack(Self);
+end;
+
+procedure TgIdentityObject.Save;
 begin
   IsSaving := True;
   try
@@ -3042,15 +3176,28 @@ begin
   End;
 end;
 
-procedure TgPersistentObject.SetIsDeleting(const AValue: Boolean);
+procedure TgIdentityObject.SetID(const AValue: Variant);
+begin
+  FID := AValue;
+end;
+
+procedure TgIdentityObject.SetIsDeleting(const AValue: Boolean);
 begin
   if AValue then
     Include(FStates, osDeleting)
   Else
-    Exclude(FStates, osDeleting);  
+    Exclude(FStates, osDeleting);
 end;
 
-procedure TgPersistentObject.SetIsOriginalValues(const AValue: Boolean);
+procedure TgIdentityObject.SetIsLoaded(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, osLoaded)
+  else
+    Exclude(FStates, osLoaded);
+end;
+
+procedure TgIdentityObject.SetIsOriginalValues(const AValue: Boolean);
 begin
   If AValue Then
     Include(FStates, osOriginalValues)
@@ -3058,12 +3205,121 @@ begin
     Exclude(FStates, osOriginalValues);
 end;
 
-procedure TgPersistentObject.SetIsSaving(const AValue: Boolean);
+procedure TgIdentityObject.SetIsSaving(const AValue: Boolean);
 begin
   if AValue then
     Include(FStates, osSaving)
   else
-    Exclude(FStates, osSaving);  
+    Exclude(FStates, osSaving);
+end;
+
+procedure TgIdentityObject.StartTransaction(ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
+begin
+  PersistenceManager.StartTransaction(Self, ATransactionIsolationLevel);
+end;
+
+procedure TgPersistenceManagerFile.Commit(AObject: TgIdentityObject);
+begin
+
+end;
+
+procedure TgPersistenceManagerFile.DeleteObject(AObject: TgIdentityObject);
+var
+  List: TgList<TgIdentityObject>;
+  ID : String;
+begin
+  List := TgList<TgIdentityObject>.Create;
+  try
+    List.ItemClass := TgBaseClass(AObject.ClassType);
+    LoadList(List);
+    if Locate(List, AObject) then
+      List.Delete
+    Else
+    Begin
+      ID := AObject.ID;
+      E.CreateFmt('Delete failed. %s with an key of %s not found.', [AObject.ClassName, ID]);
+    End;
+    SaveList(List);
+  finally
+    List.Free;
+  end;
+end;
+
+function TgPersistenceManagerFile.Filename: String;
+begin
+  Result := Format('%s%s.json', [G.DataPath, ForClass.FriendlyName]);
+  Result := ReplaceText(ReplaceText(Result, '<', '('), '>', ')');
+end;
+
+procedure TgPersistenceManagerFile.LoadList(const AList: TgList<TgIdentityObject>);
+begin
+  if Not FileExists(FileName) then
+  Begin
+    ForceDirectories(ExtractFilePath(FileName));
+    StringToFile(AList.Serialize(TgSerializerJSON), FileName);
+  End;
+  AList.Deserialize(TgSerializerJSON, FileToString(FileName));
+end;
+
+procedure TgPersistenceManagerFile.LoadObject(AObject: TgIdentityObject);
+var
+  List: TgList<TgIdentityObject>;
+begin
+  List := TgList<TgIdentityObject>.Create;
+  try
+    List.ItemClass := TgBaseClass(AObject.ClassType);
+    LoadList(List);
+    AObject.IsLoaded := Locate(List, AObject);
+    If AObject.IsLoaded Then
+      AObject.Assign(List.Current);
+  finally
+    List.Free;
+  end;
+end;
+
+function TgPersistenceManagerFile.Locate(const AList: TgList<TgIdentityObject>; AObject: TgIdentityObject): Boolean;
+begin
+  AList.First;
+  while Not AList.EOL do
+  Begin
+  if AList.Current.ID = AObject.ID  then
+    Exit(True);
+    AList.Next;
+  End;
+  Result := False;
+end;
+
+procedure TgPersistenceManagerFile.RollBack(AObject: TgIdentityObject);
+begin
+
+end;
+
+procedure TgPersistenceManagerFile.SaveList(const AList: TgList<TgIdentityObject>);
+begin
+  ForceDirectories(ExtractFilePath(FileName));
+  StringToFile(AList.Serialize(TgSerializerJSON), FileName);
+end;
+
+procedure TgPersistenceManagerFile.SaveObject(AObject: TgIdentityObject);
+var
+  List: TgList<TgIdentityObject>;
+begin
+  List := TgList<TgIdentityObject>.Create;
+  try
+    List.ItemClass := TgBaseClass(AObject.ClassType);
+    LoadList(List);
+    If Not Locate(List, AObject) then
+      List.Add;
+    List.Current.Assign(AObject);
+    SaveList(List);
+  finally
+    List.Free;
+  end;
+end;
+
+procedure TgPersistenceManagerFile.StartTransaction(AObject: TgIdentityObject; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
+begin
+
 end;
 
 Initialization
@@ -3073,4 +3329,6 @@ Initialization
   TgSerializationHelperJSONList.BaseClass;
 
 end.
+
+
 

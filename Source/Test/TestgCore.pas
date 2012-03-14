@@ -191,6 +191,23 @@ type
     procedure TestCreate(BOL: Integer; const Value: string);
   end;
 
+  TIdentityObject = class(TgIDObject)
+  strict private
+    FName: String;
+  published
+    property Name: String read FName write FName;
+  end;
+
+  TestTIdentityObject = class(TTestCase)
+  strict private
+    FIdentityObject: TIdentityObject;
+  public
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Save;
+  end;
+
 implementation
 
 Uses
@@ -1028,11 +1045,39 @@ begin
     AObject.ValidationErrors[ARTTIProperty.Name] := 'A phone number must contain at least seven digits.';
 end;
 
+procedure TestTIdentityObject.Save;
+begin
+  FIdentityObject.ID := 1;
+  FIdentityObject.Name := 'One';
+  FIdentityObject.Save;
+  FIdentityObject.ID := 2;
+  FIdentityObject.Name := 'Two';
+  FIdentityObject.Save;
+  FIdentityObject.ID := 3;
+  FIdentityObject.Name := 'Three';
+  FIdentityObject.Save;
+  FIdentityObject.Name := '';
+  FIdentityObject.Load;
+  CheckEquals('Three', FIdentityObject.Name);
+end;
+
+procedure TestTIdentityObject.SetUp;
+begin
+  FIdentityObject := TIdentityObject.Create;
+end;
+
+procedure TestTIdentityObject.TearDown;
+begin
+  FIdentityObject.Free;
+  FIdentityObject := nil;
+end;
+
 initialization
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
   RegisterTest(TestTgString5.Suite);
   RegisterTest(TestTBase2List.Suite);
+  RegisterTest(TestTIdentityObject.Suite);
 end.
 
 
