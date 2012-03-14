@@ -37,6 +37,7 @@ type
   TgIdentityObject = class;
   TgPersistenceManager = class;
 
+  TgIdentityList = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -402,7 +403,7 @@ type
  ///  <seealso cref="gCore|TgList{T}" />
   TgList = class(TgBase)
     Type
-      TState = (lsInspecting, lsOrdered, lsFiltered);
+      TState = (lsInspecting, lsOrdered, lsFiltered, lsSorted, lsActivating, lsActive);
       TStates = Set of TState;
 
       /// <summary> Structure used by the <see cref="GetEnumerator" /> to allow For-in
@@ -436,16 +437,15 @@ type
     FOrderBy: String;
     FOrderByList: TObjectList<TgOrderByItem>;
     FWhere: String;
-    FStates: TStates;
+    FCurrentIndex: Integer;
     function GetIsFiltered: Boolean;
     function GetIsOrdered: Boolean;
     function GetList: TList<TgBase>;
     function GetOrderByList: TObjectList<TgOrderByItem>;
     procedure SetIsFiltered(const AValue: Boolean);
     procedure SetIsOrdered(const AValue: Boolean);
-  private
-    FCurrentIndex: Integer;
   strict protected
+    FStates: TStates;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; override;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; override;
     function GetBOL: Boolean; virtual;
@@ -669,9 +669,12 @@ type
   strict private
     FForClass: TgIdentityObjectClass;
   public
+    procedure ActivateList(AIdentityList: TgIdentityList); virtual; abstract;
     procedure Commit(AObject: TgIdentityObject); virtual; abstract;
+    procedure CreatePersistentStorage; virtual; abstract;
     procedure DeleteObject(AObject: TgIdentityObject); virtual; abstract;
     procedure LoadObject(AObject: TgIdentityObject); virtual; abstract;
+    function PersistentStorageExists: Boolean; virtual; abstract;
     procedure RollBack(AObject: TgIdentityObject); virtual; abstract;
     procedure SaveObject(AObject: TgIdentityObject); virtual; abstract;
     procedure StartTransaction(AObject: TgIdentityObject; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); virtual; abstract;
@@ -762,6 +765,32 @@ type
     procedure LoadObject(AObject: TgIdentityObject); override;
     procedure SaveObject(AObject: TgIdentityObject); override;
     procedure DeleteObject(AObject: TgIdentityObject); override;
+    procedure ActivateList(AIdentityList: TgIdentityList); override;
+    function PersistentStorageExists: Boolean; override;
+    procedure CreatePersistentStorage; override;
+  end;
+
+  TgIdentityList = class(TgList)
+  strict private
+    procedure EnsureActive;
+    function GetIsActivating: Boolean;
+    procedure SetIsActivating(const AValue: Boolean);
+  strict protected
+    procedure SetActive(const AValue: Boolean); virtual;
+    function GetActive: Boolean; virtual;
+    function GetItemClass: TgIdentityObjectClass; reintroduce; virtual;
+    procedure SetItemClass(const AValue: TgIdentityObjectClass); reintroduce; virtual;
+    function GetBOL: Boolean; override;
+    function GetEOL: Boolean; override;
+    property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
+  public
+    property Active: Boolean read GetActive write SetActive;
+    property IsActivating: Boolean read GetIsActivating write SetIsActivating;
+  published
+    procedure First; override;
+    procedure Last; override;
+    procedure Next; override;
+    procedure Previous; override;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -2137,6 +2166,7 @@ procedure TgList.Assign(ASource: TgBase);
 var
   Item: TgBase;
 begin
+  Clear;
   inherited Assign(ASource);
   for Item in TgList(ASource) do
   begin
@@ -2585,12 +2615,26 @@ end;
 { TgBaseClassComparer }
 
 function TgBaseClassComparer.Compare(const Left, Right: TRTTIType): Integer;
+
+  function Level(ARTTIType : TRTTIType) : Integer;
+  var
+    BaseClass : TClass;
+  begin
+    Result := 0;
+    BaseClass := ARTTIType.AsInstance.MetaclassType;
+    while BaseClass <> TgBase do
+    Begin
+      Inc(Result);
+      BaseClass := BaseClass.ClassParent;
+    End;
+  end;
+
 begin
   if Left = Right then
     Result := 0
-  Else if Left.AsInstance.MetaclassType.InheritsFrom(Right.AsInstance.MetaclassType) then
+  Else if Level(Left) > Level(Right) then
     Result := 1
-  Else if Right.AsInstance.MetaclassType.InheritsFrom(Left.AsInstance.MetaclassType) then
+  Else if Level(Right) > Level(Left) then
     Result := -1
   Else
     Result := CompareText(Left.AsInstance.MetaclassType.ClassName, Right.AsInstance.MetaclassType.ClassName)
@@ -3194,9 +3238,62 @@ begin
   PersistenceManager.StartTransaction(Self, ATransactionIsolationLevel);
 end;
 
-procedure TgPersistenceManagerFile.Commit(AObject: TgIdentityObject);
+procedure TgPersistenceManagerFile.ActivateList(AIdentityList: TgIdentityList);
+var
+  List: TgList<TgIdentityObject>;
+  IdentityObject: TgIdentityObject;
 begin
+  List := TgList<TgIdentityObject>.Create;
+  try
+    List.ItemClass := AIdentityList.ItemClass;
+    LoadList(List);
+    AIdentityList.Clear;
+    AIdentityList.IsFiltered := AIdentityList.Where > '';
+    for IdentityObject in List do
+    if Not AIdentityList.IsFiltered Or Eval(AIdentityList.Where, IdentityObject) then
+    begin
+      AIdentityList.Add;
+      AIdentityList.Current.Assign(IdentityObject);
+    end;
+  finally
+    List.Free;
+  end;
+end;
 
+procedure TgPersistenceManagerFile.Commit(AObject: TgIdentityObject);
+var
+  List: TgList<TgIdentityObject>;
+  ID : String;
+begin
+  List := TgList<TgIdentityObject>.Create;
+  try
+    List.ItemClass := TgBaseClass(AObject.ClassType);
+    LoadList(List);
+    if Locate(List, AObject) then
+      List.Delete
+    Else
+    Begin
+      ID := AObject.ID;
+      E.CreateFmt('Delete failed. %s with an key of %s not found.', [AObject.ClassName, ID]);
+    End;
+    SaveList(List);
+  finally
+    List.Free;
+  end;
+end;
+
+procedure TgPersistenceManagerFile.CreatePersistentStorage;
+var
+  List: TgList<TgIdentityObject>;
+begin
+  ForceDirectories(ExtractFilePath(FileName));
+  List := TgList<TgIdentityObject>.Create;
+  try
+    List.ItemClass := ForClass;
+    StringToFile(List.Serialize(TgSerializerJSON), FileName);
+  finally
+    List.Free;
+  end;
 end;
 
 procedure TgPersistenceManagerFile.DeleteObject(AObject: TgIdentityObject);
@@ -3229,11 +3326,8 @@ end;
 
 procedure TgPersistenceManagerFile.LoadList(const AList: TgList<TgIdentityObject>);
 begin
-  if Not FileExists(FileName) then
-  Begin
-    ForceDirectories(ExtractFilePath(FileName));
-    StringToFile(AList.Serialize(TgSerializerJSON), FileName);
-  End;
+  if Not PersistentStorageExists then
+    CreatePersistentStorage;
   AList.Deserialize(TgSerializerJSON, FileToString(FileName));
 end;
 
@@ -3263,6 +3357,11 @@ begin
     AList.Next;
   End;
   Result := False;
+end;
+
+function TgPersistenceManagerFile.PersistentStorageExists: Boolean;
+begin
+  Result := FileExists(FileName);
 end;
 
 procedure TgPersistenceManagerFile.RollBack(AObject: TgIdentityObject);
@@ -3296,6 +3395,104 @@ end;
 procedure TgPersistenceManagerFile.StartTransaction(AObject: TgIdentityObject; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
 begin
 
+end;
+
+procedure TgIdentityList.EnsureActive;
+begin
+  if Not Active then
+    Active := True;
+end;
+
+procedure TgIdentityList.First;
+begin
+  EnsureActive;
+  inherited;
+end;
+
+function TgIdentityList.GetActive: Boolean;
+begin
+  Result := lsActive in FStates;
+end;
+
+function TgIdentityList.GetBOL: Boolean;
+begin
+  EnsureActive;
+  Result := inherited GetBOL;
+end;
+
+function TgIdentityList.GetEOL: Boolean;
+begin
+  EnsureActive;
+  Result := inherited GetEOL;
+end;
+
+function TgIdentityList.GetIsActivating: Boolean;
+begin
+  Result := lsActivating in FStates;
+end;
+
+function TgIdentityList.GetItemClass: TgIdentityObjectClass;
+begin
+  Result := TgIdentityObjectClass(Inherited ItemClass);
+end;
+
+procedure TgIdentityList.Last;
+begin
+  EnsureActive;
+  inherited;
+end;
+
+procedure TgIdentityList.Next;
+begin
+  EnsureActive;
+  inherited;
+end;
+
+procedure TgIdentityList.Previous;
+begin
+  EnsureActive;
+  inherited;
+end;
+
+procedure TgIdentityList.SetActive(const AValue: Boolean);
+begin
+  If Not IsActivating And (Active <> AValue) Then
+  Begin
+    IsFiltered := False;
+    IsOrdered := False;
+    if AValue then
+    Begin
+      IsActivating := True;
+      try
+        ItemClass.PersistenceManager.ActivateList(Self);
+        if Not IsFiltered then
+          Filter;
+        if Not IsOrdered then
+          Sort;
+      finally
+        IsActivating := False;
+      end;
+    End
+    Else
+      Clear;
+    if AValue then
+      Include(FStates, lsActive)
+    else
+      Exclude(FStates, lsActive);
+  End;
+end;
+
+procedure TgIdentityList.SetIsActivating(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, lsActivating)
+  Else
+    Exclude(FStates, lsActivating);
+end;
+
+procedure TgIdentityList.SetItemClass(const AValue: TgIdentityObjectClass);
+begin
+  Inherited ItemClass := AValue;
 end;
 
 Initialization
