@@ -102,17 +102,25 @@ type
 
   TgSerializerClass = class of TgSerializer;
   TgSerializer = Class(TObject)
+
+    type
+      E = class(Exception)
+      end;
+
   Public
     constructor Create; virtual;
     procedure AddObjectProperty(const APropertyName: string; AObject: TgBase); virtual; abstract;
     procedure AddValueProperty(const AName: String; AValue: Variant); virtual; abstract;
+    function CreateAndDeserialize(const AString: String; AOwner: TgBase = Nil): TgBase;
     procedure Deserialize(AObject: TgBase; const AString: String); virtual; abstract;
+    function ExtractClassName(const AString: string): String; virtual; abstract;
     function Serialize(AObject: TgBase): String; virtual; abstract;
   End;
 
   TgSerializerJSON = class(TgSerializer)
   strict private
     FJSONObject: TJSONObject;
+    procedure Load(const AString: string);
   public
     constructor Create; override;
     destructor Destroy; override;
@@ -120,20 +128,23 @@ type
     procedure AddValueProperty(const AName: string; AValue: Variant); override;
     procedure AddObjectProperty(const APropertyName: string; AObject: TgBase); override;
     procedure Deserialize(AObject: TgBase; const AString: string); override;
+    function ExtractClassName(const AString: string): string; override;
     property JSONObject: TJSONObject read FJSONObject write FJSONObject;
   end;
 
   TgSerializerXML = class(TgSerializer)
-  private
+  strict private
     FCurrentNode: IXMLNode;
     FDocument: TXMLDocument;
     FDocumentInterface : IXMLDocument;
+    procedure Load(const AString: String);
   public
     constructor Create; override;
     procedure AddValueProperty(const AName: String; AValue: Variant); override;
     procedure Deserialize(AObject: TgBase; const AString: String); override;
     function Serialize(AObject: TgBase): string; override;
     procedure AddObjectProperty(const APropertyName: string; AObject: TgBase); override;
+    function ExtractClassName(const AString: string): string; override;
     property CurrentNode: IXMLNode read FCurrentNode write FCurrentNode;
     property Document: TXMLDocument read FDocument;
   end;
@@ -275,7 +286,6 @@ type
     FPersistenceManagers: TDictionary<TgIdentityObjectClass, TgPersistenceManager>;
     FPropertyAttributes: TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>;
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
-  var
     class procedure Initialize; static;
     /// <summary>G.InitializeAttributes initializes the cache of attributes for the
     /// class passed in the ARTTIType parameter.  For property attributes, it assigns
@@ -305,6 +315,7 @@ type
     class function Attributes(ABase: TgBase; AAttributeClass: TCustomAttributeClass): Tarray<TCustomAttribute>; overload; static;
     class function AutoCreateProperties(AInstance: TgBase): TArray<TRTTIProperty>; overload; static; inline;
     class function AutoCreateProperties(AClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
+    class function ClassByName(const AName: String): TgBaseClass; static;
     class function CompositeProperties(AClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function CompositeProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
     class function DisplayPropertyNames(AClass: TgBaseClass): TArray<String>; static;
@@ -1098,6 +1109,7 @@ Begin
     Result := Copy(ClassName, 3, MaxInt)
   Else
     Result := Copy(ClassName, 2, MaxInt);
+  Result := ReplaceText(ReplaceText(Result, '<', '_'), '>', '_')
 End;
 
 function TgBase.GetFriendlyClassName: String;
@@ -1359,6 +1371,16 @@ begin
   FAutoCreateProperties.TryGetValue(AClass, Result);
 end;
 
+class function G.ClassByName(const AName: String): TgBaseClass;
+var
+  RTTIType: TRTTIType;
+begin
+  Result := Nil;
+  RTTIType := FRTTIContext.FindType(AName);
+  if Assigned(RTTIType) And RTTIType.IsInstance And RTTIType.AsInstance.MetaclassType.InheritsFrom(TgBase) then
+    Result := TgBaseClass(RTTIType.AsInstance.MetaclassType);
+end;
+
 class function G.CompositeProperties(AClass: TgBaseClass): TArray<TRTTIProperty>;
 begin
   FCompositeProperties.TryGetValue(AClass, Result);
@@ -1425,7 +1447,7 @@ begin
   if (RTTIMethod.Visibility = mvPublished) And (Length(RTTIMethod.GetParameters) = 0) then
   begin
     Key := ARTTIType.AsInstance.MetaclassType.ClassName + '.' + UpperCase(RTTIMethod.Name);
-    FMethodByName.Add(Key, RTTIMethod);
+    FMethodByName.AddOrSetValue(Key, RTTIMethod);
   end;
 end;
 
@@ -1718,16 +1740,20 @@ var
   FileName: string;
   IdentityObjectClass: TgIdentityObjectClass;
   PersistenceManager: TgPersistenceManager;
+  Serializer: TgSerializerXML;
 begin
   IdentityObjectClass := TgIdentityObjectClass(ARTTIType.AsInstance.MetaclassType);
   if (IdentityObjectClass <> TgIdentityObject) And IdentityObjectClass.InheritsFrom(TgIdentityObject) then
   Begin
     FileName := Format('%s%s.xml', [G.PersistenceManagerPath, IdentityObjectClass.FriendlyName]);
-    FileName := ReplaceText(ReplaceText(FileName, '<', '('), '>', ')');
     if FileExists(FileName) then
     Begin
- { TODO : We need a real implementation here. }
-      PersistenceManager := TgPersistenceManagerFile.Create;
+      Serializer := TgSerializerXML.Create;
+      try
+        PersistenceManager := TgPersistenceManager(Serializer.CreateAndDeserialize(FileToString(FileName)));
+      finally
+        Serializer.Free;
+      end;
       PersistenceManager.ForClass := IdentityObjectClass;
       FPersistenceManagers.AddOrSetValue(IdentityObjectClass, PersistenceManager);
     End
@@ -1839,6 +1865,22 @@ begin
   inherited Create;
 end;
 
+function TgSerializer.CreateAndDeserialize(const AString: String; AOwner: TgBase = Nil): TgBase;
+var
+  BaseClass: TgBaseClass;
+  BaseClassName: String;
+begin
+  BaseClassName := ExtractClassName(AString);
+  BaseClass := G.ClassByName(BaseClassName);
+  if Assigned(BaseClass) then
+  Begin
+    Result := BaseClass.Create(AOwner);
+    Deserialize(Result, AString);
+  End
+  Else
+    raise E.CreateFmt('Serializer could not find class %s in which to deserialize.', [BaseClassName]);
+end;
+
 constructor TgSerializerJSON.Create;
 begin
   inherited Create;
@@ -1876,10 +1918,22 @@ procedure TgSerializerJSON.Deserialize(AObject: TgBase; const AString: string);
 var
   SerializationHelperJSONBaseClass: TgSerializationHelperJSONBaseClass;
 begin
-  FreeAndNil(FJSONObject);
-  JSONObject := TJSONObject.ParseJSONValue(AString) As TJSONObject;
+  if FJSONObject.Size = 0 then
+    Load(AString);
   SerializationHelperJSONBaseClass := TgSerializationHelperJSONBaseClass(G.SerializationHelpers(TgSerializerJSON, AObject));
   SerializationHelperJSONBaseClass.Deserialize(AObject, JSONObject);
+end;
+
+function TgSerializerJSON.ExtractClassName(const AString: string): string;
+begin
+  Load(AString);
+  Result := JSONObject.Get('ClassName').JsonValue.Value;
+end;
+
+procedure TgSerializerJSON.Load(const AString: string);
+begin
+  FreeAndNil(FJSONObject);
+  JSONObject := TJSONObject.ParseJSONValue(AString) As TJSONObject;
 end;
 
 function TgSerializerJSON.Serialize(AObject: TgBase): string;
@@ -1923,10 +1977,22 @@ procedure TgSerializerXML.Deserialize(AObject: TgBase; const AString: String);
 var
   SerializationHelperXMLBaseClass: TgSerializationHelperXMLBaseClass;
 begin
-  Document.LoadFromXML(AString);
-  FCurrentNode := Document.DocumentElement.ChildNodes[0];
+  if Not Document.Active then
+    Load(AString);
   SerializationHelperXMLBaseClass := TgSerializationHelperXMLBaseClass(G.SerializationHelpers(TgSerializerXML, AObject));
   SerializationHelperXMLBaseClass.Deserialize(AObject, CurrentNode);
+end;
+
+function TgSerializerXML.ExtractClassName(const AString: string): string;
+begin
+  Load(AString);
+  Result := CurrentNode.Attributes['classname'];
+end;
+
+procedure TgSerializerXML.Load(const AString: String);
+begin
+  Document.LoadFromXML(AString);
+  FCurrentNode := Document.DocumentElement.ChildNodes[0];
 end;
 
 function TgSerializerXML.Serialize(AObject: TgBase): string;
@@ -3261,25 +3327,8 @@ begin
 end;
 
 procedure TgPersistenceManagerFile.Commit(AObject: TgIdentityObject);
-var
-  List: TgList<TgIdentityObject>;
-  ID : String;
 begin
-  List := TgList<TgIdentityObject>.Create;
-  try
-    List.ItemClass := TgBaseClass(AObject.ClassType);
-    LoadList(List);
-    if Locate(List, AObject) then
-      List.Delete
-    Else
-    Begin
-      ID := AObject.ID;
-      E.CreateFmt('Delete failed. %s with an key of %s not found.', [AObject.ClassName, ID]);
-    End;
-    SaveList(List);
-  finally
-    List.Free;
-  end;
+
 end;
 
 procedure TgPersistenceManagerFile.CreatePersistentStorage;
@@ -3290,7 +3339,7 @@ begin
   List := TgList<TgIdentityObject>.Create;
   try
     List.ItemClass := ForClass;
-    StringToFile(List.Serialize(TgSerializerJSON), FileName);
+    StringToFile(List.Serialize(TgSerializerXML), FileName);
   finally
     List.Free;
   end;
@@ -3310,7 +3359,7 @@ begin
     Else
     Begin
       ID := AObject.ID;
-      E.CreateFmt('Delete failed. %s with an key of %s not found.', [AObject.ClassName, ID]);
+      Raise E.CreateFmt('Delete failed. %s with an key of %s not found.', [AObject.ClassName, ID]);
     End;
     SaveList(List);
   finally
@@ -3320,15 +3369,14 @@ end;
 
 function TgPersistenceManagerFile.Filename: String;
 begin
-  Result := Format('%s%s.json', [G.DataPath, ForClass.FriendlyName]);
-  Result := ReplaceText(ReplaceText(Result, '<', '('), '>', ')');
+  Result := Format('%s%s.xml', [G.DataPath, ForClass.FriendlyName]);
 end;
 
 procedure TgPersistenceManagerFile.LoadList(const AList: TgList<TgIdentityObject>);
 begin
   if Not PersistentStorageExists then
     CreatePersistentStorage;
-  AList.Deserialize(TgSerializerJSON, FileToString(FileName));
+  AList.Deserialize(TgSerializerXML, FileToString(FileName));
 end;
 
 procedure TgPersistenceManagerFile.LoadObject(AObject: TgIdentityObject);
@@ -3372,7 +3420,7 @@ end;
 procedure TgPersistenceManagerFile.SaveList(const AList: TgList<TgIdentityObject>);
 begin
   ForceDirectories(ExtractFilePath(FileName));
-  StringToFile(AList.Serialize(TgSerializerJSON), FileName);
+  StringToFile(AList.Serialize(TgSerializerXML), FileName);
 end;
 
 procedure TgPersistenceManagerFile.SaveObject(AObject: TgIdentityObject);
