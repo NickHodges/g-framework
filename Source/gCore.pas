@@ -464,7 +464,7 @@ type
     function GetCanNext: Boolean; virtual;
     function GetCanPrevious: Boolean; virtual;
     function GetCount: Integer; virtual;
-    function GetCurrent: TgBase;
+    function GetCurrent: TgBase; virtual;
     function GetCurrentIndex: Integer; virtual;
     function GetEOL: Boolean; virtual;
     function GetHasItems: Boolean; virtual;
@@ -562,8 +562,6 @@ type
   Public
     type
       EgList = class(Exception);
-  Strict Protected
-    type
 
       /// <summary> Structure used by the <see cref="GetEnumerator" /> to allow For-in
       /// loops.</summary>
@@ -582,13 +580,16 @@ type
         function MoveNext: Boolean;
         property Current: T read GetCurrent;
       End;
-    function GetCurrent: T;
+
+  strict protected
+    procedure SetItemClass(const Value: TgBaseClass); override;
+    function GetCurrent: T; reintroduce; virtual;
     function GetItems(AIndex : Integer): T; reintroduce; virtual;
     procedure SetItems(AIndex : Integer; const AValue: T); reintroduce; virtual;
-    function GetItemClass: TgBaseClass; override;
   Public
     function GetEnumerator: TgEnumerator;
     class function AddAttributes(ARTTIProperty: TRttiProperty): System.TArray<System.TCustomAttribute>; override;
+    constructor Create(AOwner: TgBase = nil); override;
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   Published
     property Current: T read GetCurrent;
@@ -682,6 +683,7 @@ type
   public
     procedure ActivateList(AIdentityList: TgIdentityList); virtual; abstract;
     procedure Commit(AObject: TgIdentityObject); virtual; abstract;
+    function Count(AIdentityList: TgIdentityList): Integer; virtual; abstract;
     procedure CreatePersistentStorage; virtual; abstract;
     procedure DeleteObject(AObject: TgIdentityObject); virtual; abstract;
     procedure LoadObject(AObject: TgIdentityObject); virtual; abstract;
@@ -779,6 +781,7 @@ type
     procedure ActivateList(AIdentityList: TgIdentityList); override;
     function PersistentStorageExists: Boolean; override;
     procedure CreatePersistentStorage; override;
+    function Count(AIdentityList: TgIdentityList): Integer; override;
   end;
 
   TgIdentityList = class(TgList)
@@ -789,19 +792,52 @@ type
   strict protected
     procedure SetActive(const AValue: Boolean); virtual;
     function GetActive: Boolean; virtual;
-    function GetItemClass: TgIdentityObjectClass; reintroduce; virtual;
-    procedure SetItemClass(const AValue: TgIdentityObjectClass); reintroduce; virtual;
     function GetBOL: Boolean; override;
     function GetEOL: Boolean; override;
-    property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
+    function GetCount: Integer; override;
+    function GetCurrent: TgIdentityObject; reintroduce; virtual;
+    function GetItemClass: TgIdentityObjectClass; reintroduce; virtual;
+    procedure SetItemClass(const Value: TgIdentityObjectClass); reintroduce; virtual;
   public
     property Active: Boolean read GetActive write SetActive;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
+    property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
   published
     procedure First; override;
     procedure Last; override;
     procedure Next; override;
     procedure Previous; override;
+    procedure Delete; override;
+    [NotAutoCreate] [NotSerializable]
+    property Current: TgIdentityObject read GetCurrent;
+  end;
+
+  TgIdentityList<T: TgIdentityObject> = class(TgIdentityList)
+  type
+
+    TgEnumerator = record
+    private
+      FCurrentIndex: Integer;
+      FList: TgIdentityList<T>;
+      SavedCurrentIndex: Integer;
+      function GetCurrent: T;
+    public
+      procedure Init(AList: TgIdentityList<T>);
+      function MoveNext: Boolean;
+      property Current: T read GetCurrent;
+    End;
+
+  strict protected
+    function GetCurrent: T; reintroduce; virtual;
+    function GetItems(AIndex : Integer): T; reintroduce; virtual;
+    procedure SetItems(AIndex : Integer; const AValue: T); reintroduce; virtual;
+  public
+    class function AddAttributes(ARTTIProperty: TRttiProperty): System.TArray<System.TCustomAttribute>; override;
+    function GetEnumerator: TgEnumerator;
+    constructor Create(AOwner: TgBase = nil); override;
+    property Items[AIndex : Integer]: T read GetItems write SetItems; default;
+  published
+    property Current: T read GetCurrent;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -809,6 +845,8 @@ procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 Function FileToString(AFileName : String) : String;
 
 Procedure StringToFile(const AString, AFileName : String);
+
+function CreateAndDeserializeFromFile(ASerializerClass: TgSerializerClass; const AFileName: String): TgBase;
 
 implementation
 
@@ -897,6 +935,18 @@ Begin
     StringStream.Free;
   end;
 End;
+
+function CreateAndDeserializeFromFile(ASerializerClass: TgSerializerClass; const AFileName: String): TgBase;
+var
+  Serializer: TgSerializer;
+begin
+  Serializer := ASerializerClass.Create;
+  try
+    Result := Serializer.CreateAndDeserialize(FileToString(AFileName));
+  finally
+    Serializer.Free;
+  end;
+end;
 
 function TgBase.OwnerByClass(AClass: TgBaseClass): TgBase;
 begin
@@ -1740,7 +1790,6 @@ var
   FileName: string;
   IdentityObjectClass: TgIdentityObjectClass;
   PersistenceManager: TgPersistenceManager;
-  Serializer: TgSerializerXML;
 begin
   IdentityObjectClass := TgIdentityObjectClass(ARTTIType.AsInstance.MetaclassType);
   if (IdentityObjectClass <> TgIdentityObject) And IdentityObjectClass.InheritsFrom(TgIdentityObject) then
@@ -1748,12 +1797,7 @@ begin
     FileName := Format('%s%s.xml', [G.PersistenceManagerPath, IdentityObjectClass.FriendlyName]);
     if FileExists(FileName) then
     Begin
-      Serializer := TgSerializerXML.Create;
-      try
-        PersistenceManager := TgPersistenceManager(Serializer.CreateAndDeserialize(FileToString(FileName)));
-      finally
-        Serializer.Free;
-      end;
+      PersistenceManager := TgPersistenceManager(CreateAndDeserializeFromFile(TgSerializerXML, FileName));
       PersistenceManager.ForClass := IdentityObjectClass;
       FPersistenceManagers.AddOrSetValue(IdentityObjectClass, PersistenceManager);
     End
@@ -2165,6 +2209,12 @@ begin
   Result := TgSerializerXML;
 end;
 
+constructor TgList<T>.Create(AOwner: TgBase = nil);
+begin
+  Inherited Create(AOwner);
+  ItemClass := T;
+end;
+
 class function TgList<T>.AddAttributes(ARTTIProperty: TRttiProperty): System.TArray<System.TCustomAttribute>;
 begin
   Result := inherited AddAttributes(ARTTIProperty);
@@ -2196,11 +2246,11 @@ Begin
   Result.Init(Self);
 End;
 
-function TgList<T>.GetItemClass: TgBaseClass;
+procedure TgList<T>.SetItemClass(const Value: TgBaseClass);
 begin
-  if Not Assigned(Inherited GetItemClass) then
-    Inherited SetItemClass(T);
-  Result := inherited GetItemClass;
+  if Assigned(Value) And  Not Value.InheritsFrom(T) then
+    raise EgList.CreateFmt('Attempt to set an item class of %s with a non-descendant value of %s.', [T.ClassName, Value.ClassName]);
+  Inherited SetItemClass(Value);
 end;
 
 { TgList }
@@ -2490,6 +2540,8 @@ end;
 
 procedure TgList.SetItemClass(const Value: TgBaseClass);
 begin
+  if Not Assigned(Value) then
+    raise EgList.Create('Attempted to set a NIL item class.');
   FItemClass := Value;
 end;
 
@@ -2536,7 +2588,7 @@ begin
   if (Count > 0) then
   Begin
 //    EnsureOrderByDefault;
-    Comparer := TgComparer.Create(FOrderByList);
+    Comparer := TgComparer.Create(OrderByList);
     try
       List.Sort(Comparer);
     finally
@@ -3313,10 +3365,11 @@ begin
   try
     List.ItemClass := AIdentityList.ItemClass;
     LoadList(List);
+    List.Where := AIdentityList.Where;
+    List.Filter;
     AIdentityList.Clear;
-    AIdentityList.IsFiltered := AIdentityList.Where > '';
+    AIdentityList.IsFiltered := List.IsFiltered;
     for IdentityObject in List do
-    if Not AIdentityList.IsFiltered Or Eval(AIdentityList.Where, IdentityObject) then
     begin
       AIdentityList.Add;
       AIdentityList.Current.Assign(IdentityObject);
@@ -3329,6 +3382,22 @@ end;
 procedure TgPersistenceManagerFile.Commit(AObject: TgIdentityObject);
 begin
 
+end;
+
+function TgPersistenceManagerFile.Count(AIdentityList: TgIdentityList): Integer;
+var
+  List: TgList<TgIdentityObject>;
+begin
+  List := TgList<TgIdentityObject>.Create;
+  try
+    List.ItemClass := AIdentityList.ItemClass;
+    LoadList(List);
+    List.Where := AIdentityList.Where;
+    List.Filter;
+    Result := List.Count;
+  finally
+    List.Free;
+  end;
 end;
 
 procedure TgPersistenceManagerFile.CreatePersistentStorage;
@@ -3445,6 +3514,13 @@ begin
 
 end;
 
+procedure TgIdentityList.Delete;
+begin
+  EnsureActive;
+  Current.Delete;
+  inherited Delete;
+end;
+
 procedure TgIdentityList.EnsureActive;
 begin
   if Not Active then
@@ -3468,6 +3544,19 @@ begin
   Result := inherited GetBOL;
 end;
 
+function TgIdentityList.GetCount: Integer;
+begin
+  if Not Active then
+    Result := ItemClass.PersistenceManager.Count(Self)
+  Else
+    Result := Inherited GetCount;
+end;
+
+function TgIdentityList.GetCurrent: TgIdentityObject;
+Begin
+  Result := TgIdentityObject(Inherited GetCurrent);
+End;
+
 function TgIdentityList.GetEOL: Boolean;
 begin
   EnsureActive;
@@ -3481,7 +3570,7 @@ end;
 
 function TgIdentityList.GetItemClass: TgIdentityObjectClass;
 begin
-  Result := TgIdentityObjectClass(Inherited ItemClass);
+  Result := TgIdentityObjectClass(Inherited GetItemClass);
 end;
 
 procedure TgIdentityList.Last;
@@ -3512,6 +3601,7 @@ begin
     Begin
       IsActivating := True;
       try
+        Clear;
         ItemClass.PersistenceManager.ActivateList(Self);
         if Not IsFiltered then
           Filter;
@@ -3527,6 +3617,7 @@ begin
       Include(FStates, lsActive)
     else
       Exclude(FStates, lsActive);
+    First;
   End;
 end;
 
@@ -3538,9 +3629,75 @@ begin
     Exclude(FStates, lsActivating);
 end;
 
-procedure TgIdentityList.SetItemClass(const AValue: TgIdentityObjectClass);
+procedure TgIdentityList.SetItemClass(const Value: TgIdentityObjectClass);
 begin
-  Inherited ItemClass := AValue;
+  Inherited SetItemClass(Value);
+end;
+
+constructor TgIdentityList<T>.Create(AOwner: TgBase = nil);
+begin
+  Inherited Create(AOwner);
+  ItemClass := T;
+end;
+
+class function TgIdentityList<T>.AddAttributes(ARTTIProperty: TRttiProperty): System.TArray<System.TCustomAttribute>;
+begin
+  Result := inherited AddAttributes(ARTTIProperty);
+  if SameText(ARTTIProperty.Name, 'Current') then
+  Begin
+    SetLength(Result, Length(Result) + 2);
+    Result[Length(Result) - 2] := NotAutoCreate.Create;
+    Result[Length(Result) - 1] := NotSerializable.Create;
+  End;
+end;
+
+function TgIdentityList<T>.GetCurrent: T;
+Begin
+  Result := T(Inherited GetCurrent);
+End;
+
+function TgIdentityList<T>.GetEnumerator: TgEnumerator;
+Begin
+  Result.Init(Self);
+End;
+
+function TgIdentityList<T>.GetItems(AIndex : Integer): T;
+Begin
+  Result := T(Inherited GetItems(AIndex));
+End;
+
+procedure TgIdentityList<T>.SetItems(AIndex : Integer; const AValue: T);
+Begin
+  Inherited SetItems(AIndex, AValue);
+End;
+
+function TgIdentityList<T>.TgEnumerator.GetCurrent: T;
+begin
+  FList.CurrentIndex := FCurrentIndex;
+  Result := FList.Current;
+  FList.CurrentIndex := SavedCurrentIndex;
+end;
+
+procedure TgIdentityList<T>.TgEnumerator.Init(AList: TgIdentityList<T>);
+begin
+  FList := AList;
+  SavedCurrentIndex := FList.CurrentIndex;
+  FList.First;
+  FCurrentIndex := -1;
+end;
+
+function TgIdentityList<T>.TgEnumerator.MoveNext: Boolean;
+begin
+  If FList.Count = 0 Then
+    Exit(False);
+  if FCurrentIndex > -1 then
+  Begin
+    FList.CurrentIndex := FCurrentIndex;
+    FList.Next;
+  End;
+  Inc(FCurrentIndex);
+  Result := Not FList.EOL;
+  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 Initialization
