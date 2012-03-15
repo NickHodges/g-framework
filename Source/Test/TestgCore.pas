@@ -211,6 +211,23 @@ type
     procedure Save;
   end;
 
+  TIdentityObjectList = class(TgIdentityList<TIdentityObject>)
+  end;
+
+  TestTIdentityObjectList = class(TTestCase)
+  strict private
+    FIdentityObjectList: TIdentityObjectList;
+    procedure Add3;
+  public
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Add;
+    procedure Assign;
+    procedure BOL;
+    procedure Count;
+  end;
+
 implementation
 
 Uses
@@ -869,8 +886,6 @@ begin
   Check(FBase2List.ItemClass = TBase2, 'The default ItemClass should be the generic type.');
   FBase2List.ItemClass := TBase3;
   CheckEquals(TBase3, FBase2List.ItemClass, 'Should return the ItemClass that was set.');
-  FBase2List.ItemClass := Nil;
-  Check(FBase2List.ItemClass = TBase2, 'The default ItemClass should be the generic type.');
 end;
 
 procedure TestTBase2List.Next;
@@ -1119,12 +1134,84 @@ begin
   FIdentityObject := nil;
 end;
 
+procedure TestTIdentityObjectList.Add;
+begin
+  Add3;
+  CheckEquals(3, FIdentityObjectList.Count, 'There should be 3 items in the list.');
+  CheckEquals(3, FIdentityObjectList.Current.ID, 'The last item added should be the current one.');
+  CheckEquals(2, FIdentityObjectList.CurrentIndex, 'The CurrentIndex value should be one less than the count.');
+  CheckEquals(TIdentityObject, FIdentityObjectList.Current.ClassType, 'Constructs the new list item from ItemClass, which in this case, is the generic class.');
+end;
+
+procedure TestTIdentityObjectList.Add3;
+const
+  Names : Array[1..3] of String = ('One', 'Two', 'Three');
+var
+  Counter: Integer;
+begin
+  for Counter := 1 to 3 do
+  Begin
+    FIdentityObjectList.Add;
+    FIdentityObjectList.Current.ID := Counter;
+    FIdentityObjectList.Current.Name := Names[Counter];
+    FIdentityObjectList.Current.Save;
+  End;
+end;
+
+procedure TestTIdentityObjectList.Assign;
+var
+  NewIdentityObjectList: TIdentityObjectList;
+begin
+  Add3;
+  NewIdentityObjectList := TIdentityObjectList.Create;
+  try
+    FIdentityObjectList.OrderBy := 'ID';
+    NewIdentityObjectList.Assign(FIdentityObjectList);
+    CheckEquals(3, NewIdentityObjectList.Count, 'Should have copied 3 items.');
+    CheckEquals(3, NewIdentityObjectList[2].ID, 'Make sure the value got copied.');
+  finally
+    NewIdentityObjectList.Free;
+  end;
+end;
+
+procedure TestTIdentityObjectList.BOL;
+begin
+  CheckTrue(FIdentityObjectList.BOL, 'When there are no items, BOL should be true.');
+  Add3;
+  FIdentityObjectList.Active := False;
+  CheckTrue(FIdentityObjectList.BOL, 'When a list gets activated its current item should be the the first item');
+end;
+
+procedure TestTIdentityObjectList.Count;
+begin
+  CheckEquals(0, FIdentityObjectList.Count, 'When a list is created it has no items');
+  Add3;
+  CheckEquals(3, FIdentityObjectList.Count, 'After add3, there should be three items');
+  CheckFalse(FIdentityObjectList.Active, 'We should be able to get the count from the persistence manager without activating the list.');
+  FIdentityObjectList.Delete;
+  CheckTrue(FIdentityObjectList.Active, 'The delete should have called Current which should have activated the list.');
+  CheckEquals(2, FIdentityObjectList.Count, 'Here, the count should come from the list instead of the persistence manager.');
+end;
+
+procedure TestTIdentityObjectList.SetUp;
+begin
+  FIdentityObjectList := TIdentityObjectList.Create;
+  TgIdentityObjectClass(FIdentityObjectList.ItemClass).PersistenceManager.CreatePersistentStorage;
+end;
+
+procedure TestTIdentityObjectList.TearDown;
+begin
+  FIdentityObjectList.Free;
+  FIdentityObjectList := nil;
+end;
+
 initialization
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
   RegisterTest(TestTgString5.Suite);
   RegisterTest(TestTBase2List.Suite);
   RegisterTest(TestTIdentityObject.Suite);
+  RegisterTest(TestTIdentityObjectList.Suite);
 end.
 
 
