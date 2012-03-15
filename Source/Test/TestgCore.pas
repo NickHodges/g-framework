@@ -195,6 +195,7 @@ type
   strict private
     FName: String;
   published
+    [Required]
     property Name: String read FName write FName;
   end;
 
@@ -202,9 +203,11 @@ type
   strict private
     FIdentityObject: TIdentityObject;
   public
+    procedure SaveWithoutName;
     procedure SetUp; override;
     procedure TearDown; override;
   published
+    procedure Delete;
     procedure Save;
   end;
 
@@ -1045,6 +1048,31 @@ begin
     AObject.ValidationErrors[ARTTIProperty.Name] := 'A phone number must contain at least seven digits.';
 end;
 
+procedure TestTIdentityObject.Delete;
+begin
+  FIdentityObject.ID := 1;
+  FIdentityObject.Name := 'One';
+  FIdentityObject.Save;
+  FIdentityObject.ID := 2;
+  FIdentityObject.Name := 'Two';
+  FIdentityObject.Save;
+  FIdentityObject.ID := 3;
+  FIdentityObject.Name := 'Three';
+  FIdentityObject.Save;
+
+  FIdentityObject.ID := 1;
+  FIdentityObject.Load;
+  FIdentityObject.Delete;
+  FIdentityObject.ID := 1;
+  CheckFalse(FIdentityObject.Load);
+
+  FIdentityObject.ID := 3;
+  CheckTrue(FIdentityObject.Load);
+  FIdentityObject.Delete;
+  FIdentityObject.ID := 3;
+  CheckFalse(FIdentityObject.Load);
+end;
+
 procedure TestTIdentityObject.Save;
 begin
   FIdentityObject.ID := 1;
@@ -1056,14 +1084,33 @@ begin
   FIdentityObject.ID := 3;
   FIdentityObject.Name := 'Three';
   FIdentityObject.Save;
-  FIdentityObject.Name := '';
-  FIdentityObject.Load;
+
+  FIdentityObject.ID := 1;
+  CheckTrue(FIdentityObject.Load);
+  CheckEquals('One', FIdentityObject.Name);
+
+  FIdentityObject.ID := 2;
+  CheckTrue(FIdentityObject.Load);
+  CheckEquals('Two', FIdentityObject.Name);
+
+  FIdentityObject.ID := 3;
+  CheckTrue(FIdentityObject.Load);
   CheckEquals('Three', FIdentityObject.Name);
+
+  CheckException(SaveWithoutName, EgValidation);
+end;
+
+procedure TestTIdentityObject.SaveWithoutName;
+begin
+  FIdentityObject.ID := 4;
+  FIdentityObject.Name := '';
+  FIdentityObject.Save
 end;
 
 procedure TestTIdentityObject.SetUp;
 begin
   FIdentityObject := TIdentityObject.Create;
+  FIdentityObject.PersistenceManager.CreatePersistentStorage;
 end;
 
 procedure TestTIdentityObject.TearDown;
