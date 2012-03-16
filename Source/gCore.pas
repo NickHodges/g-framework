@@ -219,8 +219,6 @@ type
     class function AddAttributes(ARTTIProperty: TRttiProperty): TArray<TCustomAttribute>; virtual;
     procedure Assign(ASource : TgBase); virtual;
     procedure Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
-//// TODO: ExcludeFeatures
-////  class function ExcludeFeatures(ARTTIProperty: TRTTIProperty): TgPropertyFeatures; virtual;
     class function FriendlyName: String;
     function GetFriendlyClassName: String;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
@@ -473,7 +471,6 @@ type
       end;
 
   strict private
-    FFilteredList: TList<TgBase>;
     FItemClass: TgBaseClass;
     FList: TObjectList<TgBase>;
     FOrderBy: String;
@@ -482,7 +479,6 @@ type
     FCurrentIndex: Integer;
     function GetIsFiltered: Boolean;
     function GetIsOrdered: Boolean;
-    function GetList: TList<TgBase>;
     function GetOrderByList: TObjectList<TgOrderByItem>;
     procedure SetIsFiltered(const AValue: Boolean);
     procedure SetIsOrdered(const AValue: Boolean);
@@ -548,7 +544,7 @@ type
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
     property HasItems: Boolean read GetHasItems;
-    property List: TList<TgBase> read GetList;
+    property List: TObjectList<TgBase> read FList;
     [NotSerializable]
     property OrderBy: String read FOrderBy write SetOrderBy;
     ///	<summary>
@@ -2380,14 +2376,12 @@ constructor TgList.Create(AOwner: TgBase = Nil);
 Begin
   Inherited Create(AOwner);
   FList := TObjectList<TgBase>.Create;
-  FFilteredList := TList<TgBase>.Create();
   FCurrentIndex := -1;
 End;
 
 destructor TgList.Destroy;
 Begin
   FOrderByList.Free;
-  FFilteredList.Free;
   FList.Free;
   Inherited;
 End;
@@ -2586,11 +2580,6 @@ Begin
     Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, List.Count - 1]);
 End;
 
-function TgList.GetList: TList<TgBase>;
-begin
-  Result := FList;
-end;
-
 function TgList.GetOrderByList: TObjectList<TgOrderByItem>;
 begin
   If Not Assigned( FOrderByList ) Then
@@ -2632,10 +2621,7 @@ begin
   If AValue Then
     Include(FStates, lsFiltered)
   Else
-  Begin
     Exclude(FStates, lsFiltered);
-    FFilteredList.Clear;
-  End;
   FCurrentIndex := -1;
 end;
 
