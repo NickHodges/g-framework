@@ -57,6 +57,10 @@ type
     Property Value : Variant Read FValue;
   End;
 
+  ///	<summary>
+  ///	  Used on published properties decend from a class <see cref="TgObject" />.  <see cref="TgObject" /> is
+  ///	  the base class which will validate published properties
+  ///	</summary>
   Validation = class(TCustomAttribute)
   public
     procedure Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty); virtual; abstract;
@@ -101,7 +105,13 @@ type
   end;
 
   TgSerializerClass = class of TgSerializer;
+
+  ///	<summary>
+  ///	  This is the base class all serializers will decend from.  It is used to
+  ///	  serialize the published properties of a <see cref="TgBase" />
+  ///	</summary>
   TgSerializer = Class(TObject)
+  public
 
     type
       E = class(Exception)
@@ -117,6 +127,10 @@ type
     function Serialize(AObject: TgBase): String; virtual; abstract;
   End;
 
+  ///	<summary>
+  ///	   This Decendatnt of <see cref="TgSerializer" /> uses the JSON format.  See 
+  ///	  <see href="http://www.json.org">www.json.org</see> specifications
+  ///	</summary>
   TgSerializerJSON = class(TgSerializer)
   strict private
     FJSONObject: TJSONObject;
@@ -132,6 +146,10 @@ type
     property JSONObject: TJSONObject read FJSONObject write FJSONObject;
   end;
 
+  ///	<summary>
+  ///	  This class, which decends from <see cref="TgSerializer" />, is used to
+  ///	  serialize the published properties of a <see cref="TgBase" /> into XML format
+  ///	</summary>
   TgSerializerXML = class(TgSerializer)
   strict private
     FCurrentNode: IXMLNode;
@@ -235,13 +253,6 @@ type
 
   TgList<T: TgBase> = class;
 
-  TgRecordProperty = Record
-  public
-    Getter: TRTTIMethod;
-    Setter: TRTTIMethod;
-    Validator: TRTTIMethod;
-  End;
-
   TgSerializationHelperClass = class of TgSerializationHelper;
   TgSerializationHelper = class(TObject)
   public
@@ -262,7 +273,20 @@ type
     RTTIProperty: TRTTIProperty;
     constructor Create(ARTTIProperty: TRttiProperty; AAttributeClass: TCustomAttributeClass);
   end;
+  TgRecordProperty = Record
+  public
+    Getter: TRTTIMethod;
+    Setter: TRTTIMethod;
+    Validator: TRTTIMethod;
+  End;
 
+
+  ///	<summary>
+  ///	  G Class is used to cache all RTTI information for clases that decend
+  ///	  from the <see cref="TgBase" />.  It keeps the RTTI information and
+  ///	  properties in a optimal format for some of the standard routines used
+  ///	  by <see cref="TgBase" />, <see cref="TgSerializer" />, and <see cref="TgPersistenceManager" />.
+  ///	</summary>
   G = class(TObject)
   strict private
   class var
@@ -368,19 +392,6 @@ type
   EgParse = class(Exception)
   end;
 
-  TgOrderByItem = class(TObject)
-  public
-    type
-      EgOrderByItem = class(Exception);
-  strict private
-    FDescending: Boolean;
-    FPropertyName: String;
-  public
-    constructor Create(const AItemText: String);
-    property Descending: Boolean read FDescending write FDescending;
-    property PropertyName: String read FPropertyName write FPropertyName;
-  end;
-
   ///	<summary>
   ///	  This class will be used to cursor through a list of
   ///	  <see cref="gCore|TgBase" /> classes and will also be used to support
@@ -416,6 +427,19 @@ type
     Type
       TState = (lsInspecting, lsOrdered, lsFiltered, lsSorted, lsActivating, lsActive);
       TStates = Set of TState;
+
+      TgOrderByItem = class(TObject)
+      public
+        type
+          EgOrderByItem = class(Exception);
+      strict private
+        FDescending: Boolean;
+        FPropertyName: String;
+      public
+        constructor Create(const AItemText: String);
+        property Descending: Boolean read FDescending write FDescending;
+        property PropertyName: String read FPropertyName write FPropertyName;
+      end;
 
       /// <summary> Structure used by the <see cref="GetEnumerator" /> to allow For-in
       /// loops</summary>
@@ -613,6 +637,11 @@ type
     function Compare(const Left, Right: TRTTIType): Integer; override;
   end;
 
+  ///	<summary>
+  ///	  Used to collectect validation errors when a
+  ///	  <see cref="TgObject" />'s published
+  ///	  properties are validated
+  ///	</summary>
   TgValidationErrors = class(TgBase)
   strict private
     FDictionary: TDictionary<String, String>;
@@ -677,6 +706,11 @@ type
   EgValidation = class(Exception)
   end;
 
+  ///	<summary>
+  ///	  The TgPersistenceManager is the base class for storing and retreving
+  ///	  Decendants of <see cref="TgIdentityObject" /> via their published
+  ///	  properties. 
+  ///	</summary>
   TgPersistenceManager = class(TgObject)
   strict private
     FForClass: TgIdentityObjectClass;
@@ -694,6 +728,12 @@ type
     property ForClass: TgIdentityObjectClass read FForClass write FForClass;
   End;
 
+  ///	<summary>
+  ///	  This class is used for <see cref="TgPersistanceManager" />.  It
+  ///	  contains a property <see cref="ID" /> which is the key used to store
+  ///	  the published properties of this class.  If you plan or persisting to a
+  ///	  database you should actually decend from <see cref="TgIdentityObject&lt;T&gt;" />
+  ///	</summary>
   TgIdentityObject = class(TgObject)
 
     type
@@ -749,17 +789,41 @@ type
     property OriginalValues: TgBase read GetOriginalValues;
   end;
 
+  ///	<summary>
+  ///	  This class serves the same purpose as <see cref="TgIdentityObject" />
+  ///	  the exception that <see cref="T" /> is used to clearly define the type 
+  ///	  of the <see cref="ID" /> property which will be used some
+  ///	  <see cref="TgPersistenceManager" /> decendants like sql to know what to
+  ///	  define the type of field as in the table.
+  ///	</summary>
+  ///	<typeparam name="T">
+  ///	  This type should be limited to Simple types
+  ///	</typeparam>
   TgIdentityObject<T> = class(TgIdentityObject)
   strict protected
     function GetID: T;
     procedure SetID(const AValue: T);
   published
+    ///	<summary>
+    ///	  Defined as a simple type this property is used to uniquely identify a
+    ///	  class in the Persistance Manager so the classes properties can be
+    ///	  saved and retrived
+    ///	</summary>
     property ID: T read GetID write SetID;
   end;
 
   TgIDObject = class(TgIdentityObject<Integer>)
   end;
 
+  ///	<summary>
+  ///	  This <see cref="TgPeristanceManager" /> decendant is used to stream
+  ///	  <see cref="TgIdentityObject" /> decendatants in and out of a file.  It
+  ///	  will use the <see cref="TgSerializerXML" />.
+  ///	</summary>
+  ///	<remarks>
+  ///	  This file will be kept in the jason format in the ..\data folder from
+  ///	  where the application is running from
+  ///	</remarks>
   TgPersistenceManagerFile = class(TgPersistenceManager)
 
     type
@@ -2770,9 +2834,9 @@ Begin
   Result := FModel[AVariableName];
 End;
 
-{ TgOrderByItem }
+{ TgList.TgOrderByItem }
 
-constructor TgOrderByItem.Create(const AItemText: String);
+constructor TgList.TgOrderByItem.Create(const AItemText: String);
 var
   PosOfSpace: Integer;
   Direction: String;
