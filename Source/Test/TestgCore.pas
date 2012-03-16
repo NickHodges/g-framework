@@ -100,7 +100,7 @@ type
     property ManuallyConstructedObjectProperty: TBase read GetManuallyConstructedObjectProperty;
     [Required]
     property ObjectProperty: TBase2 read FObjectProperty;
-    [DefaultValue('Test')] [NotSerializable] [Required]
+    [DefaultValue('Test')] [NotSerializable] [NotAssignable] [Required]
     property StringProperty: String read FStringProperty write FStringProperty;
     [NotAutoCreate]
     property UnconstructedObjectProperty: TgBase read FUnconstructedObjectProperty write FUnconstructedObjectProperty;
@@ -219,13 +219,22 @@ type
     FIdentityObjectList: TIdentityObjectList;
     procedure Add3;
   public
+    procedure CurrentOnEmptyList;
     procedure SetUp; override;
     procedure TearDown; override;
   published
     procedure Add;
     procedure Assign;
     procedure BOL;
+    procedure EOL;
     procedure Count;
+    procedure Current;
+    procedure Delete;
+    procedure DeserializeJSON;
+    procedure DeserializeXML;
+    procedure Filter;
+    procedure SerializeJSON;
+    procedure SerializeXML;
   end;
 
 implementation
@@ -1163,12 +1172,15 @@ var
   NewIdentityObjectList: TIdentityObjectList;
 begin
   Add3;
+  FIdentityObjectList.Active := True;
+  // The following should be able to run without using the persistence manager.
   NewIdentityObjectList := TIdentityObjectList.Create;
   try
-    FIdentityObjectList.OrderBy := 'ID';
     NewIdentityObjectList.Assign(FIdentityObjectList);
     CheckEquals(3, NewIdentityObjectList.Count, 'Should have copied 3 items.');
     CheckEquals(3, NewIdentityObjectList[2].ID, 'Make sure the value got copied.');
+    CheckTrue(NewIdentityObjectList.Active, 'The assign method should have set the active property true.');
+    CheckTrue(NewIdentityObjectList[2].IsLoaded, 'The assign method should have set the isloaded property true.');
   finally
     NewIdentityObjectList.Free;
   end;
@@ -1182,6 +1194,14 @@ begin
   CheckTrue(FIdentityObjectList.BOL, 'When a list gets activated its current item should be the the first item');
 end;
 
+procedure TestTIdentityObjectList.EOL;
+begin
+  CheckTrue(FIdentityObjectList.EOL, 'When there are no items, EOL should be true.');
+  Add3;
+  FIdentityObjectList.Active := False;
+  CheckFalse(FIdentityObjectList.EOL, 'When a list gets activated its current item should be the the first item');
+end;
+
 procedure TestTIdentityObjectList.Count;
 begin
   CheckEquals(0, FIdentityObjectList.Count, 'When a list is created it has no items');
@@ -1193,9 +1213,123 @@ begin
   CheckEquals(2, FIdentityObjectList.Count, 'Here, the count should come from the list instead of the persistence manager.');
 end;
 
+procedure TestTIdentityObjectList.Current;
+begin
+  CheckException(CurrentOnEmptyList,TgList.EgList, 'Calling Current on an empty list should cause an exception.');
+  Add3;
+  FIdentityObjectList.First;
+  FIdentityObjectList.Next;
+  CheckEquals(2, FIdentityObjectList.Current.ID, 'If there are items in the list, Current returns the item at CurrentIndex (zero based).');
+end;
+
+procedure TestTIdentityObjectList.CurrentOnEmptyList;
+begin
+  FIdentityObjectList.Current;
+end;
+
+procedure TestTIdentityObjectList.Delete;
+begin
+  Add3;
+  FIdentityObjectList.Active := True;
+  FIdentityObjectList.CurrentIndex := 1;
+  FIdentityObjectList.Delete;
+  CheckEquals(2, FIdentityObjectList.Count, 'Deleting one of the 3 list items should yield a count of 2.');
+  CheckEquals(3, FIdentityObjectList.Current.ID, 'The 3rd item should have taken the place of the 2nd');
+end;
+
+procedure TestTIdentityObjectList.DeserializeJSON;
+var
+  JSONString: string;
+begin
+  JSONString :=
+  '{"ClassName":"TestgCore.TIdentityObjectList","List":[{"ClassName":"TestgCore'+
+  '.TIdentityObject","ID":"1","Name":"One"},{"ClassName":"TestgCore.TIdentityOb'+
+  'ject","ID":"2","Name":"Two"},{"ClassName":"TestgCore.TIdentityObject","ID":"'+
+  '3","Name":"Three"}]}';
+  FIdentityObjectList.Deserialize(TgSerializerJSON, JSONString);
+  CheckEquals(3, FIdentityObjectList.Items[2].ID);
+end;
+
+procedure TestTIdentityObjectList.DeserializeXML;
+var
+  XMLString: string;
+begin
+  XMLString :=
+  '<xml>'#13#10 + //0
+  '  <IdentityObjectList classname="TestgCore.TIdentityObjectList">'#13#10 + //1
+  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //2
+  '      <ID>1</ID>'#13#10 + //3
+  '      <Name>One</Name>'#13#10 + //4
+  '    </IdentityObject>'#13#10 + //5
+  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //6
+  '      <ID>2</ID>'#13#10 + //7
+  '      <Name>Two</Name>'#13#10 + //8
+  '    </IdentityObject>'#13#10 + //9
+  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //10
+  '      <ID>3</ID>'#13#10 + //11
+  '      <Name>Three</Name>'#13#10 + //12
+  '    </IdentityObject>'#13#10 + //13
+  '  </IdentityObjectList>'#13#10 + //14
+  '</xml>'#13#10; //15
+  FIdentityObjectList.Deserialize(TgSerializerXML, XMLString);
+  CheckEquals(3, FIdentityObjectList.Items[2].ID);
+end;
+
+procedure TestTIdentityObjectList.Filter;
+begin
+  Add3;
+  FIdentityObjectList.Active := False;
+  FIdentityObjectList.Where := 'ID > 1';
+  CheckEquals(2, FIdentityObjectList.Count);
+  CheckFalse(FIdentityObjectList.Active, 'We should be able to get the count without activating.');
+  CheckEquals(2, FIdentityObjectList.Current.ID, 'The filter should have removed ID 1.');
+  CheckTrue(FIdentityObjectList.Active, 'Calling Current should activate the list.')
+end;
+
+procedure TestTIdentityObjectList.SerializeJSON;
+var
+  JSONString: string;
+begin
+  Add3;
+  JSONString :=
+  '{"ClassName":"TestgCore.TIdentityObjectList","List":[{"ClassName":"TestgCore'+
+  '.TIdentityObject","ID":"1","Name":"One"},{"ClassName":"TestgCore.TIdentityOb'+
+  'ject","ID":"2","Name":"Two"},{"ClassName":"TestgCore.TIdentityObject","ID":"'+
+  '3","Name":"Three"}]}';
+  CheckEquals(JSONString, FIdentityObjectList.Serialize(TgSerializerJSON));
+end;
+
+procedure TestTIdentityObjectList.SerializeXML;
+var
+  XMLString: string;
+begin
+  Add3;
+  XMLString :=
+
+  '<xml>'#13#10 + //0
+  '  <IdentityObjectList classname="TestgCore.TIdentityObjectList">'#13#10 + //1
+  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //2
+  '      <ID>1</ID>'#13#10 + //3
+  '      <Name>One</Name>'#13#10 + //4
+  '    </IdentityObject>'#13#10 + //5
+  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //6
+  '      <ID>2</ID>'#13#10 + //7
+  '      <Name>Two</Name>'#13#10 + //8
+  '    </IdentityObject>'#13#10 + //9
+  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //10
+  '      <ID>3</ID>'#13#10 + //11
+  '      <Name>Three</Name>'#13#10 + //12
+  '    </IdentityObject>'#13#10 + //13
+  '  </IdentityObjectList>'#13#10 + //14
+  '</xml>'#13#10; //15
+
+  CheckEquals(XMLString, FIdentityObjectList.Serialize(TgSerializerXML));
+end;
+
 procedure TestTIdentityObjectList.SetUp;
 begin
   FIdentityObjectList := TIdentityObjectList.Create;
+  FIdentityObjectList.OrderBy := 'ID';
   TgIdentityObjectClass(FIdentityObjectList.ItemClass).PersistenceManager.CreatePersistentStorage;
 end;
 
@@ -1213,6 +1347,7 @@ initialization
   RegisterTest(TestTIdentityObject.Suite);
   RegisterTest(TestTIdentityObjectList.Suite);
 end.
+
 
 
 
