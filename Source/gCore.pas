@@ -82,6 +82,9 @@ type
   NotSerializable = class(TCustomAttribute)
   end;
 
+  NotAssignable = class(TCustomAttribute)
+  end;
+
   AutoCreate = class(TCustomAttribute)
   end;
 
@@ -229,7 +232,7 @@ type
     /// <summary>TgBase.Owner represents the object passed in the constructor. You may
     /// use the Owner object to "walk up" the model.
     /// </summary> type:TgBase
-    [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible]
+    [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible] [NotAssignable]
     property Owner: TgBase read FOwner;
   end;
 
@@ -266,6 +269,7 @@ type
   G = class(TObject)
   strict private
   class var
+    FAssignableProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FAttributes: TDictionary<TPair<TgBaseClass, TCustomAttributeClass>, TArray<TCustomAttribute>>;
     FAutoCreateProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FCompositeProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
@@ -287,6 +291,7 @@ type
     FPropertyAttributes: TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>;
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     class procedure Initialize; static;
+    class procedure InitializeAssignableProperties(ARTTIType: TRTTIType); static;
     /// <summary>G.InitializeAttributes initializes the cache of attributes for the
     /// class passed in the ARTTIType parameter.  For property attributes, it assigns
     /// the attribute's RTTIProperty property.
@@ -311,6 +316,8 @@ type
     class constructor Create;
     class destructor Destroy;
     class function ApplicationPath: String; static;
+    class function AssignableProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
+    class function AssignableProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
     class function Attributes(ABaseClass: TgBaseClass; AAttributeClass: TCustomAttributeClass): TArray<TCustomAttribute>; overload; static;
     class function Attributes(ABase: TgBase; AAttributeClass: TCustomAttributeClass): Tarray<TCustomAttribute>; overload; static;
     class function AutoCreateProperties(AInstance: TgBase): TArray<TRTTIProperty>; overload; static; inline;
@@ -511,9 +518,9 @@ type
     property CanNext: Boolean read GetCanNext;
     property CanPrevious: Boolean read GetCanPrevious;
     property Count: Integer read GetCount;
-    [NotAutoCreate] [NotSerializable]
+    [NotAutoCreate] [NotSerializable] [NotAssignable]
     property Current: TgBase read GetCurrent;
-    [NotSerializable]
+    [NotSerializable] [NotAssignable]
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
     property HasItems: Boolean read GetHasItems;
@@ -662,7 +669,7 @@ type
   published
     [NotVisible]
     property DisplayName: String read GetDisplayName;
-    [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible]
+    [NotAutoCreate] [NotComposite] [NotSerializable] [NotAssignable] [NotVisible]
     property ValidationErrors: TgValidationErrors read GetValidationErrors;
   end;
 
@@ -730,6 +737,7 @@ type
     class function PersistenceManager: TgPersistenceManager;
     procedure Rollback;
     procedure StartTransaction(ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
+    procedure Assign(ASource: TgBase); reintroduce; override;
     property IsDeleting: Boolean read GetIsDeleting write SetIsDeleting;
     property IsLoaded: Boolean read GetIsLoaded write SetIsLoaded;
     property IsModified: Boolean read GetIsModified;
@@ -745,7 +753,7 @@ type
     property CanDelete: Boolean read GetCanDelete;
     [NotVisible]
     property CanSave: Boolean read GetCanSave;
-    [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible]
+    [NotAutoCreate] [NotComposite] [NotSerializable] [NotAssignable] [NotVisible]
     property OriginalValues: TgBase read GetOriginalValues;
   end;
 
@@ -797,18 +805,23 @@ type
     function GetCount: Integer; override;
     function GetCurrent: TgIdentityObject; reintroduce; virtual;
     function GetItemClass: TgIdentityObjectClass; reintroduce; virtual;
+    function GetItems(AIndex : Integer): TgIdentityObject; reintroduce; virtual;
     procedure SetItemClass(const Value: TgIdentityObjectClass); reintroduce; virtual;
+    procedure SetItems(AIndex : Integer; const AValue: TgIdentityObject); reintroduce; virtual;
   public
+    procedure Assign(ASource: TgBase); override;
+    procedure AssignActive(const AValue: Boolean);
     property Active: Boolean read GetActive write SetActive;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
     property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
+    property Items[AIndex : Integer]: TgIdentityObject read GetItems write SetItems; default;
   published
     procedure First; override;
     procedure Last; override;
     procedure Next; override;
     procedure Previous; override;
     procedure Delete; override;
-    [NotAutoCreate] [NotSerializable]
+    [NotAutoCreate] [NotSerializable] [NotAssignable]
     property Current: TgIdentityObject read GetCurrent;
   end;
 
@@ -980,7 +993,7 @@ Var
 Begin
   If ASource.ClassType = ClassType Then
   Begin
-    For RTTIProperty In G.SerializableProperties(Self) Do
+    For RTTIProperty In G.AssignableProperties(Self) Do
     Begin
       If RTTIProperty.PropertyType.IsInstance Then
       Begin
@@ -1249,6 +1262,7 @@ begin
       InitializePropertyValidationAttributes(RTTIType);
       InitializeAutoCreate(RTTIType);
       InitializeCompositeProperties(RTTIType);
+      InitializeAssignableProperties(RTTIType);
       InitializeSerializableProperties(RTTIType);
       InitializeVisibleProperties(RTTIType);
       InitializePersistableProperties(RTTIType);
@@ -1361,6 +1375,7 @@ begin
   FOwnedAttributes := TObjectList.Create();
   FPropertyAttributes := TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>.Create();
   FPersistenceManagers := TDictionary<TgIdentityObjectClass, TgPersistenceManager>.Create();
+  FAssignableProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   Initialize;
 end;
 
@@ -1370,6 +1385,7 @@ var
 begin
   for PersistenceManager in FPersistenceManagers.Values do
     PersistenceManager.Free;
+  FreeAndNil(FAssignableProperties);
   FreeAndNil(FPersistenceManagers);
   FreeAndNil(FPropertyAttributes);
   FreeAndNil(FOwnedAttributes);
@@ -1395,6 +1411,16 @@ end;
 class function G.ApplicationPath: String;
 begin
   Result := IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0))) + '..');
+end;
+
+class function G.AssignableProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
+begin
+  FAssignableProperties.TryGetValue(ABaseClass, Result);
+end;
+
+class function G.AssignableProperties(ABase: TgBase): TArray<TRTTIProperty>;
+begin
+  Result := AssignableProperties(TgBaseClass(ABase.ClassType));
 end;
 
 class function G.Attributes(ABaseClass: TgBaseClass; AAttributeClass: TCustomAttributeClass): TArray<TCustomAttribute>;
@@ -1744,6 +1770,36 @@ end;
 class function G.DataPath: String;
 begin
   Result := IncludeTrailingPathDelimiter(ApplicationPath + 'Data');
+end;
+
+class procedure G.InitializeAssignableProperties(ARTTIType: TRTTIType);
+Var
+  BaseClass: TgBaseClass;
+  PropertyAttributeClassKey: TgPropertyAttributeClassKey;
+  RTTIProperties: TArray<TRTTIProperty>;
+  RTTIProperty : TRTTIProperty;
+Begin
+  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
+  for RTTIProperty in G.Properties(BaseClass) do
+  begin
+    PropertyAttributeClassKey.RTTIProperty := RTTIProperty;
+    PropertyAttributeClassKey.AttributeClass := NotAssignable;
+    if (RTTIProperty.Visibility = mvPublished) And RTTIProperty.IsReadable
+      And (Length(PropertyAttributes(PropertyAttributeClassKey)) = 0)
+      And
+        (
+            (RTTIProperty.PropertyType.IsInstance And RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgBase))
+          Or
+            (Not RTTIProperty.PropertyType.IsInstance And RTTIProperty.IsWritable)
+        )
+    then
+    begin
+      FAssignableProperties.TryGetValue(BaseClass, RTTIProperties);
+      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
+      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
+      FAssignableProperties.AddOrSetValue(BaseClass, RTTIProperties);
+    end;
+  end;
 end;
 
 class procedure G.InitializeAutoCreate(ARTTIType: TRTTIType);
@@ -2220,9 +2276,10 @@ begin
   Result := inherited AddAttributes(ARTTIProperty);
   if SameText(ARTTIProperty.Name, 'Current') then
   Begin
-    SetLength(Result, Length(Result) + 2);
-    Result[Length(Result) - 2] := NotAutoCreate.Create;
-    Result[Length(Result) - 1] := NotSerializable.Create;
+    SetLength(Result, Length(Result) + 3);
+    Result[Length(Result) - 3] := NotAutoCreate.Create;
+    Result[Length(Result) - 2] := NotSerializable.Create;
+    Result[Length(Result) - 1] := NotAssignable.Create;
   End;
 end;
 
@@ -2273,37 +2330,37 @@ End;
 
 procedure TgList.Add;
 Begin
-  if IsFiltered then
-    raise EgList.Create('Cannot add to a filtered list.');
   FCurrentIndex := FList.Add(ItemClass.Create(Self));
 End;
 
 procedure TgList.Assign(ASource: TgBase);
 var
   Item: TgBase;
+  Counter: Integer;
+  SourceList: TgList;
 begin
   Clear;
   inherited Assign(ASource);
-  for Item in TgList(ASource) do
+  SourceList := TgList(ASource);
+  for Counter := 0 to SourceList.Count - 1 do
   begin
+    // The itemclass may vary from item to item.
+    Item := SourceList.Items[Counter];
     ItemClass := TgBaseClass(Item.ClassType);
     Add;
-    Current.Assign(Item);
+    Items[CurrentIndex].Assign(Item);
   end;
+  CurrentIndex := SourceList.CurrentIndex
 end;
 
 procedure TgList.Clear;
 begin
-  if IsFiltered then
-    raise EgList.Create('Cannot clear a filtered list.');
   FList.Clear;
   FCurrentIndex := -1;
 end;
 
 procedure TgList.Delete;
 Begin
-  if IsFiltered then
-    raise EgList.Create('Cannot delete from a filtered list.');
   if CurrentIndex > -1 then
     FList.Delete(CurrentIndex)
   Else
@@ -2366,13 +2423,12 @@ procedure TgList.Filter;
 begin
   If Not IsFiltered And ( Where > '' ) Then
   Begin
-    FFilteredList.Clear;
-    First;
-    while Not EOL do
+    Last;
+    while Not BOL do
     Begin
-      if Eval(Where, Current) then
-        FFilteredList.Add(Current);
-      Next;
+      if Not Eval(Where, Current) then
+        Delete;
+      Previous;
     End;
     IsFiltered := True;
   End;
@@ -2468,10 +2524,7 @@ End;
 
 function TgList.GetList: TList<TgBase>;
 begin
-  if IsFiltered then
-    Result := FFilteredList
-  Else
-    Result := FList;
+  Result := FList;
 end;
 
 function TgList.GetOrderByList: TObjectList<TgOrderByItem>;
@@ -3169,6 +3222,12 @@ begin
   inherited Destroy;
 end;
 
+procedure TgIdentityObject.Assign(ASource: TgBase);
+begin
+  inherited Assign(ASource);
+  IsLoaded := TgIdentityObject(ASource).IsLoaded;
+end;
+
 procedure TgIdentityObject.Commit;
 begin
   PersistenceManager.Commit(Self);
@@ -3255,7 +3314,7 @@ end;
 
 function TgIdentityObject.GetOriginalValues: TgBase;
 begin
-  if Not IsInspecting And Not Assigned(FOriginalValues) then
+  if Not IsInspecting And Not IsOriginalValues And Not Assigned(FOriginalValues) then
   Begin
     FOriginalValues := TgIdentityObjectClass(Self.ClassType).Create(Owner);
     FOriginalValues.IsOriginalValues := True;
@@ -3272,7 +3331,8 @@ end;
 
 procedure TgIdentityObject.InitializeOriginalValues;
 begin
-  OriginalValues.Assign(Self);
+  if Assigned(OriginalValues) then
+    OriginalValues.Assign(Self);
 end;
 
 function TgIdentityObject.IsPropertyModified(const APropertyName: string): Boolean;
@@ -3293,8 +3353,6 @@ end;
 function TgIdentityObject.Load: Boolean;
 begin
   DoLoad;
-  if IsLoaded then
-    InitializeOriginalValues;
   Result := IsLoaded;
 end;
 
@@ -3330,7 +3388,10 @@ end;
 procedure TgIdentityObject.SetIsLoaded(const AValue: Boolean);
 begin
   if AValue then
-    Include(FStates, osLoaded)
+  Begin
+    Include(FStates, osLoaded);
+    InitializeOriginalValues;
+  End
   else
     Exclude(FStates, osLoaded);
 end;
@@ -3372,7 +3433,9 @@ begin
     for IdentityObject in List do
     begin
       AIdentityList.Add;
-      AIdentityList.Current.Assign(IdentityObject);
+      // Use Items instead of Current, because Current can cause recursion.
+      AIdentityList.Items[AIdentityList.CurrentIndex].Assign(IdentityObject);
+      AIdentityList.Items[AIdentityList.CurrentIndex].IsLoaded := True;
     end;
   finally
     List.Free;
@@ -3456,9 +3519,13 @@ begin
   try
     List.ItemClass := TgBaseClass(AObject.ClassType);
     LoadList(List);
-    AObject.IsLoaded := Locate(List, AObject);
-    If AObject.IsLoaded Then
+    If Locate(List, AObject) Then
+    Begin
       AObject.Assign(List.Current);
+      AObject.IsLoaded := True;
+    End
+    Else
+      AObject.IsLoaded := False;
   finally
     List.Free;
   end;
@@ -3514,6 +3581,20 @@ begin
 
 end;
 
+procedure TgIdentityList.Assign(ASource: TgBase);
+begin
+  inherited Assign(ASource);
+  AssignActive(True);
+end;
+
+procedure TgIdentityList.AssignActive(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, lsActive)
+  else
+    Exclude(FStates, lsActive);
+end;
+
 procedure TgIdentityList.Delete;
 begin
   EnsureActive;
@@ -3554,6 +3635,8 @@ end;
 
 function TgIdentityList.GetCurrent: TgIdentityObject;
 Begin
+  if List.Count = 0 then
+    EnsureActive;
   Result := TgIdentityObject(Inherited GetCurrent);
 End;
 
@@ -3572,6 +3655,11 @@ function TgIdentityList.GetItemClass: TgIdentityObjectClass;
 begin
   Result := TgIdentityObjectClass(Inherited GetItemClass);
 end;
+
+function TgIdentityList.GetItems(AIndex : Integer): TgIdentityObject;
+Begin
+  Result := TgIdentityObject(Inherited GetItems(AIndex));
+End;
 
 procedure TgIdentityList.Last;
 begin
@@ -3593,31 +3681,28 @@ end;
 
 procedure TgIdentityList.SetActive(const AValue: Boolean);
 begin
-  If Not IsActivating And (Active <> AValue) Then
+  IsFiltered := False;
+  IsOrdered := False;
+  if AValue then
   Begin
-    IsFiltered := False;
-    IsOrdered := False;
-    if AValue then
-    Begin
-      IsActivating := True;
-      try
-        Clear;
-        ItemClass.PersistenceManager.ActivateList(Self);
-        if Not IsFiltered then
-          Filter;
-        if Not IsOrdered then
-          Sort;
-      finally
-        IsActivating := False;
-      end;
-    End
-    Else
+    IsActivating := True;
+    try
       Clear;
-    if AValue then
-      Include(FStates, lsActive)
-    else
-      Exclude(FStates, lsActive);
+      ItemClass.PersistenceManager.ActivateList(Self);
+      if Not IsFiltered then
+        Filter;
+      if Not IsOrdered then
+        Sort;
+    finally
+      IsActivating := False;
+    end;
+    AssignActive(True);
     First;
+  End
+  Else
+  Begin
+    Clear;
+    AssignActive(False);
   End;
 end;
 
@@ -3634,6 +3719,11 @@ begin
   Inherited SetItemClass(Value);
 end;
 
+procedure TgIdentityList.SetItems(AIndex : Integer; const AValue: TgIdentityObject);
+Begin
+  Inherited SetItems(AIndex, AValue);
+End;
+
 constructor TgIdentityList<T>.Create(AOwner: TgBase = nil);
 begin
   Inherited Create(AOwner);
@@ -3645,9 +3735,10 @@ begin
   Result := inherited AddAttributes(ARTTIProperty);
   if SameText(ARTTIProperty.Name, 'Current') then
   Begin
-    SetLength(Result, Length(Result) + 2);
-    Result[Length(Result) - 2] := NotAutoCreate.Create;
-    Result[Length(Result) - 1] := NotSerializable.Create;
+    SetLength(Result, Length(Result) + 3);
+    Result[Length(Result) - 3] := NotAutoCreate.Create;
+    Result[Length(Result) - 2] := NotSerializable.Create;
+    Result[Length(Result) - 1] := NotAssignable.Create;
   End;
 end;
 
