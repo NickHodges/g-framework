@@ -254,6 +254,23 @@ type
     procedure DeserializeXML;
   end;
 
+  TIDObject = class(TgIDObject)
+  strict private
+    FName: String;
+  published
+    property Name: String read FName write FName;
+  end;
+
+  TestTIDObject = class(TTestCase)
+  strict private
+    FIDObject: TIDObject;
+  protected
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Save;
+  end;
+
 implementation
 
 Uses
@@ -1448,6 +1465,26 @@ begin
   inherited;
 end;
 
+procedure TestTIDObject.Save;
+begin
+  FIDObject.Name := 'One';
+  FIDObject.Save;
+  CheckEquals(1, FIDObject.ID);
+end;
+
+procedure TestTIDObject.SetUp;
+begin
+  inherited;
+  FIDObject := TIDObject.Create;
+  FIDObject.PersistenceManager.CreatePersistentStorage;
+end;
+
+procedure TestTIDObject.TearDown;
+begin
+  FIDObject.Free;
+  inherited;
+end;
+
 initialization
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
@@ -1456,18 +1493,6 @@ initialization
   RegisterTest(TestTIdentityObject.Suite);
   RegisterTest(TestTIdentityObjectList.Suite);
   RegisterTest(TestTBase3.Suite);
+  RegisterTest(TestTIDObject.Suite);
 end.
-
-
-
-
-
-
-
-
-
-
-
-
-
 

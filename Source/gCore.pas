@@ -2778,7 +2778,7 @@ var
   Counter: Integer;
   SerializationHelperXMLBaseClass: TgSerializationHelperXMLBaseClass;
 begin
-  if SameText(AXMLNode.NodeName, 'list') then
+  if SameText(AXMLNode.NodeName, 'List') then
   Begin
     for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
     Begin
@@ -2823,7 +2823,7 @@ var
   JSONValue: TJSONValue;
   SerializationHelperJSONBaseClass: TgSerializationHelperJSONBaseClass;
 begin
-  if SameText('list', APair.JsonString.Value) then
+  if SameText('List', APair.JsonString.Value) then
   Begin
     If Not APair.JsonValue.InheritsFrom(TJSONArray) Then
       raise EgParse.CreateFmt('Expected: TJSONArray, Parsed: %s.', [APair.JsonValue.ClassName]);
