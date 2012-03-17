@@ -65,10 +65,16 @@ type
     property StringProperty: TgString5 read FStringProperty write FStringProperty;
   End;
 
-  TBase3 = Class(TBase2)
+  TBase2List = Class(TgList<TBase2>)
   End;
 
-  TBase2List = Class(TgList<TBase2>)
+  TBase3 = Class(TBase2)
+  strict private
+    FList: TBase2List;
+    FName: String;
+  published
+    property Name: String read FName write FName;
+    property List: TBase2List read FList;
   End;
 
   TBase = class(TgObject)
@@ -235,6 +241,17 @@ type
     procedure Filter;
     procedure SerializeJSON;
     procedure SerializeXML;
+  end;
+
+  TestTBase3 = class(TTestCase)
+  strict private
+    Base3: TBase3;
+  protected
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure SerializeXML;
+    procedure DeserializeXML;
   end;
 
 implementation
@@ -941,20 +958,22 @@ begin
   XMLString :=
     '<xml>'#13#10 + //0
     '  <Base2List classname="TestgCore.TBase2List">'#13#10 + //1
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //2
-    '      <IntegerProperty>1</IntegerProperty>'#13#10 + //3
-    '      <StringProperty>12345</StringProperty>'#13#10 + //4
-    '    </Base2>'#13#10 + //5
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //6
-    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //7
-    '      <StringProperty>12345</StringProperty>'#13#10 + //8
-    '    </Base2>'#13#10 + //9
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //10
-    '      <IntegerProperty>3</IntegerProperty>'#13#10 + //11
-    '      <StringProperty>12345</StringProperty>'#13#10 + //12
-    '    </Base2>'#13#10 + //13
-    '  </Base2List>'#13#10 + //14
-    '</xml>'#13#10; //15
+    '    <List>'#13#10 + //2
+    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //3
+    '        <IntegerProperty>1</IntegerProperty>'#13#10 + //4
+    '        <StringProperty>12345</StringProperty>'#13#10 + //5
+    '      </Base2>'#13#10 + //6
+    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //7
+    '        <IntegerProperty>2</IntegerProperty>'#13#10 + //8
+    '        <StringProperty>12345</StringProperty>'#13#10 + //9
+    '      </Base2>'#13#10 + //10
+    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //11
+    '        <IntegerProperty>3</IntegerProperty>'#13#10 + //12
+    '        <StringProperty>12345</StringProperty>'#13#10 + //13
+    '      </Base2>'#13#10 + //14
+    '    </List>'#13#10 + //15
+    '  </Base2List>'#13#10 + //16
+    '</xml>'#13#10; //17
   CheckEquals(XMLString, FBase2List.Serialize(TgSerializerXML));
 end;
 
@@ -978,20 +997,22 @@ begin
   XMLString :=
     '<xml>'#13#10 + //0
     '  <Base2List classname="TestgCore.TBase2List">'#13#10 + //1
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //2
-    '      <IntegerProperty>1</IntegerProperty>'#13#10 + //3
-    '      <StringProperty>12345</StringProperty>'#13#10 + //4
-    '    </Base2>'#13#10 + //5
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //6
-    '      <IntegerProperty>2</IntegerProperty>'#13#10 + //7
-    '      <StringProperty>12345</StringProperty>'#13#10 + //8
-    '    </Base2>'#13#10 + //9
-    '    <Base2 classname="TestgCore.TBase2">'#13#10 + //10
-    '      <IntegerProperty>3</IntegerProperty>'#13#10 + //11
-    '      <StringProperty>12345</StringProperty>'#13#10 + //12
-    '    </Base2>'#13#10 + //13
-    '  </Base2List>'#13#10 + //14
-    '</xml>'#13#10; //15
+    '    <List>'#13#10 + //2
+    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //3
+    '        <IntegerProperty>1</IntegerProperty>'#13#10 + //4
+    '        <StringProperty>12345</StringProperty>'#13#10 + //5
+    '      </Base2>'#13#10 + //6
+    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //7
+    '        <IntegerProperty>2</IntegerProperty>'#13#10 + //8
+    '        <StringProperty>12345</StringProperty>'#13#10 + //9
+    '      </Base2>'#13#10 + //10
+    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //11
+    '        <IntegerProperty>3</IntegerProperty>'#13#10 + //12
+    '        <StringProperty>12345</StringProperty>'#13#10 + //13
+    '      </Base2>'#13#10 + //14
+    '    </List>'#13#10 + //15
+    '  </Base2List>'#13#10 + //16
+    '</xml>'#13#10; //17
   FBase2List.Deserialize(TgSerializerXML, XMLString);
   CheckEquals(3, FBase2List.Items[2].IntegerProperty);
 end;
@@ -1255,22 +1276,24 @@ var
   XMLString: string;
 begin
   XMLString :=
-  '<xml>'#13#10 + //0
-  '  <IdentityObjectList classname="TestgCore.TIdentityObjectList">'#13#10 + //1
-  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //2
-  '      <ID>1</ID>'#13#10 + //3
-  '      <Name>One</Name>'#13#10 + //4
-  '    </IdentityObject>'#13#10 + //5
-  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //6
-  '      <ID>2</ID>'#13#10 + //7
-  '      <Name>Two</Name>'#13#10 + //8
-  '    </IdentityObject>'#13#10 + //9
-  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //10
-  '      <ID>3</ID>'#13#10 + //11
-  '      <Name>Three</Name>'#13#10 + //12
-  '    </IdentityObject>'#13#10 + //13
-  '  </IdentityObjectList>'#13#10 + //14
-  '</xml>'#13#10; //15
+    '<xml>'#13#10 + //0
+    '  <IdentityObjectList classname="TestgCore.TIdentityObjectList">'#13#10 + //1
+    '    <List>'#13#10 + //2
+    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //3
+    '        <ID>1</ID>'#13#10 + //4
+    '        <Name>One</Name>'#13#10 + //5
+    '      </IdentityObject>'#13#10 + //6
+    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //7
+    '        <ID>2</ID>'#13#10 + //8
+    '        <Name>Two</Name>'#13#10 + //9
+    '      </IdentityObject>'#13#10 + //10
+    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //11
+    '        <ID>3</ID>'#13#10 + //12
+    '        <Name>Three</Name>'#13#10 + //13
+    '      </IdentityObject>'#13#10 + //14
+    '    </List>'#13#10 + //15
+    '  </IdentityObjectList>'#13#10 + //16
+    '</xml>'#13#10; //17
   FIdentityObjectList.Deserialize(TgSerializerXML, XMLString);
   CheckEquals(3, FIdentityObjectList.Items[2].ID);
 end;
@@ -1305,24 +1328,24 @@ var
 begin
   Add3;
   XMLString :=
-
-  '<xml>'#13#10 + //0
-  '  <IdentityObjectList classname="TestgCore.TIdentityObjectList">'#13#10 + //1
-  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //2
-  '      <ID>1</ID>'#13#10 + //3
-  '      <Name>One</Name>'#13#10 + //4
-  '    </IdentityObject>'#13#10 + //5
-  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //6
-  '      <ID>2</ID>'#13#10 + //7
-  '      <Name>Two</Name>'#13#10 + //8
-  '    </IdentityObject>'#13#10 + //9
-  '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //10
-  '      <ID>3</ID>'#13#10 + //11
-  '      <Name>Three</Name>'#13#10 + //12
-  '    </IdentityObject>'#13#10 + //13
-  '  </IdentityObjectList>'#13#10 + //14
-  '</xml>'#13#10; //15
-
+    '<xml>'#13#10 + //0
+    '  <IdentityObjectList classname="TestgCore.TIdentityObjectList">'#13#10 + //1
+    '    <List>'#13#10 + //2
+    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //3
+    '        <ID>1</ID>'#13#10 + //4
+    '        <Name>One</Name>'#13#10 + //5
+    '      </IdentityObject>'#13#10 + //6
+    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //7
+    '        <ID>2</ID>'#13#10 + //8
+    '        <Name>Two</Name>'#13#10 + //9
+    '      </IdentityObject>'#13#10 + //10
+    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //11
+    '        <ID>3</ID>'#13#10 + //12
+    '        <Name>Three</Name>'#13#10 + //13
+    '      </IdentityObject>'#13#10 + //14
+    '    </List>'#13#10 + //15
+    '  </IdentityObjectList>'#13#10 + //16
+    '</xml>'#13#10; //17
   CheckEquals(XMLString, FIdentityObjectList.Serialize(TgSerializerXML));
 end;
 
@@ -1339,6 +1362,92 @@ begin
   FIdentityObjectList := nil;
 end;
 
+procedure TestTBase3.SerializeXML;
+Const
+  Letters: Array[1..3] of Char = ('A', 'B', 'C');
+var
+  Counter: Integer;
+  XMLString: string;
+begin
+  Base3.Name := 'One';
+  for Counter := 1 to 3 do
+  begin
+    Base3.List.Add;
+    Base3.List.Current.IntegerProperty := Counter;
+    Base3.List.Current.StringProperty := Letters[Counter];
+  end;
+  XMLString :=
+    '<xml>'#13#10 + //0
+    '  <Base3 classname="TestgCore.TBase3">'#13#10 + //1
+    '    <IntegerProperty>2</IntegerProperty>'#13#10 + //2
+    '    <StringProperty>12345</StringProperty>'#13#10 + //3
+    '    <Name>One</Name>'#13#10 + //4
+    '    <List classname="TestgCore.TBase2List">'#13#10 + //5
+    '      <List>'#13#10 + //6
+    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //7
+    '          <IntegerProperty>1</IntegerProperty>'#13#10 + //8
+    '          <StringProperty>A</StringProperty>'#13#10 + //9
+    '        </Base2>'#13#10 + //10
+    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //11
+    '          <IntegerProperty>2</IntegerProperty>'#13#10 + //12
+    '          <StringProperty>B</StringProperty>'#13#10 + //13
+    '        </Base2>'#13#10 + //14
+    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //15
+    '          <IntegerProperty>3</IntegerProperty>'#13#10 + //16
+    '          <StringProperty>C</StringProperty>'#13#10 + //17
+    '        </Base2>'#13#10 + //18
+    '      </List>'#13#10 + //19
+    '    </List>'#13#10 + //20
+    '  </Base3>'#13#10 + //21
+    '</xml>'#13#10; //22
+  CheckEquals(XMLString, Base3.Serialize(TgSerializerXML));
+end;
+
+procedure TestTBase3.DeserializeXML;
+var
+  XMLString: string;
+begin
+  XMLString :=
+    '<xml>'#13#10 + //0
+    '  <Base3 classname="TestgCore.TBase3">'#13#10 + //1
+    '    <IntegerProperty>2</IntegerProperty>'#13#10 + //2
+    '    <StringProperty>12345</StringProperty>'#13#10 + //3
+    '    <Name>One</Name>'#13#10 + //4
+    '    <List classname="TestgCore.TBase2List">'#13#10 + //5
+    '      <List>'#13#10 + //6
+    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //7
+    '          <IntegerProperty>1</IntegerProperty>'#13#10 + //8
+    '          <StringProperty>A</StringProperty>'#13#10 + //9
+    '        </Base2>'#13#10 + //10
+    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //11
+    '          <IntegerProperty>2</IntegerProperty>'#13#10 + //12
+    '          <StringProperty>B</StringProperty>'#13#10 + //13
+    '        </Base2>'#13#10 + //14
+    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //15
+    '          <IntegerProperty>3</IntegerProperty>'#13#10 + //16
+    '          <StringProperty>C</StringProperty>'#13#10 + //17
+    '        </Base2>'#13#10 + //18
+    '      </List>'#13#10 + //19
+    '    </List>'#13#10 + //20
+    '  </Base3>'#13#10 + //21
+    '</xml>'#13#10; //22
+  Base3.Deserialize(TgSerializerXML, XMLString);
+  CheckEquals('One', Base3.Name);
+  CheckEquals('C', Base3.List[2].StringProperty);
+end;
+
+procedure TestTBase3.SetUp;
+begin
+  inherited;
+  Base3 := TBase3.Create;
+end;
+
+procedure TestTBase3.TearDown;
+begin
+  Base3.Free;
+  inherited;
+end;
+
 initialization
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
@@ -1346,7 +1455,12 @@ initialization
   RegisterTest(TestTBase2List.Suite);
   RegisterTest(TestTIdentityObject.Suite);
   RegisterTest(TestTIdentityObjectList.Suite);
+  RegisterTest(TestTBase3.Suite);
 end.
+
+
+
+
 
 
 

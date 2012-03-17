@@ -378,18 +378,30 @@ type
 
   TgSerializationHelperJSONBaseClass = Class of TgSerializationHelperJSONBase;
   TgSerializationHelperJSONBase = class(TgSerializationHelper)
+  type
+
+    E = Class(Exception)
+    End;
+
   public
     class function BaseClass: TgBaseClass; override;
     class procedure Deserialize(AObject: TgBase; AJSONObject: TJSONObject); virtual;
+    class procedure DeserializeUnpublishedProperty(AObject: TgBase; APair: TJSONPair); virtual;
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerJSON); virtual;
     class function SerializerClass: TgSerializerClass; override;
   end;
 
   TgSerializationHelperXMLBaseClass = class of TgSerializationHelperXMLBase;
   TgSerializationHelperXMLBase = class(TgSerializationHelper)
+  type
+
+    E = Class(Exception)
+    End;
+
   public
     class function BaseClass: TgBaseClass; override;
     class procedure Deserialize(AObject: TgBase; AXMLNode: IXMLNode); virtual;
+    class procedure DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode); virtual;
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerXML); virtual;
     class function SerializerClass: TgSerializerClass; override;
   end;
@@ -398,16 +410,16 @@ type
   end;
 
   ///	<summary>
-  ///	  This class will be used to cursor through a list of
+  ///	  This class will be used to cursor through a FList of
   ///	  <see cref="gCore|TgBase" /> classes and will also be used to support
   ///	  selection lists in the user Interface
   ///	</summary>
   ///	<remarks>
   ///	  <para>
-  ///	    This maintains a cursor in the list of
+  ///	    This maintains a cursor in the FList of
   ///	    <see cref="gCore|TgList.Current">Current</see> and can be moved by
   ///	    setting the <see cref="gCore|TgList.CurrentIndex">CurrentIndex</see>,
-  ///	    and the Count Property will tell you how many items are in the list
+  ///	    and the Count Property will tell you how many items are in the FList
   ///	  </para>
   ///	  <para>
   ///	    Filtering is achived by using the
@@ -460,7 +472,7 @@ type
         property Current: TgBase read GetCurrent;
       End;
 
-      /// <summary> Internal structure used by the <see cref="OrderBy" />  to sort the items contained in this list
+      /// <summary> Internal structure used by the <see cref="OrderBy" />  to sort the items contained in this FList
       /// </summary>
       TgComparer = class(TComparer<TgBase>)
       strict private
@@ -472,7 +484,6 @@ type
 
   strict private
     FItemClass: TgBaseClass;
-    FList: TObjectList<TgBase>;
     FOrderBy: String;
     FOrderByList: TObjectList<TgOrderByItem>;
     FWhere: String;
@@ -484,6 +495,7 @@ type
     procedure SetIsOrdered(const AValue: Boolean);
   strict protected
     FStates: TStates;
+    FList: TObjectList<TgBase>;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; override;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; override;
     function GetBOL: Boolean; virtual;
@@ -515,8 +527,8 @@ type
     procedure Clear; virtual;
 
     ///	<summary>
-    ///	  In combination with the <see cref="where" /> property this will create a sub list of
-    ///	  the main list to cursor through.
+    ///	  In combination with the <see cref="where" /> property this will create a sub FList of
+    ///	  the main FList to cursor through.
     ///	</summary>
     procedure Filter; virtual;
     function GetEnumerator: TgEnumerator;
@@ -544,12 +556,11 @@ type
     property CurrentIndex: Integer read GetCurrentIndex write SetCurrentIndex;
     property EOL: Boolean read GetEOL;
     property HasItems: Boolean read GetHasItems;
-    property List: TObjectList<TgBase> read FList;
     [NotSerializable]
     property OrderBy: String read FOrderBy write SetOrderBy;
     ///	<summary>
     ///	  After setting this property with a proper value you'll need to use
-    ///	  the <see cref="Filter" /> method to create the new filtered list
+    ///	  the <see cref="Filter" /> method to create the new filtered FList
     ///	</summary>
     /// <example>
     ///	  <code lang="Delphi">
@@ -560,13 +571,13 @@ type
     ///    published
     ///      property ID: Integer read FID write FID;
     ///    end;
-    ///	 var List: TgList;
+    ///	 var FList: TgList;
     ///  begin
-    ///    List := TgList;
-    ///    List.ItemClass := TgMine;
-    ///    List.Where := 'ID = 12';
-    ///    List.Filter;
-    ///    List.Free;
+    ///    FList := TgList;
+    ///    FList.ItemClass := TgMine;
+    ///    FList.Where := 'ID = 12';
+    ///    FList.Filter;
+    ///    FList.Free;
     ///  end;
     ///	  </code>
     /// </example>
@@ -625,15 +636,15 @@ type
   TgSerializationHelperXMLList = class(TgSerializationHelperXMLBase)
   public
     class function BaseClass: TgBaseClass; override;
-    class procedure Deserialize(AObject: TgBase; AXMLNode: IXMLNode); override;
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerXML); override;
+    class procedure DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode); override;
   end;
 
   TgSerializationHelperJSONList = class(TgSerializationHelperJSONBase)
   public
     class function BaseClass: TgBaseClass; override;
     class procedure Serialize(AObject: TgBase;ASerializer: TgSerializerJSON); override;
-    class procedure Deserialize(AObject: TgBase; AJSONObject: TJSONObject); override;
+    class procedure DeserializeUnpublishedProperty(AObject: TgBase; APair: TJSONPair); override;
   end;
 
   TgBaseClassComparer = class(TComparer<TRTTIType>)
@@ -774,6 +785,8 @@ type
     procedure Rollback;
     procedure StartTransaction(ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
     procedure Assign(ASource: TgBase); reintroduce; override;
+    function HasIdentity: Boolean; virtual;
+    procedure RemoveIdentity;
     property IsDeleting: Boolean read GetIsDeleting write SetIsDeleting;
     property IsLoaded: Boolean read GetIsLoaded write SetIsLoaded;
     property IsModified: Boolean read GetIsModified;
@@ -834,11 +847,18 @@ type
       E = class(Exception)
       end;
 
+      TList = class(TgList<TgIdentityObject>)
+      strict private
+        FLastID: Integer;
+      published
+        property LastID: Integer read FLastID write FLastID;
+      end;
+
   strict private
     function Filename: String;
-    procedure LoadList(const AList: TgList<TgIdentityObject>);
-    function Locate(const AList: TgList<TgIdentityObject>; AObject: TgIdentityObject): Boolean;
-    procedure SaveList(const AList: TgList<TgIdentityObject>);
+    procedure LoadList(const AList: TList);
+    function Locate(const AList: TList; AObject: TgIdentityObject): Boolean;
+    procedure SaveList(const AList: TList);
   public
     procedure Commit(AObject: TgIdentityObject); override;
     procedure StartTransaction(AObject: TgIdentityObject; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); override;
@@ -2202,7 +2222,9 @@ begin
     if SameText(Pair.JsonString.Value, 'ClassName') then
       Continue;
     RTTIProperty := G.PropertyByName(AObject, Pair.JsonString.Value);
-    if Not RTTIProperty.PropertyType.IsInstance then
+    if Not Assigned(RTTIProperty) then
+      DeserializeUnpublishedProperty(AObject, Pair)
+    Else if Not RTTIProperty.PropertyType.IsInstance then
       AObject[Pair.JsonString.Value] := Pair.JsonValue.Value
     Else
     Begin
@@ -2215,6 +2237,11 @@ begin
       End;
     End;
   end;
+end;
+
+class procedure TgSerializationHelperJSONBase.DeserializeUnpublishedProperty(AObject: TgBase; APair: TJSONPair);
+begin
+  raise E.CreateFmt('Attemt to deserialize unknown property %s.', [APair.JsonString.Value]);
 end;
 
 class procedure TgSerializationHelperJSONBase.Serialize(AObject: TgBase; ASerializer: TgSerializerJSON);
@@ -2274,7 +2301,9 @@ begin
   begin
     ChildNode := AXMLNode.ChildNodes[Counter];
     RTTIProperty := G.PropertyByName(AObject, ChildNode.NodeName);
-    if Not RTTIProperty.PropertyType.IsInstance then
+    if Not Assigned(RTTIProperty) then
+      DeserializeUnpublishedProperty(AObject, ChildNode)
+    Else if Not RTTIProperty.PropertyType.IsInstance then
       AObject[ChildNode.NodeName] := ChildNode.ChildNodes.First.Text
     Else
     Begin
@@ -2286,6 +2315,11 @@ begin
       End;
     End;
   end;
+end;
+
+class procedure TgSerializationHelperXMLBase.DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode);
+begin
+  raise E.CreateFmt('Attemt to deserialize unknown property %s.', [AXMLNode.NodeName]);
 end;
 
 class procedure TgSerializationHelperXMLBase.Serialize(AObject: TgBase; ASerializer: TgSerializerXML);
@@ -2499,7 +2533,7 @@ End;
 
 function TgList.GetBOL: Boolean;
 Begin
-  Result := Min(FCurrentIndex, List.Count - 1) = - 1;
+  Result := Min(FCurrentIndex, FList.Count - 1) = - 1;
 End;
 
 function TgList.GetCanAdd: Boolean;
@@ -2519,20 +2553,20 @@ End;
 
 function TgList.GetCount: Integer;
 Begin
-  Result := List.Count;
+  Result := FList.Count;
 End;
 
 function TgList.GetCurrent: TgBase;
 Begin
   if CurrentIndex = -1 then
-    raise EgList.CreateFmt('Attempted to get an item from an empty %s list.', [ClassName]);
-  Result := List[CurrentIndex];
+    raise EgList.CreateFmt('Attempted to get an item from an empty %s FList.', [ClassName]);
+  Result := FList[CurrentIndex];
 End;
 
 function TgList.GetCurrentIndex: Integer;
 Begin
-  If List.Count > 0 Then
-    Result := EnsureRange(FCurrentIndex, 0, List.Count - 1)
+  If FList.Count > 0 Then
+    Result := EnsureRange(FCurrentIndex, 0, FList.Count - 1)
   Else
     Result := - 1;
 End;
@@ -2544,7 +2578,7 @@ End;
 
 function TgList.GetEOL: Boolean;
 Begin
-  Result := Max(FCurrentIndex, 0) = List.Count;
+  Result := Max(FCurrentIndex, 0) = FList.Count;
 End;
 
 function TgList.GetHasItems: Boolean;
@@ -2574,10 +2608,10 @@ end;
 
 function TgList.GetItems(AIndex : Integer): TgBase;
 Begin
-  if InRange(AIndex, 0, List.Count - 1) then
-    Result := List[AIndex]
+  if InRange(AIndex, 0, FList.Count - 1) then
+    Result := FList[AIndex]
   Else
-    Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, List.Count - 1]);
+    Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
 
 function TgList.GetOrderByList: TObjectList<TgOrderByItem>;
@@ -2589,31 +2623,31 @@ end;
 
 procedure TgList.Last;
 Begin
-  FCurrentIndex := List.Count;
+  FCurrentIndex := FList.Count;
 End;
 
 procedure TgList.Next;
 Begin
-  If (List.Count > 0) And (FCurrentIndex < List.Count) Then
+  If (FList.Count > 0) And (FCurrentIndex < FList.Count) Then
     FCurrentIndex := CurrentIndex + 1
   Else
-    Raise EgList.Create('Failed attempt to move past end of list.');
+    Raise EgList.Create('Failed attempt to move past end of FList.');
 End;
 
 procedure TgList.Previous;
 Begin
-  If (List.Count > 0) And (FCurrentIndex > -1) Then
+  If (FList.Count > 0) And (FCurrentIndex > -1) Then
     FCurrentIndex := CurrentIndex - 1
   Else
-    Raise EgList.Create('Failed attempt to move past end of list.');
+    Raise EgList.Create('Failed attempt to move past end of FList.');
 End;
 
 procedure TgList.SetCurrentIndex(const AIndex: Integer);
 Begin
-  If (List.Count > 0) And InRange(AIndex, 0, List.Count - 1) Then
+  If (FList.Count > 0) And InRange(AIndex, 0, FList.Count - 1) Then
     FCurrentIndex := AIndex
   Else
-    Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, List.Count - 1]);
+    Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
 
 procedure TgList.SetIsFiltered(const AValue: Boolean);
@@ -2650,10 +2684,10 @@ end;
 
 procedure TgList.SetItems(AIndex : Integer; const AValue: TgBase);
 Begin
-  if InRange(AIndex, 0, List.Count - 1) then
+  if InRange(AIndex, 0, FList.Count - 1) then
     FList[AIndex] := AValue
   Else
-    Raise EgList.CreateFmt('Failed to set the item at index %d, because the valid range is between 0 and %d.', [AIndex, List.Count - 1]);
+    Raise EgList.CreateFmt('Failed to set the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
 
 procedure TgList.SetOrderBy(const AValue: String);
@@ -2693,7 +2727,7 @@ begin
 //    EnsureOrderByDefault;
     Comparer := TgComparer.Create(OrderByList);
     try
-      List.Sort(Comparer);
+      FList.Sort(Comparer);
     finally
       Comparer.Free;
     end;
@@ -2739,19 +2773,22 @@ begin
   Result := TgList;
 end;
 
-class procedure TgSerializationHelperXMLList.Deserialize(AObject: TgBase; AXMLNode: IXMLNode);
+class procedure TgSerializationHelperXMLList.DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode);
 var
   Counter: Integer;
   SerializationHelperXMLBaseClass: TgSerializationHelperXMLBaseClass;
 begin
-  if Not SameText(AXMLNode.Attributes['classname'], AObject.QualifiedClassName) then
-    Raise EgParse.CreateFmt('Expected: %s, Parsed: %s', [AObject.QualifiedClassName, AXMLNode.Attributes['classname']]);
-  for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
+  if SameText(AXMLNode.NodeName, 'list') then
   Begin
-    TgList(AObject).Add;
-    SerializationHelperXMLBaseClass := TgSerializationHelperXMLBaseClass(G.SerializationHelpers(TgSerializerXML, TgList(AObject).Current));
-    SerializationHelperXMLBaseClass.Deserialize(TgList(AObject).Current, AXMLNode.ChildNodes[Counter]);
-  End;
+    for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
+    Begin
+      TgList(AObject).Add;
+      SerializationHelperXMLBaseClass := TgSerializationHelperXMLBaseClass(G.SerializationHelpers(TgSerializerXML, TgList(AObject).Current));
+      SerializationHelperXMLBaseClass.Deserialize(TgList(AObject).Current, AXMLNode.ChildNodes[Counter]);
+    End;
+  End
+  Else
+    Inherited;
 end;
 
 class procedure TgSerializationHelperXMLList.Serialize(AObject: TgBase; ASerializer: TgSerializerXML);
@@ -2760,6 +2797,8 @@ var
   ItemPointer: TObject;
   SerializationHelperXMLBaseClass: TgSerializationHelperXMLBaseClass;
 begin
+  Inherited Serialize(AObject, ASerializer);
+  ASerializer.CurrentNode := ASerializer.CurrentNode.AddChild('List');
   for ItemPointer in TgList(AObject) do
   Begin
     ItemObject := TgBase(ItemPointer);
@@ -2769,6 +2808,7 @@ begin
     SerializationHelperXMLBaseClass.Serialize(ItemObject, ASerializer);
     ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
   End;
+  ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
 end;
 
 { TgSerializationHelperJSONList }
@@ -2778,28 +2818,26 @@ begin
   Result := TgList;
 end;
 
-class procedure TgSerializationHelperJSONList.Deserialize(AObject: TgBase; AJSONObject: TJSONObject);
+class procedure TgSerializationHelperJSONList.DeserializeUnpublishedProperty(AObject: TgBase; APair: TJSONPair);
 var
-  JSONClassName: String;
   JSONValue: TJSONValue;
-  Pair: TJSONPair;
   SerializationHelperJSONBaseClass: TgSerializationHelperJSONBaseClass;
 begin
-  Pair := AJSONObject.Get('ClassName');
-  JSONClassName := Pair.JsonValue.Value;
-  if Not SameText(JSONClassName, AObject.QualifiedClassName) then
-    Raise EgParse.CreateFmt('Expected: %s, Parsed: %s', [QualifiedClassName, JSONClassName]);
-  Pair := AJSONObject.Get('List');
-  If Not Pair.JsonValue.InheritsFrom(TJSONArray) Then
-    raise EgParse.CreateFmt('Expected: TJSONArray, Parsed: %s.', [Pair.JsonValue.ClassName]);
-  for JSONValue in TJSONArray(Pair.JsonValue) Do
+  if SameText('list', APair.JsonString.Value) then
   Begin
-    if Not JSONValue.InheritsFrom(TJSONObject) then
-      raise EgParse.CreateFmt('Expected: TJSONObject, Parsed: %s', [JSONValue.ClassName]);
-    TgList(AObject).Add;
-    SerializationHelperJSONBaseClass := TgSerializationHelperJSONBaseClass(G.SerializationHelpers(TgSerializerJSON, TgList(AObject).Current));
-    SerializationHelperJSONBaseClass.Deserialize(TgList(AObject).Current, TJSONObject(JSONValue));
-  End;
+    If Not APair.JsonValue.InheritsFrom(TJSONArray) Then
+      raise EgParse.CreateFmt('Expected: TJSONArray, Parsed: %s.', [APair.JsonValue.ClassName]);
+    for JSONValue in TJSONArray(APair.JsonValue) Do
+    Begin
+      if Not JSONValue.InheritsFrom(TJSONObject) then
+        raise EgParse.CreateFmt('Expected: TJSONObject, Parsed: %s', [JSONValue.ClassName]);
+      TgList(AObject).Add;
+      SerializationHelperJSONBaseClass := TgSerializationHelperJSONBaseClass(G.SerializationHelpers(TgSerializerJSON, TgList(AObject).Current));
+      SerializationHelperJSONBaseClass.Deserialize(TgList(AObject).Current, TJSONObject(JSONValue));
+    End;
+  End
+  Else
+    inherited;
 end;
 
 class procedure TgSerializationHelperJSONList.Serialize(AObject: TgBase;ASerializer: TgSerializerJSON);
@@ -2810,7 +2848,7 @@ var
   ItemSerializer: TgSerializerJSON;
   SerializationHelperJSONBaseClass: TgSerializationHelperJSONBaseClass;
 begin
-  ASerializer.JSONObject.AddPair('ClassName', AObject.QualifiedClassName);
+  Inherited Serialize(AObject, ASerializer);
   JSONArray := TJSONArray.Create;
   try
     for ItemPointer in TgList(AObject) do
@@ -3314,7 +3352,7 @@ end;
 function TgIdentityObject.GetCanDelete: Boolean;
 begin
 { TODO : Create a real implementation }
-  Result := True;
+  Result := HasIdentity;
 end;
 
 function TgIdentityObject.GetCanSave: Boolean;
@@ -3372,6 +3410,17 @@ begin
   Result := FOriginalValues;
 end;
 
+function TgIdentityObject.HasIdentity: Boolean;
+begin
+  case VarType(ID) of
+    varEmpty, varNull: Result := False;
+    varSmallint, varInteger, varSingle, varDouble, varCurrency, varDate, varShortInt, varByte, varWord, varLongWord, varInt64: Result := ID > 0;
+    varString: Result := ID > '';
+  else
+    Result := False;
+  end;
+end;
+
 class function TgIdentityObject.PersistenceManager: TgPersistenceManager;
 begin
   Result := G.PersistenceManagers(Self);
@@ -3404,6 +3453,14 @@ function TgIdentityObject.Load: Boolean;
 begin
   DoLoad;
   Result := IsLoaded;
+end;
+
+procedure TgIdentityObject.RemoveIdentity;
+begin
+  case VarType(ID) of
+    varSmallint, varInteger, varSingle, varDouble, varCurrency, varDate, varShortInt, varByte, varWord, varLongWord, varInt64: ID := 0;
+    varString: ID := '';
+  end;
 end;
 
 procedure TgIdentityObject.Rollback;
@@ -3469,10 +3526,10 @@ end;
 
 procedure TgPersistenceManagerFile.ActivateList(AIdentityList: TgIdentityList);
 var
-  List: TgList<TgIdentityObject>;
+  List: TList;
   IdentityObject: TgIdentityObject;
 begin
-  List := TgList<TgIdentityObject>.Create;
+  List := TList.Create;
   try
     List.ItemClass := AIdentityList.ItemClass;
     LoadList(List);
@@ -3499,9 +3556,9 @@ end;
 
 function TgPersistenceManagerFile.Count(AIdentityList: TgIdentityList): Integer;
 var
-  List: TgList<TgIdentityObject>;
+  List: TList;
 begin
-  List := TgList<TgIdentityObject>.Create;
+  List := TList.Create;
   try
     List.ItemClass := AIdentityList.ItemClass;
     LoadList(List);
@@ -3515,10 +3572,10 @@ end;
 
 procedure TgPersistenceManagerFile.CreatePersistentStorage;
 var
-  List: TgList<TgIdentityObject>;
+  List: TList;
 begin
   ForceDirectories(ExtractFilePath(FileName));
-  List := TgList<TgIdentityObject>.Create;
+  List := TList.Create;
   try
     List.ItemClass := ForClass;
     StringToFile(List.Serialize(TgSerializerXML), FileName);
@@ -3529,10 +3586,10 @@ end;
 
 procedure TgPersistenceManagerFile.DeleteObject(AObject: TgIdentityObject);
 var
-  List: TgList<TgIdentityObject>;
+  List: TList;
   ID : String;
 begin
-  List := TgList<TgIdentityObject>.Create;
+  List := TList.Create;
   try
     List.ItemClass := TgBaseClass(AObject.ClassType);
     LoadList(List);
@@ -3543,6 +3600,7 @@ begin
       ID := AObject.ID;
       Raise E.CreateFmt('Delete failed. %s with an key of %s not found.', [AObject.ClassName, ID]);
     End;
+    AObject.RemoveIdentity;
     SaveList(List);
   finally
     List.Free;
@@ -3554,7 +3612,7 @@ begin
   Result := Format('%s%s.xml', [G.DataPath, ForClass.FriendlyName]);
 end;
 
-procedure TgPersistenceManagerFile.LoadList(const AList: TgList<TgIdentityObject>);
+procedure TgPersistenceManagerFile.LoadList(const AList: TList);
 begin
   if Not PersistentStorageExists then
     CreatePersistentStorage;
@@ -3563,9 +3621,9 @@ end;
 
 procedure TgPersistenceManagerFile.LoadObject(AObject: TgIdentityObject);
 var
-  List: TgList<TgIdentityObject>;
+  List: TList;
 begin
-  List := TgList<TgIdentityObject>.Create;
+  List := TList.Create;
   try
     List.ItemClass := TgBaseClass(AObject.ClassType);
     LoadList(List);
@@ -3581,13 +3639,14 @@ begin
   end;
 end;
 
-function TgPersistenceManagerFile.Locate(const AList: TgList<TgIdentityObject>; AObject: TgIdentityObject): Boolean;
+function TgPersistenceManagerFile.Locate(const AList: TList; AObject: TgIdentityObject): Boolean;
 begin
+  // We use a While loop instead of a For-In loop to preserve the CurrentIndex value
   AList.First;
   while Not AList.EOL do
   Begin
-  if AList.Current.ID = AObject.ID  then
-    Exit(True);
+    if AList.Current.ID = AObject.ID then
+      Exit(True);
     AList.Next;
   End;
   Result := False;
@@ -3603,7 +3662,7 @@ begin
 
 end;
 
-procedure TgPersistenceManagerFile.SaveList(const AList: TgList<TgIdentityObject>);
+procedure TgPersistenceManagerFile.SaveList(const AList: TList);
 begin
   ForceDirectories(ExtractFilePath(FileName));
   StringToFile(AList.Serialize(TgSerializerXML), FileName);
@@ -3611,14 +3670,27 @@ end;
 
 procedure TgPersistenceManagerFile.SaveObject(AObject: TgIdentityObject);
 var
-  List: TgList<TgIdentityObject>;
+  HasIdentity: Boolean;
+  List: TList;
 begin
-  List := TgList<TgIdentityObject>.Create;
+  // To save an identity object, the object must either have a valid ID
+  // or descend from TgIDObject, in which case we'll assign an ID if needed.
+  HasIdentity := AObject.HasIdentity;
+  if Not (HasIdentity Or AObject.InheritsFrom(TgIDObject)) then
+    raise  E.CreateFmt('Attempted to save a %s without an ID.', [AObject.ClassName]);
+  List := TList.Create;
   try
     List.ItemClass := TgBaseClass(AObject.ClassType);
     LoadList(List);
-    If Not Locate(List, AObject) then
+    // Don't  bother trying to locate if there's no ID
+    If Not HasIdentity Or Not Locate(List, AObject) then
       List.Add;
+    // Assign an ID if none given
+    if Not HasIdentity then
+    Begin
+      List.LastID := List.LastID + 1;
+      AObject.ID := List.LastID;
+    End;
     List.Current.Assign(AObject);
     SaveList(List);
   finally
@@ -3685,7 +3757,7 @@ end;
 
 function TgIdentityList.GetCurrent: TgIdentityObject;
 Begin
-  if List.Count = 0 then
+  if FList.Count = 0 then
     EnsureActive;
   Result := TgIdentityObject(Inherited GetCurrent);
 End;
