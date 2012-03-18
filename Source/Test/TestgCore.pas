@@ -261,9 +261,30 @@ type
     property Name: String read FName write FName;
   end;
 
+  TIDObject2 = class(TgIDObject)
+  strict private
+    FIDObject: TIDObject;
+    FName: String;
+  published
+    property Name: String read FName write FName;
+    property IDObject: TIDObject read FIDObject;
+  end;
+
   TestTIDObject = class(TTestCase)
   strict private
     FIDObject: TIDObject;
+  protected
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Save;
+  end;
+
+type
+  TestTIDObject2 = class(TTestCase)
+  strict private
+    FIDObject: TIDObject;
+    FIDObject2: TIDObject2;
   protected
     procedure SetUp; override;
     procedure TearDown; override;
@@ -1485,6 +1506,41 @@ begin
   inherited;
 end;
 
+procedure TestTIDObject2.Save;
+begin
+  FIDObject2.Name := 'One';
+  FIDObject2.IDObject.ID := 1;
+  FIDObject2.Save;
+  FIDObject2.ID := 0;
+  FIDObject2.Name := 'Two';
+  FIDObject2.IDObject.ID := 2;
+  FIDObject2.Save;
+  FIDObject2.ID := 1;
+  FIDObject2.Load;
+  CheckEquals(1, FIDObject2.IDObject.ID);
+end;
+
+procedure TestTIDObject2.SetUp;
+begin
+  inherited;
+  FIDObject := TIDObject.Create;
+  FIDObject.PersistenceManager.CreatePersistentStorage;
+  FIDObject.Name := 'A';
+  FIDObject.Save;
+  FIDObject.ID := 0;
+  FIDObject.Name := 'B';
+  FIDObject.Save;
+  FIDObject2 := TIDObject2.Create;
+  FIDObject2.PersistenceManager.CreatePersistentStorage;
+end;
+
+procedure TestTIDObject2.TearDown;
+begin
+  FIDObject.Free;
+  FIDObject2.Free;
+  inherited;
+end;
+
 initialization
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
@@ -1494,5 +1550,6 @@ initialization
   RegisterTest(TestTIdentityObjectList.Suite);
   RegisterTest(TestTBase3.Suite);
   RegisterTest(TestTIDObject.Suite);
+  RegisterTest(TestTIDObject2.Suite);
 end.
 
