@@ -945,6 +945,16 @@ type
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerJSON; ARTTIProperty: TRTTIProperty = Nil); override;
   end;
 
+  TgSerializationHelperXMLIdentityList = class(TgSerializationHelperXMLIdentityObject)
+  public
+    class function BaseClass: TgBaseClass; override;
+  end;
+
+  TgSerializationHelperJSONIdentityList = class(TgSerializationHelperJSONIdentityObject)
+  public
+    class function BaseClass: TgBaseClass; override;
+  end;
+
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 
 Function FileToString(AFileName : String) : String;
@@ -1936,7 +1946,7 @@ var
 begin
   BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
   for RTTIProperty in ObjectProperties(BaseClass) do
-  if (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, Composite))) > 0) Or (Not RTTIProperty.IsWritable And Not BaseClass.InheritsFrom(TgIdentityObject) And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, NotComposite))) = 0)) then
+  if (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, Composite))) > 0) Or (Not RTTIProperty.IsWritable And Not (BaseClass.InheritsFrom(TgIdentityObject) or BaseClass.InheritsFrom(TgIdentityList)) And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, NotComposite))) = 0)) then
   begin
     FCompositeProperties.TryGetValue(BaseClass, RTTIProperties);
     SetLength(RTTIProperties, Length(RTTIProperties) + 1);
@@ -3963,11 +3973,21 @@ begin
     ASerializer.AddValueProperty('ID', TgIdentityObject(AObject).ID);
 end;
 
+class function TgSerializationHelperXMLIdentityList.BaseClass: TgBaseClass;
+begin
+  Result := TgIdentityList;
+end;
+
+class function TgSerializationHelperJSONIdentityList.BaseClass: TgBaseClass;
+begin
+  Result := TgIdentityList;
+end;
+
 Initialization
   RegisterRuntimeClasses([
       TgSerializationHelperXMLBase, TgSerializationHelperXMLList, TgSerializationHelperJSONBase,
       TgSerializationHelperJSONBase, TgSerializationHelperJSONList.BaseClass, TgSerializationHelperXMLIdentityObject,
-      TgSerializationHelperJSONIdentityObject
+      TgSerializationHelperJSONIdentityObject, TgSerializationHelperXMLIdentityList, TgSerializationHelperJSONIdentityList
     ]);
 
 end.

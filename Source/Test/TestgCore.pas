@@ -280,7 +280,6 @@ type
     procedure Save;
   end;
 
-type
   TestTIDObject2 = class(TTestCase)
   strict private
     FIDObject: TIDObject;
