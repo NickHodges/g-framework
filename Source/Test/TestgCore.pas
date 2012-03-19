@@ -264,10 +264,12 @@ type
   TIDObject2 = class(TgIDObject)
   strict private
     FIDObject: TIDObject;
+    FIDObjects: TgIdentityList<TIDObject>;
     FName: String;
   published
     property Name: String read FName write FName;
     property IDObject: TIDObject read FIDObject;
+    property IDObjects: TgIdentityList<TIDObject> read FIDObjects;
   end;
 
   TestTIDObject = class(TTestCase)

@@ -196,6 +196,7 @@ type
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetIsInspecting: Boolean; virtual;
+    function GetPathName: String; virtual;
     function GetValues(Const APath : String): Variant; virtual;
     /// <summary>TgBase.OwnerByClass walks up the Owner path looking for an owner whose
     /// class type matches the AClass parameter. This method gets used by the
@@ -222,6 +223,7 @@ type
     class function FriendlyName: String;
     function GetFriendlyClassName: String;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
+    function OwnerProperty: TRTTIProperty;
     /// <summary>TgBase.Owns determines if the object passed into  the ABase parameter
     /// has Self as its owner.
     /// </summary>
@@ -250,6 +252,8 @@ type
     /// </summary> type:TgBase
     [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible] [NotAssignable]
     property Owner: TgBase read FOwner;
+    [NotSerializable] [NotVisible]
+    property PathName: String read GetPathName;
   end;
 
   TgList<T: TgBase> = class;
@@ -874,6 +878,7 @@ type
 
   TgIdentityList = class(TgList)
   strict private
+    FCurrentKey: String;
     procedure EnsureActive;
     function GetIsActivating: Boolean;
     procedure SetIsActivating(const AValue: Boolean);
@@ -884,8 +889,10 @@ type
     function GetEOL: Boolean; override;
     function GetCount: Integer; override;
     function GetCurrent: TgIdentityObject; reintroduce; virtual;
+    function GetCurrentKey: String; virtual;
     function GetItemClass: TgIdentityObjectClass; reintroduce; virtual;
     function GetItems(AIndex : Integer): TgIdentityObject; reintroduce; virtual;
+    procedure SetCurrentKey(const AValue: String); virtual;
     procedure SetItemClass(const Value: TgIdentityObjectClass); reintroduce; virtual;
     procedure SetItems(AIndex : Integer; const AValue: TgIdentityObject); reintroduce; virtual;
   public
@@ -903,6 +910,8 @@ type
     procedure Delete; override;
     [NotAutoCreate] [NotSerializable] [NotAssignable]
     property Current: TgIdentityObject read GetCurrent;
+    [NotSerializable] [NotAssignable]
+    property CurrentKey: String read GetCurrentKey write SetCurrentKey;
   end;
 
   TgIdentityList<T: TgIdentityObject> = class(TgIdentityList)
@@ -1299,6 +1308,20 @@ begin
   Result := False;
 end;
 
+function TgBase.GetPathName: String;
+begin
+  if Assigned(Owner) And (OwnerProperty <> Nil) then
+  Begin
+    Result := Owner.PathName;
+    If Result > '' Then
+      Result := Result + '.' + OwnerProperty.Name
+    Else
+      Result := OwnerProperty.Name;
+  End
+  else
+    Result := '';
+end;
+
 function TgBase.GetValues(Const APath : String): Variant;
 Begin
   If Not DoGetValues(APath, Result) Then
@@ -1310,6 +1333,18 @@ begin
   IsInspecting := True;
   Result := ARTTIProperty.GetValue(Self).AsObject;
   IsInspecting := False;
+end;
+
+function TgBase.OwnerProperty: TRTTIProperty;
+var
+  RTTIProperty: TRTTIProperty;
+begin
+  Result := Nil;
+  if Not Assigned(Owner) then
+    Exit;
+  for RTTIProperty in G.ObjectProperties(Owner) do
+  if RTTIProperty.GetValue(Owner).AsObject = Self then
+    Exit(RTTIProperty);
 end;
 
 function TgBase.Owns(ABase : TgBase): Boolean;
@@ -3796,6 +3831,11 @@ Begin
   Result := TgIdentityObject(Inherited GetCurrent);
 End;
 
+function TgIdentityList.GetCurrentKey: String;
+begin
+  Result := FCurrentKey;
+end;
+
 function TgIdentityList.GetEOL: Boolean;
 begin
   EnsureActive;
@@ -3859,6 +3899,17 @@ begin
   Begin
     Clear;
     AssignActive(False);
+  End;
+end;
+
+procedure TgIdentityList.SetCurrentKey(const AValue: String);
+begin
+  If ( AValue = '' ) Or  ( FCurrentKey <> AValue ) Then
+  Begin
+    Active := False;
+    FCurrentKey := AValue;
+    If FCurrentKey > '' Then
+      Active := True;
   End;
 end;
 
