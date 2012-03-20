@@ -137,6 +137,7 @@ type
     procedure Assign;
     procedure DeserializeXML;
     procedure DeserializeJSON;
+    procedure PathName;
     procedure SerializeXML;
     procedure SerializeJSON;
     procedure TestCreate;
@@ -246,12 +247,14 @@ type
   TestTBase3 = class(TTestCase)
   strict private
     Base3: TBase3;
+    procedure Add3;
   protected
     procedure SetUp; override;
     procedure TearDown; override;
   published
     procedure SerializeXML;
     procedure DeserializeXML;
+    procedure PathName;
   end;
 
   TIDObject = class(TgIDObject)
@@ -502,6 +505,12 @@ begin
   CheckEquals(True, Base.BooleanProperty);
   CheckEquals(StrToDate('1/1/12'), Base.DateProperty);
   CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
+end;
+
+procedure TestTBase.PathName;
+begin
+  CheckEquals('', Base.PathName);
+  CheckEquals('ManuallyConstructedObjectProperty', Base.ManuallyConstructedObjectProperty.PathName);
 end;
 
 procedure TestTBase.SerializeXML;
@@ -1401,20 +1410,26 @@ begin
   FIdentityObjectList := nil;
 end;
 
-procedure TestTBase3.SerializeXML;
+procedure TestTBase3.Add3;
 Const
   Letters: Array[1..3] of Char = ('A', 'B', 'C');
 var
   Counter: Integer;
-  XMLString: string;
 begin
-  Base3.Name := 'One';
   for Counter := 1 to 3 do
   begin
     Base3.List.Add;
     Base3.List.Current.IntegerProperty := Counter;
     Base3.List.Current.StringProperty := Letters[Counter];
   end;
+end;
+
+procedure TestTBase3.SerializeXML;
+var
+  XMLString: string;
+begin
+  Base3.Name := 'One';
+  Add3;
   XMLString :=
     '<xml>'#13#10 + //0
     '  <Base3 classname="TestgCore.TBase3">'#13#10 + //1
@@ -1473,6 +1488,15 @@ begin
   Base3.Deserialize(TgSerializerXML, XMLString);
   CheckEquals('One', Base3.Name);
   CheckEquals('C', Base3.List[2].StringProperty);
+end;
+
+procedure TestTBase3.PathName;
+begin
+  Base3.Name := 'One';
+  Add3;
+  Base3.List.Previous;
+  CheckEquals('List[1]', Base3.List.Current.PathName);
+  CheckEquals(2, Base3[Base3.List.Current.PathName + '.IntegerProperty']);
 end;
 
 procedure TestTBase3.SetUp;

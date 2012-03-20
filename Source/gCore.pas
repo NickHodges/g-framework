@@ -536,6 +536,7 @@ type
     ///	</summary>
     procedure Filter; virtual;
     function GetEnumerator: TgEnumerator;
+    function IndexString: String; virtual;
     procedure Sort;
     property IsFiltered: Boolean read GetIsFiltered write SetIsFiltered;
     property IsOrdered: Boolean read GetIsOrdered write SetIsOrdered;
@@ -898,6 +899,7 @@ type
   public
     procedure Assign(ASource: TgBase); override;
     procedure AssignActive(const AValue: Boolean);
+    function IndexString: string; override;
     property Active: Boolean read GetActive write SetActive;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
     property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
@@ -1027,13 +1029,33 @@ end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 var
+  BracketPosition: Integer;
+  PeriodFirst: Boolean;
+  PeriodPosition: Integer;
   Position: Integer;
 Begin
-  Position := Pos('.', APath);
+  BracketPosition := Pos('[', APath);
+  PeriodPosition := Pos('.', APath);
+
+  if BracketPosition < 2 Then
+    PeriodFirst := True
+  else if PeriodPosition = 0 then
+    PeriodFirst := False
+  else
+    PeriodFirst := PeriodPosition < BracketPosition;
+
+  if PeriodFirst then
+    Position := PeriodPosition
+  else
+    Position := BracketPosition;
+
   if Position > 0 then
   Begin
     AHead := Copy(APath, 1, Position - 1);
-    ATail := Copy(APath, Position + 1, MaxInt);
+    if PeriodFirst then
+      ATail := Copy(APath, Position + 1, MaxInt)
+    else
+      ATail := Copy(APath, Position, MaxInt);
   End
   Else
   Begin
@@ -1313,10 +1335,14 @@ begin
   if Assigned(Owner) And (OwnerProperty <> Nil) then
   Begin
     Result := Owner.PathName;
-    If Result > '' Then
-      Result := Result + '.' + OwnerProperty.Name
+    if Owner.InheritsFrom(TgList) And SameText('Current', OwnerProperty.Name) then
+      Result := Result + '[' + TgList(Owner).IndexString + ']'
     Else
-      Result := OwnerProperty.Name;
+    Begin
+      If Result > '' Then
+        Result := Result + '.';
+      Result := Result + OwnerProperty.Name;
+    End;
   End
   else
     Result := '';
@@ -1343,7 +1369,7 @@ begin
   if Not Assigned(Owner) then
     Exit;
   for RTTIProperty in G.ObjectProperties(Owner) do
-  if RTTIProperty.GetValue(Owner).AsObject = Self then
+  if Owner.Inspect(RTTIProperty) = Self then
     Exit(RTTIProperty);
 end;
 
@@ -2690,6 +2716,11 @@ begin
   Result := FOrderByList;
 end;
 
+function TgList.IndexString: String;
+begin
+  Result := IntToStr(CurrentIndex);
+end;
+
 procedure TgList.Last;
 Begin
   FCurrentIndex := FList.Count;
@@ -3856,6 +3887,11 @@ function TgIdentityList.GetItems(AIndex : Integer): TgIdentityObject;
 Begin
   Result := TgIdentityObject(Inherited GetItems(AIndex));
 End;
+
+function TgIdentityList.IndexString: string;
+begin
+  Result := Current.ID;
+end;
 
 procedure TgIdentityList.Last;
 begin
