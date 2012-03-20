@@ -581,10 +581,12 @@ type
     function GetCurrentIndex: Integer; virtual;
     function GetEOL: Boolean; virtual;
     function GetHasItems: Boolean; virtual;
+    function GetIndexString: String; virtual;
     function GetIsInspecting: Boolean; override;
     function GetItemClass: TgBaseClass; virtual;
     function GetItems(AIndex : Integer): TgBase; virtual;
     procedure SetCurrentIndex(const AIndex: Integer); virtual;
+    procedure SetIndexString(const AValue: String); virtual;
     procedure SetIsInspecting(const AValue: Boolean); override;
     procedure SetItemClass(const Value: TgBaseClass); virtual;
     procedure SetItems(AIndex : Integer; const AValue: TgBase); virtual;
@@ -606,8 +608,8 @@ type
     ///	</summary>
     procedure Filter; virtual;
     function GetEnumerator: TgEnumerator;
-    function IndexString: String; virtual;
     procedure Sort;
+    property IndexString: String read GetIndexString write SetIndexString;
     property IsFiltered: Boolean read GetIsFiltered write SetIsFiltered;
     property IsOrdered: Boolean read GetIsOrdered write SetIsOrdered;
     property ItemClass: TgBaseClass read GetItemClass write SetItemClass;
@@ -979,10 +981,11 @@ type
     procedure SetCurrentKey(const AValue: String); virtual;
     procedure SetItemClass(const Value: TgIdentityObjectClass); reintroduce; virtual;
     procedure SetItems(AIndex : Integer; const AValue: TgIdentityObject); reintroduce; virtual;
+    function GetIndexString: string; override;
+    procedure SetIndexString(const AValue: String); override;
   public
     procedure Assign(ASource: TgBase); override;
     procedure AssignActive(const AValue: Boolean);
-    function IndexString: string; override;
     property Active: Boolean read GetActive write SetActive;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
     property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
@@ -1040,14 +1043,16 @@ type
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerJSON; ARTTIProperty: TRTTIProperty = Nil); override;
   end;
 
-  TgSerializationHelperXMLIdentityList = class(TgSerializationHelperXMLIdentityObject)
+  TgSerializationHelperXMLIdentityList = class(TgSerializationHelperXMLList)
   public
     class function BaseClass: TgBaseClass; override;
+    class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil); override;
   end;
 
-  TgSerializationHelperJSONIdentityList = class(TgSerializationHelperJSONIdentityObject)
+  TgSerializationHelperJSONIdentityList = class(TgSerializationHelperJSONList)
   public
     class function BaseClass: TgBaseClass; override;
+    class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerJSON; ARTTIProperty: TRTTIProperty = Nil); override;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -2640,8 +2645,6 @@ End;
 
 function TgList.DoGetValues(Const APath : String; Out AValue : Variant): Boolean;
 Var
-  Index : Integer;
-  IndexString : String;
   Position : Integer;
 Begin
   Result := Inherited DoGetValues(APath, AValue);
@@ -2653,12 +2656,8 @@ Begin
       If Position > 0 Then
       Begin
         IndexString := Trim(Copy(APath, 2, Position - 2));
-        If TryStrToInt(IndexString, Index) Then
-        Begin
-          CurrentIndex := Index;
-          Result := True;
-          AValue := Current.Values[Copy(APath, Position + 2, MaxInt)];
-        End;
+        Result := True;
+        AValue := Current.Values[Copy(APath, Position + 2, MaxInt)];
       End;
     End;
   End;
@@ -2666,8 +2665,6 @@ End;
 
 function TgList.DoSetValues(Const APath : String; AValue : Variant): Boolean;
 Var
-  Index : Integer;
-  IndexString : String;
   Position : Integer;
 Begin
   Result := Inherited DoSetValues(APath, AValue);
@@ -2679,12 +2676,8 @@ Begin
       If Position > 0 Then
       Begin
         IndexString := Trim(Copy(APath, 2, Position - 2));
-        If TryStrToInt(IndexString, Index) Then
-        Begin
-          CurrentIndex := Index;
-          Result := True;
-          Current.Values[Copy(APath, Position + 2, MaxInt)] := AValue;
-        End;
+        Result := True;
+        Current.Values[Copy(APath, Position + 2, MaxInt)] := AValue;
       End;
     End;
   End;
@@ -2800,7 +2793,7 @@ begin
   Result := FOrderByList;
 end;
 
-function TgList.IndexString: String;
+function TgList.GetIndexString: String;
 begin
   Result := IntToStr(CurrentIndex);
 end;
@@ -2833,6 +2826,15 @@ Begin
   Else
     Raise EgList.CreateFmt('Failed to set CurrentIndex to %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
+
+procedure TgList.SetIndexString(const AValue: String);
+var
+  Index: Integer;
+begin
+  if Not TryStrToInt(AValue, Index) then
+    raise TgBase.EgValue.CreateFmt('Cannot set the index string to %s, because it is not an integer.', [AValue]);
+  CurrentIndex := Index;
+end;
 
 procedure TgList.SetIsFiltered(const AValue: Boolean);
 begin
@@ -3907,8 +3909,8 @@ end;
 
 procedure TgIdentityList.Assign(ASource: TgBase);
 begin
-  inherited Assign(ASource);
-  AssignActive(True);
+  // Never assign an identity list, because the data can be
+  // retrieved through the persistence mamanager.
 end;
 
 procedure TgIdentityList.AssignActive(const AValue: Boolean);
@@ -3975,6 +3977,11 @@ begin
   Result := inherited GetEOL;
 end;
 
+function TgIdentityList.GetIndexString: string;
+begin
+  Result := Current.ID;
+end;
+
 function TgIdentityList.GetIsActivating: Boolean;
 begin
   Result := lsActivating in FStates;
@@ -3989,11 +3996,6 @@ function TgIdentityList.GetItems(AIndex : Integer): TgIdentityObject;
 Begin
   Result := TgIdentityObject(Inherited GetItems(AIndex));
 End;
-
-function TgIdentityList.IndexString: string;
-begin
-  Result := Current.ID;
-end;
 
 procedure TgIdentityList.Last;
 begin
@@ -4049,6 +4051,11 @@ begin
     If FCurrentKey > '' Then
       Active := True;
   End;
+end;
+
+procedure TgIdentityList.SetIndexString(const AValue: String);
+begin
+  CurrentKey := AValue;
 end;
 
 procedure TgIdentityList.SetIsActivating(const AValue: Boolean);
@@ -4167,9 +4174,21 @@ begin
   Result := TgIdentityList;
 end;
 
+class procedure TgSerializationHelperXMLIdentityList.Serialize(AObject: TgBase; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil);
+begin
+  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
+    Inherited Serialize(AObject, ASerializer, ARTTIProperty);
+end;
+
 class function TgSerializationHelperJSONIdentityList.BaseClass: TgBaseClass;
 begin
   Result := TgIdentityList;
+end;
+
+class procedure TgSerializationHelperJSONIdentityList.Serialize(AObject: TgBase; ASerializer: TgSerializerJSON; ARTTIProperty: TRTTIProperty = Nil);
+begin
+  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
+    Inherited Serialize(AObject, ASerializer, ARTTIProperty);
 end;
 
 Initialization

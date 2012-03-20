@@ -231,7 +231,6 @@ type
     procedure TearDown; override;
   published
     procedure Add;
-    procedure Assign;
     procedure BOL;
     procedure EOL;
     procedure Count;
@@ -1234,25 +1233,6 @@ begin
     FIdentityObjectList.Current.Name := Names[Counter];
     FIdentityObjectList.Current.Save;
   End;
-end;
-
-procedure TestTIdentityObjectList.Assign;
-var
-  NewIdentityObjectList: TIdentityObjectList;
-begin
-  Add3;
-  FIdentityObjectList.Active := True;
-  // The following should be able to run without using the persistence manager.
-  NewIdentityObjectList := TIdentityObjectList.Create;
-  try
-    NewIdentityObjectList.Assign(FIdentityObjectList);
-    CheckEquals(3, NewIdentityObjectList.Count, 'Should have copied 3 items.');
-    CheckEquals(3, NewIdentityObjectList[2].ID, 'Make sure the value got copied.');
-    CheckTrue(NewIdentityObjectList.Active, 'The assign method should have set the active property true.');
-    CheckTrue(NewIdentityObjectList[2].IsLoaded, 'The assign method should have set the isloaded property true.');
-  finally
-    NewIdentityObjectList.Free;
-  end;
 end;
 
 procedure TestTIdentityObjectList.BOL;
