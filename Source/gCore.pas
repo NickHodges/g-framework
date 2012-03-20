@@ -58,14 +58,25 @@ type
   End;
 
   ///	<summary>
-  ///	  Used on published properties decend from a class <see cref="TgObject" />.  <see cref="TgObject" /> is
-  ///	  the base class which will validate published properties
+  ///	  Used on published properties decend from a class <see cref="TgObject" />
+  ///	  .  <see cref="TgObject" /> is the base class which will validate
+  ///	  published properties
   ///	</summary>
+  ///	<remarks>
+  ///	  See <see cref="TgObject.IsValid" />
+  ///	</remarks>
   Validation = class(TCustomAttribute)
   public
     procedure Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty); virtual; abstract;
   end;
 
+  ///	<summary>
+  ///	  Inheriting from <see cref="Validation" />, Using this attribute with
+  ///	  property will require the property to be populated durring Validation
+  ///	</summary>
+  ///	<remarks>
+  ///	  See <see cref="TgObject.IsValid" />
+  ///	</remarks>
   Required = class(Validation)
   strict protected
     FEnabled: Boolean;
@@ -75,35 +86,82 @@ type
     property Enabled: Boolean read FEnabled;
   end;
 
+  ///	<summary>
+  ///	  Inheriting from <see cref="Required" /> this attribute when assigned to a property, will instruct <see cref="G" /> override any Required attribute from its ancestor
+  ///	  class rendering the property not required during the validation process
+  ///	</summary>
+  ///	<remarks>
+  ///	  See <see cref="TgObject.IsValid" />
+  ///	</remarks>
   NotRequired = class(Required)
   public
     constructor Create; override;
   end;
 
+  ///	<summary>
+  ///	  Specifies that the associated published property should be used in a
+  ///	  Serialization process
+  ///	</summary>
+  ///	<remarks>
+  ///	  <see cref="TgSerializer">
+  ///	</remarks>
   Serializable = class(TCustomAttribute)
   end;
 
+  ///	<summary>
+  ///	  Specifies that the associated published property should be ignored in a
+  ///	  Serialization process
+  ///	</summary>
+  ///	<remarks>
+  ///	  <see cref="TgSerializer">
+  ///	</remarks>
   NotSerializable = class(TCustomAttribute)
   end;
 
+  ///	<summary>
+  ///	  Inheriting from <see cref="Required" /> this attribute when assigned to a property, will instruct <see cref="G" /> override any Required attribute from its ancestor
+  ///	  class rendering the property not required during the validation process
+  ///	</summary>
+  ///	<remarks>
+  ///	  See <see cref="TgBase.Assign()" />
+  ///	</remarks>
   NotAssignable = class(TCustomAttribute)
   end;
 
+
+  ///	<summary>
+  ///	  this Attribute will force the associated class reference property that decends from <see cref="TgBase" /> to
+  ///	  be created and assigned to that property when the class is constructed
+  ///	</summary>
+  ///	<remarks>
+  ///	  <see cref="TgObject.AutoCreate" />
+  ///	</remarks>
   AutoCreate = class(TCustomAttribute)
   end;
 
+  ///	<summary>
+  ///	  this Attribute will stop the Auto Creation for the associated class reference property that decends from <see cref="TgBase" /> to
+  ///	  be created and assigned to that property when the class is constructed
+  ///	</summary>
+  ///	<remarks>
+  ///	  <see cref="TgObject.AutoCreate" />
+  ///	</remarks>
   NotAutoCreate = class(TCustomAttribute)
   end;
 
+{ TODO -oJim -cDefinations : Need Defination }
   Visible = class(TCustomAttribute)
   end;
 
+{ TODO -oJim -cDefinations : Need Defination }
   NotVisible = class(TCustomAttribute)
   end;
 
+{ TODO -oJim -cDefinations : Need Defination }
   Composite = class(TCustomAttribute)
   end;
 
+{ TODO -oJim -cDefinations : Need Defination }
   NotComposite = class(TCustomAttribute)
   end;
 
@@ -151,7 +209,8 @@ type
 
   ///	<summary>
   ///	  This class, which decends from <see cref="TgSerializer" />, is used to
-  ///	  serialize the published properties of a <see cref="TgBase" /> into XML format
+  ///	  serialize the published properties of a <see cref="TgBase" /> into XML
+  ///	  format
   ///	</summary>
   TgSerializerXML = class(TgSerializer)
   strict private
@@ -171,7 +230,7 @@ type
   end;
 
   /// <summary>TgBase is the base ancestor of all application specific classes you
-  /// create in G
+  /// create in <see cref="G" />
   /// </summary>
   TgBase = class(TObject)
   public
@@ -185,7 +244,6 @@ type
       /// <summary>
       ///   Used to return a path error for <see cref="TgBase.DoGetValues" /> and <see
       ///   cref="TgBase.DoSetValues" /> used by the <see cref="TgBase.Values" />
-      ///
       /// </summary>
       EgValue = class(Exception)
       end;
@@ -258,6 +316,7 @@ type
 
   TgList<T: TgBase> = class;
 
+{ TODO -oJim -cDefinations : I need to better understand the helper relationship to the Serialization class }
   TgSerializationHelperClass = class of TgSerializationHelper;
   TgSerializationHelper = class(TObject)
   public
@@ -265,25 +324,8 @@ type
     class function SerializerClass: TgSerializerClass; virtual; abstract;
   end;
 
-  TgPropertyValidationAttribute = record
-  public
-    RTTIProperty: TRTTIProperty;
-    ValidationAttribute: Validation;
-    procedure Execute(AObject: TgObject);
-  End;
 
-  TgPropertyAttributeClassKey = record
-  public
-    AttributeClass: TCustomAttributeClass;
-    RTTIProperty: TRTTIProperty;
-    constructor Create(ARTTIProperty: TRttiProperty; AAttributeClass: TCustomAttributeClass);
-  end;
-  TgRecordProperty = Record
-  public
-    Getter: TRTTIMethod;
-    Setter: TRTTIMethod;
-    Validator: TRTTIMethod;
-  End;
+
 
 
   ///	<summary>
@@ -293,6 +335,34 @@ type
   ///	  by <see cref="TgBase" />, <see cref="TgSerializer" />, and <see cref="TgPersistenceManager" />.
   ///	</summary>
   G = class(TObject)
+  public
+    type
+      TgBaseClassComparer = class(TComparer<TRTTIType>)
+        function Compare(const Left, Right: TRTTIType): Integer; override;
+      end;
+
+      TgRecordProperty = Record
+      public
+        Getter: TRTTIMethod;
+        Setter: TRTTIMethod;
+        Validator: TRTTIMethod;
+      End;
+
+      TgPropertyValidationAttribute = record
+      public
+        RTTIProperty: TRTTIProperty;
+        ValidationAttribute: Validation;
+        procedure Execute(AObject: TgObject);
+      End;
+
+      TgPropertyAttributeClassKey = record
+      public
+        AttributeClass: TCustomAttributeClass;
+        RTTIProperty: TRTTIProperty;
+        constructor Create(ARTTIProperty: TRttiProperty; AAttributeClass: TCustomAttributeClass);
+      end;
+
+
   strict private
   class var
     FAssignableProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
@@ -375,7 +445,7 @@ type
     class function PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>; static;
     class function VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; static;
   end;
-
+  { TODO -oJim -cDefinations : What is the difference between a helper and the regular serialization strucutre }
   TgSerializationHelperComparer = class(TComparer<TPair<TgBaseClass, TgSerializationHelperClass>>)
     function Compare(const Left, Right: TPair<TgBaseClass, TgSerializationHelperClass>): Integer; override;
   end;
@@ -652,38 +722,35 @@ type
     class procedure DeserializeUnpublishedProperty(AObject: TgBase; APair: TJSONPair); override;
   end;
 
-  TgBaseClassComparer = class(TComparer<TRTTIType>)
-    function Compare(const Left, Right: TRTTIType): Integer; override;
-  end;
-
-  ///	<summary>
-  ///	  Used to collectect validation errors when a
-  ///	  <see cref="TgObject" />'s published
-  ///	  properties are validated
-  ///	</summary>
-  TgValidationErrors = class(TgBase)
-  strict private
-    FDictionary: TDictionary<String, String>;
-    function GetCount: Integer;
-    function GetHasItems: Boolean;
-  strict protected
-    function DoGetValues(const APath: string; out AValue: Variant): Boolean; override;
-    function DoSetValues(const APath: string; AValue: Variant): Boolean; override;
-  public
-    constructor Create(AOwner: TgBase = Nil); override;
-    destructor Destroy; override;
-    procedure Clear;
-    procedure PopulateList(AStringList: TStrings);
-  published
-    property Count: Integer read GetCount;
-    property HasItems: Boolean read GetHasItems;
-  end;
 
   TgObjectClass = class of TgObject;
   TgObject = class(TgBase)
+  public
     type
       TState = (osInspecting, osOriginalValues, osLoaded, osLoading, osSaving, osDeleting);
       TStates = Set Of TState;
+      ///	<summary>
+      ///	  Used to collectect validation errors when a
+      ///	  <see cref="TgObject" />'s published
+      ///	  properties are validated
+      ///	</summary>
+      TgValidationErrors = class(TgBase)
+      strict private
+        FDictionary: TDictionary<String, String>;
+        function GetCount: Integer;
+        function GetHasItems: Boolean;
+      strict protected
+        function DoGetValues(const APath: string; out AValue: Variant): Boolean; override;
+        function DoSetValues(const APath: string; AValue: Variant): Boolean; override;
+      public
+        constructor Create(AOwner: TgBase = Nil); override;
+        destructor Destroy; override;
+        procedure Clear;
+        procedure PopulateList(AStringList: TStrings);
+      published
+        property Count: Integer read GetCount;
+        property HasItems: Boolean read GetHasItems;
+      end;
   strict private
     FValidationErrors: TgValidationErrors;
     function GetValidationErrors: TgValidationErrors;
@@ -706,6 +773,11 @@ type
     function AllValidationErrors: String;
     class function DisplayPropertyNames: TArray<String>; inline;
     function HasValidationErrors: Boolean;
+
+    ///	<summary>
+    ///	  When the value of this property is requested it will run all
+    ///	  properties through their <see cref="Validation" /> attributes to ensure they properties are valid
+    ///	</summary>
     property IsValid: Boolean read GetIsValid;
   published
     [NotVisible]
@@ -714,6 +786,7 @@ type
     property ValidationErrors: TgValidationErrors read GetValidationErrors;
   end;
 
+  { TODO -oJim -cDefinations : I'm not clear what the defination of this attribute would be, and what it is used for }
   DisplayPropertyNames = class(TCustomAttribute)
   strict private
     FValue: TArray<String>;
@@ -834,6 +907,9 @@ type
     property ID: T read GetID write SetID;
   end;
 
+  ///	<summary>
+  ///	  This class is used to make the <see cref="TgIdentityObject{T}.ID">ID</see> property a Integer
+  ///	</summary>
   TgIDObject = class(TgIdentityObject<Integer>)
   end;
 
@@ -852,10 +928,17 @@ type
       E = class(Exception)
       end;
 
+      ///	<summary>
+      ///	  <see cref="TList" /> is used to load and save <see cref="TgIdentityObject" />s in the <see cref="TgPersistenceManagerFile" />.  it manages the <see cref="TgIdentityObject.ID">ID</see> Property using the <see cref="LastID" /> when there is a new class to be added to the file
+      ///	</summary>
       TList = class(TgList<TgIdentityObject>)
       strict private
         FLastID: Integer;
       published
+        ///	<summary>
+        ///	  LastID is used as a AutoIncrement value for adding new classes to
+        ///	  the PersistenceFile
+        ///	</summary>
         property LastID: Integer read FLastID write FLastID;
       end;
 
@@ -944,6 +1027,7 @@ type
     property Current: T read GetCurrent;
   end;
 
+  { TODO -oJim -cDefinations : Not sure how this relates to serialization }
   TgSerializationHelperXMLIdentityObject = class(TgSerializationHelperXMLBase)
   public
     class function BaseClass: TgBaseClass; override;
@@ -1180,7 +1264,7 @@ Var
   Head : String;
   ObjectProperty: TgBase;
   PropertyValue: TValue;
-  RecordProperty: TgRecordProperty;
+  RecordProperty: G.TgRecordProperty;
   RTTIProperty : TRttiProperty;
   Tail : String;
 Begin
@@ -1236,7 +1320,7 @@ Var
   Head: String;
   ObjectProperty: TgBase;
   PropertyValue: TValue;
-  RecordProperty: TgRecordProperty;
+  RecordProperty: G.TgRecordProperty;
   RTTIProperty : TRTTIProperty;
   RTTIMethod : TRTTIMethod;
   Tail: String;
@@ -2973,7 +3057,7 @@ end;
 
 { TgBaseClassComparer }
 
-function TgBaseClassComparer.Compare(const Left, Right: TRTTIType): Integer;
+function G.TgBaseClassComparer.Compare(const Left, Right: TRTTIType): Integer;
 
   function Level(ARTTIType : TRTTIType) : Integer;
   var
@@ -2998,6 +3082,8 @@ begin
   Else
     Result := CompareText(Left.AsInstance.MetaclassType.ClassName, Right.AsInstance.MetaclassType.ClassName)
 end;
+
+{  TgBaseExpressionEvaluator }
 
 Constructor TgBaseExpressionEvaluator.Create(AModel : TgBase);
 Begin
@@ -3221,7 +3307,7 @@ end;
 
 procedure TgObject.GetIsValidInternal;
 var
-  PropertyValidationAttribute: TgPropertyValidationAttribute;
+  PropertyValidationAttribute: G.TgPropertyValidationAttribute;
 begin
   for PropertyValidationAttribute in G.PropertyValidationAttributes(Self) do
     PropertyValidationAttribute.Execute(Self);
@@ -3270,25 +3356,25 @@ begin
   Else
     Exclude(FStates, osInspecting);
 end;
-
-constructor TgValidationErrors.Create(AOwner: TgBase = Nil);
+{ TgObject.TgValidationErrors }
+constructor TgObject.TgValidationErrors.Create(AOwner: TgBase = Nil);
 begin
   inherited Create(AOwner);
   FDictionary := TDictionary<String, String>.Create();
 end;
 
-destructor TgValidationErrors.Destroy;
+destructor TgObject.TgValidationErrors.Destroy;
 begin
   FreeAndNil(FDictionary);
   inherited Destroy;
 end;
 
-procedure TgValidationErrors.Clear;
+procedure TgObject.TgValidationErrors.Clear;
 begin
   FDictionary.Clear;
 end;
 
-function TgValidationErrors.DoGetValues(const APath: string; out AValue: Variant): Boolean;
+function TgObject.TgValidationErrors.DoGetValues(const APath: string; out AValue: Variant): Boolean;
 var
   TempString: String;
 begin
@@ -3303,7 +3389,7 @@ begin
   End;
 end;
 
-function TgValidationErrors.DoSetValues(const APath: string; AValue: Variant): Boolean;
+function TgObject.TgValidationErrors.DoSetValues(const APath: string; AValue: Variant): Boolean;
 var
   TempString: String;
 begin
@@ -3316,17 +3402,17 @@ begin
   End;
 end;
 
-function TgValidationErrors.GetCount: Integer;
+function TgObject.TgValidationErrors.GetCount: Integer;
 begin
   Result := FDictionary.Count;
 end;
 
-function TgValidationErrors.GetHasItems: Boolean;
+function TgObject.TgValidationErrors.GetHasItems: Boolean;
 begin
   Result := Count > 0;
 end;
 
-procedure TgValidationErrors.PopulateList(AStringList: TStrings);
+procedure TgObject.TgValidationErrors.PopulateList(AStringList: TStrings);
 var
   Pair: TPair<String, String>;
 begin
@@ -3334,11 +3420,15 @@ begin
     AStringList.Add(Pair.Key + ': ' + Pair.Value);
 end;
 
+{ DisplayPropertyNames }
+
 constructor DisplayPropertyNames.Create(AValue: TArray<String>);
 begin
   inherited Create;
   FValue := AValue;
 end;
+
+{ Required }
 
 constructor Required.Create;
 begin
@@ -3375,10 +3465,14 @@ begin
     AObject.ValidationErrors[ARTTIProperty.Name] := Format('%s is Required.', [ARTTIProperty.Name]);
 end;
 
-procedure TgPropertyValidationAttribute.Execute(AObject: TgObject);
+{ G.TgPropertyValidationAttribute }
+
+procedure G.TgPropertyValidationAttribute.Execute(AObject: TgObject);
 begin
   ValidationAttribute.Execute(AObject, RTTIProperty);
 end;
+
+{ NotRequired }
 
 constructor NotRequired.Create;
 begin
@@ -3386,11 +3480,15 @@ begin
   FEnabled := False;
 end;
 
-constructor TgPropertyAttributeClassKey.Create(ARTTIProperty: TRttiProperty; AAttributeClass: TCustomAttributeClass);
+{ TgPropertyAttributeClassKey }
+
+constructor G.TgPropertyAttributeClassKey.Create(ARTTIProperty: TRttiProperty; AAttributeClass: TCustomAttributeClass);
 begin
   RTTIProperty := ARTTIProperty;
   AttributeClass := AAttributeClass;
 end;
+
+{ TgIdentityObject<T> }
 
 function TgIdentityObject<T>.GetID: T;
 begin
@@ -3403,6 +3501,8 @@ begin
 //  Inherited SetID(AValue);
   inherited ID := TValue.From<T>(AValue).AsVariant;
 end;
+
+{ TgIdentityObject }
 
 destructor TgIdentityObject.Destroy;
 begin
@@ -3623,6 +3723,8 @@ procedure TgIdentityObject.StartTransaction(ATransactionIsolationLevel: TgTransa
 begin
   PersistenceManager.StartTransaction(Self, ATransactionIsolationLevel);
 end;
+
+{ TgPersistenceManagerFile }
 
 procedure TgPersistenceManagerFile.ActivateList(AIdentityList: TgIdentityList);
 var
@@ -4041,7 +4143,7 @@ end;
 
 class procedure TgSerializationHelperXMLIdentityObject.Serialize(AObject: TgBase; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil);
 begin
-  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
+  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
     Inherited Serialize(AObject, ASerializer, ARTTIProperty)
   Else
     ASerializer.AddValueProperty('ID', TgIdentityObject(AObject).ID);
@@ -4054,7 +4156,7 @@ end;
 
 class procedure TgSerializationHelperJSONIdentityObject.Serialize(AObject: TgBase; ASerializer: TgSerializerJSON; ARTTIProperty: TRTTIProperty = Nil);
 begin
-  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
+  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
     Inherited Serialize(AObject, ASerializer, ARTTIProperty)
   Else
     ASerializer.AddValueProperty('ID', TgIdentityObject(AObject).ID);
