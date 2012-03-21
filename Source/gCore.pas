@@ -814,7 +814,7 @@ type
     function Count(AIdentityList: TgIdentityList): Integer; virtual; abstract;
     procedure CreatePersistentStorage; virtual; abstract;
     procedure DeleteObject(AObject: TgIdentityObject); virtual; abstract;
-    procedure LoadObject(AObject: TgIdentityObject); virtual; abstract;
+    procedure LoadObject(AObject: TgIdentityObject); virtual;
     function PersistentStorageExists: Boolean; virtual; abstract;
     procedure RollBack(AObject: TgIdentityObject); virtual; abstract;
     procedure SaveObject(AObject: TgIdentityObject); virtual; abstract;
@@ -3829,6 +3829,7 @@ procedure TgPersistenceManagerFile.LoadObject(AObject: TgIdentityObject);
 var
   List: TList;
 begin
+  Inherited LoadObject(AObject);
   List := TList.Create;
   try
     List.ItemClass := TgBaseClass(AObject.ClassType);
@@ -4222,6 +4223,21 @@ class procedure TgSerializationHelperJSONIdentityList.Serialize(AObject: TgBase;
 begin
   if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
     Inherited Serialize(AObject, ASerializer, ARTTIProperty);
+end;
+
+procedure TgPersistenceManager.LoadObject(AObject: TgIdentityObject);
+var
+  ObjectClass: TgIdentityObjectClass;
+  ObjectID: Variant;
+  ObjectOwner: TgBase;
+begin
+  //Initialize the object before loading it.
+  ObjectID := AObject.ID;
+  ObjectOwner := AObject.Owner;
+  ObjectClass := TgIdentityObjectClass(AObject.ClassType);
+  AObject.Free;
+  AObject := ObjectClass.Create(ObjectOwner);
+  AObject.ID := ObjectID;
 end;
 
 Initialization

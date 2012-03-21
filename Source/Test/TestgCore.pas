@@ -1556,7 +1556,6 @@ begin
   FIDObject2.IDObjects.First;
   CheckEquals(3, FIDObject2.IDObjects.Count);
   CheckEquals(1, FIDObject2.IDObjects.Current.ID);
-  FIDObject2.IDObjects.Active := False;
   FIDObject2.ID := 2;
   FIDObject2.Load;
   FIDObject2.IDObjects.First;
