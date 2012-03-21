@@ -986,6 +986,7 @@ type
   public
     procedure Assign(ASource: TgBase); override;
     procedure AssignActive(const AValue: Boolean);
+    function ExtendedWhere: String; virtual;
     property Active: Boolean read GetActive write SetActive;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
     property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
@@ -1234,13 +1235,13 @@ Begin
         SourceObject := TgBase(ASource.Inspect(RTTIProperty));
         If Assigned(SourceObject) And SourceObject.InheritsFrom(TgBase) Then
         Begin
-          if ASource.Owns(SourceObject) then
+          DestinationObject := TgBase(RTTIProperty.GetValue(Self).AsObject);
+          if ASource.Owns(SourceObject) or (Assigned(DestinationObject) And Self.Owns(DestinationObject)) then
           Begin
-            DestinationObject := TgBase(RTTIProperty.GetValue(Self).AsObject);
             If Assigned(DestinationObject) And DestinationObject.InheritsFrom(TgBase) Then
               DestinationObject.Assign(SourceObject);
           End
-          Else
+          Else if RTTIProperty.IsWritable then
             RTTIProperty.SetValue(Self, RTTIProperty.GetValue(ASource));
         End;
       End
@@ -2691,8 +2692,9 @@ begin
     while Not BOL do
     Begin
       if Not Eval(Where, Current) then
-        Delete;
-      Previous;
+        Delete
+      else
+        Previous;
     End;
     IsFiltered := True;
   End;
@@ -2908,7 +2910,7 @@ procedure TgList.Sort;
 var
   Comparer: TgComparer;
 begin
-  if (Count > 0) then
+  if (OrderBy > '') and (Count > 0) then
   Begin
 //    EnsureOrderByDefault;
     Comparer := TgComparer.Create(OrderByList);
@@ -3737,7 +3739,7 @@ begin
   try
     List.ItemClass := AIdentityList.ItemClass;
     LoadList(List);
-    List.Where := AIdentityList.Where;
+    List.Where := AIdentityList.ExtendedWhere;
     List.Filter;
     AIdentityList.Clear;
     AIdentityList.IsFiltered := List.IsFiltered;
@@ -3766,7 +3768,7 @@ begin
   try
     List.ItemClass := AIdentityList.ItemClass;
     LoadList(List);
-    List.Where := AIdentityList.Where;
+    List.Where := AIdentityList.ExtendedWhere;
     List.Filter;
     Result := List.Count;
   finally
@@ -3932,6 +3934,37 @@ procedure TgIdentityList.EnsureActive;
 begin
   if Not Active then
     Active := True;
+end;
+
+function TgIdentityList.ExtendedWhere: String;
+var
+  RTTIProperty: TRTTIProperty;
+  IdentityObjectClass: TgIdentityObjectClass;
+  IDString: String;
+  OwnerObject: TgIdentityObject;
+begin
+  Result := Where;
+  If CurrentKey > '' Then
+  Begin
+    if Result > '' then
+      Result := Result + ' And ';
+    Result := Result + Format('(ID = ''%s'')', [CurrentKey]);
+  End;
+  for RTTIProperty in G.ObjectProperties(ItemClass) do
+  begin
+    IdentityObjectClass := TgIdentityObjectClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+    if IdentityObjectClass.InheritsFrom(TgIdentityObject) then
+    Begin
+      OwnerObject := TgIdentityObject(OwnerByClass(IdentityObjectClass));
+      if Assigned(OwnerObject) then
+      Begin
+        IDString := OwnerObject.ID;
+        if Result > '' then
+          Result := Result + 'And';
+        Result := Result + Format('%s.ID = %s', [RTTIProperty.Name, IDString]);
+      End;
+    End;
+  end;
 end;
 
 procedure TgIdentityList.First;

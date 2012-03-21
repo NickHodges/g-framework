@@ -15,6 +15,8 @@ uses
   TestFramework, gCore, System.Rtti;
 
 type
+  TIDObject3 = class;
+  TIDObject2 = class;
   // Test methods for class TgBase
 
   ///	<summary>
@@ -263,17 +265,6 @@ type
     property Name: String read FName write FName;
   end;
 
-  TIDObject2 = class(TgIDObject)
-  strict private
-    FIDObject: TIDObject;
-    FIDObjects: TgIdentityList<TIDObject>;
-    FName: String;
-  published
-    property Name: String read FName write FName;
-    property IDObject: TIDObject read FIDObject;
-    property IDObjects: TgIdentityList<TIDObject> read FIDObjects;
-  end;
-
   TestTIDObject = class(TTestCase)
   strict private
     FIDObject: TIDObject;
@@ -284,6 +275,26 @@ type
     procedure Save;
   end;
 
+  TIDObject3 = class(TgIDObject)
+  strict private
+    FIDObject2: TIDObject2;
+    FName: String;
+  published
+    property IDObject2: TIDObject2 read FIDObject2;
+    property Name: String read FName write FName;
+  end;
+
+  TIDObject2 = class(TgIDObject)
+  strict private
+    FIDObject: TIDObject;
+    FIDObjects: TgIdentityList<TIDObject3>;
+    FName: String;
+  published
+    property Name: String read FName write FName;
+    property IDObject: TIDObject read FIDObject;
+    property IDObjects: TgIdentityList<TIDObject3> read FIDObjects;
+  end;
+
   TestTIDObject2 = class(TTestCase)
   strict private
     FIDObject: TIDObject;
@@ -291,8 +302,12 @@ type
   protected
     procedure SetUp; override;
     procedure TearDown; override;
+  public
+    procedure Add3Items;
   published
+    procedure ExtendedWhere;
     procedure Save;
+    procedure SaveItem;
   end;
 
 implementation
@@ -1511,18 +1526,66 @@ begin
   inherited;
 end;
 
+procedure TestTIDObject2.Add3Items;
+const
+  Names : Array[1..3] of String = ('One', 'Two', 'Three');
+var
+  Counter: Integer;
+begin
+  for Counter := 1 to 3 do
+  begin
+    FIDObject2.IDObjects.Add;
+    FIDObject2.IDObjects.Current.Name := Names[Counter];
+    FIDObject2.IDObjects.Current.Save;
+  end;
+end;
+
+procedure TestTIDObject2.ExtendedWhere;
+begin
+  FIDObject2.Name := 'One';
+  FIDObject2.IDObject.ID := 1;
+  FIDObject2.Save;
+  Add3Items;
+  FIDObject2.RemoveIdentity;
+  FIDObject2.Name := 'Two';
+  FIDObject2.IDObject.ID := 2;
+  FIDObject2.Save;
+  Add3Items;
+  FIDObject2.ID := 1;
+  FIDObject2.Load;
+  FIDObject2.IDObjects.First;
+  CheckEquals(3, FIDObject2.IDObjects.Count);
+  CheckEquals(1, FIDObject2.IDObjects.Current.ID);
+  FIDObject2.IDObjects.Active := False;
+  FIDObject2.ID := 2;
+  FIDObject2.Load;
+  FIDObject2.IDObjects.First;
+  CheckEquals(3, FIDObject2.IDObjects.Count);
+  CheckEquals(4, FIDObject2.IDObjects.Current.ID);
+end;
+
 procedure TestTIDObject2.Save;
 begin
   FIDObject2.Name := 'One';
   FIDObject2.IDObject.ID := 1;
   FIDObject2.Save;
-  FIDObject2.ID := 0;
+  FIDObject2.RemoveIdentity;
   FIDObject2.Name := 'Two';
   FIDObject2.IDObject.ID := 2;
   FIDObject2.Save;
   FIDObject2.ID := 1;
   FIDObject2.Load;
   CheckEquals(1, FIDObject2.IDObject.ID);
+end;
+
+procedure TestTIDObject2.SaveItem;
+begin
+  FIDObject2.Name := 'One';
+  FIDObject2.IDObject.ID := 1;
+  FIDObject2.Save;
+  FIDObject2.IDObjects.Add;
+  FIDObject2.IDObjects.Current.Name := 'One';
+  FIDObject2.IDObjects.Current.Save;
 end;
 
 procedure TestTIDObject2.SetUp;
@@ -1537,6 +1600,7 @@ begin
   FIDObject.Save;
   FIDObject2 := TIDObject2.Create;
   FIDObject2.PersistenceManager.CreatePersistentStorage;
+  TIDObject3.PersistenceManager.CreatePersistentStorage;
 end;
 
 procedure TestTIDObject2.TearDown;
