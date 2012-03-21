@@ -1236,9 +1236,9 @@ Begin
         If Assigned(SourceObject) And SourceObject.InheritsFrom(TgBase) Then
         Begin
           DestinationObject := TgBase(RTTIProperty.GetValue(Self).AsObject);
-          if ASource.Owns(SourceObject) or (Assigned(DestinationObject) And Self.Owns(DestinationObject)) then
+          if Assigned(DestinationObject) And Self.Owns(DestinationObject) then
           Begin
-            If Assigned(DestinationObject) And DestinationObject.InheritsFrom(TgBase) Then
+            If DestinationObject.InheritsFrom(TgBase) Then
               DestinationObject.Assign(SourceObject);
           End
           Else if RTTIProperty.IsWritable then
@@ -3914,6 +3914,7 @@ procedure TgIdentityList.Assign(ASource: TgBase);
 begin
   // Never assign an identity list, because the data can be
   // retrieved through the persistence mamanager.
+  Active := False;
 end;
 
 procedure TgIdentityList.AssignActive(const AValue: Boolean);
