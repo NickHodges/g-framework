@@ -38,6 +38,7 @@ type
   TgPersistenceManager = class;
 
   TgIdentityList = class;
+  TgModel = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -250,7 +251,13 @@ type
 
   strict private
     FOwner: TgBase;
+    function GetModel: TgModel;
   strict protected
+    /// <summary>TgBase.AutoCreate gets called by the Create constructor to instantiate
+    /// object properties. You may override this method in a descendant class to alter
+    /// its behavior.
+    /// </summary>
+    procedure AutoCreate; virtual;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetIsInspecting: Boolean; virtual;
@@ -305,6 +312,8 @@ type
   published
     [NotSerializable] [NotVisible]
     property FriendlyClassName: String read GetFriendlyClassName;
+    [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible] [NotAssignable]
+    property Model: TgModel read GetModel;
     /// <summary>TgBase.Owner represents the object passed in the constructor. You may
     /// use the Owner object to "walk up" the model.
     /// </summary> type:TgBase
@@ -759,11 +768,6 @@ type
     procedure PopulateDefaultValues;
   strict protected
     FStates: TStates;
-    /// <summary>TgObject.AutoCreate gets called by the Create constructor to instantiate
-    /// object properties. You may override this method in a descendant class to alter
-    /// its behavior.
-    /// </summary>
-    procedure AutoCreate; virtual;
     function GetDisplayName: String; virtual;
     function GetIsValid: Boolean; virtual;
     procedure GetIsValidInternal; virtual;
@@ -1056,6 +1060,12 @@ type
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerJSON; ARTTIProperty: TRTTIProperty = Nil); override;
   end;
 
+  TgModel = class(TgBase)
+  public
+    function IsAuthorized: Boolean; virtual;
+    function PersistenceSegmentationString: String; virtual;
+  end;
+
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 
 Function FileToString(AFileName : String) : String;
@@ -1213,6 +1223,7 @@ constructor TgBase.Create(AOwner: TgBase = Nil);
 begin
   inherited Create;
   FOwner := AOwner;
+  AutoCreate;
 end;
 
 class function TgBase.AddAttributes(ARTTIProperty: TRttiProperty): TArray<TCustomAttribute>;
@@ -1252,6 +1263,27 @@ Begin
   Else
     Raise EgAssign.CreateFmt('Assignment mismatch between source ''%s'' and destination ''%s'' classes.', [ASource.ClassName, ClassName]);
 End;
+
+procedure TgBase.AutoCreate;
+var
+  RTTIProperty: TRTTIProperty;
+  ObjectProperty : TgBase;
+  ObjectPropertyClass: TgBaseClass;
+  Value : TValue;
+  Field : Pointer;
+begin
+  for RTTIProperty in G.AutoCreateProperties(Self) do
+  Begin
+    ObjectPropertyClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+    // See if there is a owner that can populate this property
+    ObjectProperty := OwnerByClass(ObjectPropertyClass);
+    if Not Assigned(ObjectProperty) then
+      ObjectProperty := ObjectPropertyClass.Create(Self);
+    Value := ObjectProperty;
+    Field := TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc;
+    Value.Cast(RTTIProperty.PropertyType.Handle).ExtractRawData(PByte(Self) + (IntPtr(Field) and (not PROPSLOT_MASK)));
+  End;
+end;
 
 procedure TgBase.Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
 var
@@ -1418,6 +1450,16 @@ End;
 function TgBase.GetIsInspecting: Boolean;
 begin
   Result := False;
+end;
+
+function TgBase.GetModel: TgModel;
+begin
+  if InheritsFrom(TgModel) then
+    Result := TgModel(Self)
+  else if Assigned(Owner) then
+    Result := Owner.Model
+  else
+    Result := Nil;
 end;
 
 function TgBase.GetPathName: String;
@@ -1872,6 +1914,13 @@ begin
     for Attribute in RTTIProperty.PropertyType.GetAttributes do
     if Attribute.InheritsFrom(Validation) then
       AddAttribute;
+    // Identity objects should be given the Required attribute unless it is specifically disabled
+    if RTTIProperty.PropertyType.IsInstance and RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityObject) And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, NotRequired))) = 0) then
+    Begin
+      Attribute := Required.Create;
+      FOwnedAttributes.Add(Attribute);
+      AddAttribute;
+    End;
   end;
 end;
 
@@ -3203,7 +3252,6 @@ end;
 constructor TgObject.Create(AOwner: TgBase = nil);
 begin
   inherited;
-  AutoCreate;
   PopulateDefaultValues;
 end;
 
@@ -3240,27 +3288,6 @@ begin
   finally
     StringList.Free;
   end;
-end;
-
-procedure TgObject.AutoCreate;
-var
-  RTTIProperty: TRTTIProperty;
-  ObjectProperty : TgBase;
-  ObjectPropertyClass: TgBaseClass;
-  Value : TValue;
-  Field : Pointer;
-begin
-  for RTTIProperty in G.AutoCreateProperties(Self) do
-  Begin
-    ObjectPropertyClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
-    // See if there is a owner that can populate this property
-    ObjectProperty := OwnerByClass(ObjectPropertyClass);
-    if Not Assigned(ObjectProperty) then
-      ObjectProperty := ObjectPropertyClass.Create(Self);
-    Value := ObjectProperty;
-    Field := TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc;
-    Value.Cast(RTTIProperty.PropertyType.Handle).ExtractRawData(PByte(Self) + (IntPtr(Field) and (not PROPSLOT_MASK)));
-  End;
 end;
 
 class function TgObject.DisplayPropertyNames: TArray<String>;
@@ -3587,11 +3614,8 @@ var
 begin
   Result := False;
   for RTTIProperty in G.PersistableProperties(Self) do
-  Begin
-    Result := IsPropertyModified(RTTIProperty);
-    if Result then
-      Exit;
-  end;
+  If IsPropertyModified(RTTIProperty) Then
+    Exit(True);
 end;
 
 function TgIdentityObject.GetIsOriginalValues: Boolean;
@@ -3645,7 +3669,9 @@ end;
 
 function TgIdentityObject.IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean;
 begin
-  If Not ARTTIProperty.PropertyType.IsInstance Then
+  if ARTTIProperty.PropertyType.IsRecord then
+    Result := Not (G.RecordProperty(ARTTIProperty).Getter.Invoke(ARTTIProperty.GetValue(Self) , []).AsVariant = G.RecordProperty(ARTTIProperty).Getter.Invoke(ARTTIProperty.GetValue(OriginalValues), []).AsVariant)
+  Else If Not ARTTIProperty.PropertyType.IsInstance Then
     Result := Not (ARTTIProperty.GetValue(Self).AsVariant = ARTTIProperty.GetValue(OriginalValues).AsVariant)
   Else if ARTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityObject) then
     Result := TgIdentityObject(ARTTIProperty.GetValue(Self).AsObject).IsModified
@@ -4239,6 +4265,16 @@ begin
   AObject.Free;
   AObject := ObjectClass.Create(ObjectOwner);
   AObject.ID := ObjectID;
+end;
+
+function TgModel.PersistenceSegmentationString: String;
+begin
+  Result := '';
+end;
+
+function TgModel.IsAuthorized: Boolean;
+begin
+  Result := True;
 end;
 
 Initialization

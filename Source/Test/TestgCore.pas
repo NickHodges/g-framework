@@ -17,6 +17,9 @@ uses
 type
   TIDObject3 = class;
   TIDObject2 = class;
+  TInvoiceItem = class;
+  TInvoice = class;
+  TItem = class;
   // Test methods for class TgBase
 
   ///	<summary>
@@ -309,6 +312,86 @@ type
     procedure Save;
     procedure SaveItem;
   end;
+
+  TNameString = record
+  strict private
+    FValue: String;
+  public
+    function GetValue: String;
+    procedure SetValue(const AValue: String);
+    class operator implicit(AValue: Variant): TNameString; overload;
+    class operator Implicit(AValue: TNameString): Variant; overload;
+    property Value: String read GetValue write SetValue;
+  end;
+
+  TCompany = class(TgIDObject)
+  strict private
+    FName: TNameString;
+  published
+    property Name: TNameString read FName write FName;
+  end;
+
+  TMyCompany = class(TCompany)
+  end;
+
+  TCustomer = class(TCompany)
+  end;
+
+  TItem = class(TgIDObject)
+  strict private
+    FName: TNameString;
+  published
+    property Name: TNameString read FName write FName;
+  end;
+
+  TAdminModel = class(TgModel)
+  strict private
+    FCustomers: TgIdentityList<TCustomer>;
+    FItems: TgIdentityList<TItem>;
+    FMyCompany: TMyCompany;
+  published
+    property MyCompany: TMyCompany read FMyCompany;
+    property Customers: TgIdentityList<TCustomer> read FCustomers;
+    property Items: TgIdentityList<TItem> read FItems;
+  end;
+
+  TInvoiceItem = class(TgIDObject)
+  strict private
+    FAmount: Currency;
+    FInvoice: TInvoice;
+    FItem: TItem;
+  published
+    property Invoice: TInvoice read FInvoice;
+    property Item: TItem read FItem;
+    property Amount: Currency read FAmount write FAmount;
+  end;
+
+  TInvoice = class(TIDObject)
+  strict private
+    FCustomer: TCustomer;
+    FDate: TDate;
+    FDueDate: TDate;
+    FItems: TgIdentityList<TInvoiceItem>;
+    function GetAmount: Currency;
+  published
+    property Amount: Currency read GetAmount;
+    property Customer: TCustomer read FCustomer;
+    property Date: TDate read FDate write FDate;
+    property DueDate: TDate read FDueDate write FDueDate;
+    property Items: TgIdentityList<TInvoiceItem> read FItems;
+  end;
+
+  TestTAdminModel = class(TTestCase)
+  strict private
+    Model: TAdminModel;
+  protected
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure TestSetUp;
+  end;
+
+
 
 implementation
 
@@ -1609,7 +1692,84 @@ begin
   inherited;
 end;
 
+function TNameString.GetValue: String;
+begin
+  Result := FValue;
+end;
+
+procedure TNameString.SetValue(const AValue: String);
+begin
+  FValue := Copy(AValue, 1, 50);
+end;
+
+class operator TNameString.implicit(AValue: Variant): TNameString;
+begin
+  Result.Value := AValue;
+end;
+
+class operator TNameString.Implicit(AValue: TNameString): Variant;
+begin
+  Result := AValue.Value;
+end;
+
+function TInvoice.GetAmount: Currency;
+var
+  Item: TInvoiceItem;
+begin
+  Result := 0;
+  for Item in Items do
+    Result := Result + Item.Amount;
+end;
+
+procedure TestTAdminModel.SetUp;
+Const
+  CustomerNames: Array[1..3] of String = ('Apple', 'Microsoft', 'Embarcadero');
+  ItemNames: Array[1..3] of String = ('Training', 'Support', 'Design');
+var
+  CustomerName: String;
+  ItemName: String;
+begin
+  Model := TAdminModel.Create;
+
+  TMyCompany.PersistenceManager.CreatePersistentStorage;
+  TCustomer.PersistenceManager.CreatePersistentStorage;
+  TInvoice.PersistenceManager.CreatePersistentStorage;
+  TInvoiceItem.PersistenceManager.CreatePersistentStorage;
+  TItem.PersistenceManager.CreatePersistentStorage;
+
+  Model.MyCompany.Name := 'My Company';
+  Model.MyCompany.Save;
+
+  for CustomerName in CustomerNames do
+  begin
+    Model.Customers.Add;
+    Model.Customers.Current.Name := CustomerName;
+    Model.Customers.Current.Save;
+  end;
+  Model.Customers.Active := False;
+
+  for ItemName in ItemNames do
+  begin
+    Model.Items.Add;
+    Model.Items.Current.Name := ItemName;
+    Model.Items.Current.Save;
+  end;
+  Model.Customers.Active := False;
+
+end;
+
+procedure TestTAdminModel.TearDown;
+begin
+  Model.Free;
+end;
+
+procedure TestTAdminModel.TestSetUp;
+begin
+  CheckEquals('Apple', Model.Customers.Current.Name);
+end;
+
 initialization
+
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
   RegisterTest(TestTgString5.Suite);
@@ -1619,5 +1779,6 @@ initialization
   RegisterTest(TestTBase3.Suite);
   RegisterTest(TestTIDObject.Suite);
   RegisterTest(TestTIDObject2.Suite);
+  RegisterTest(TestTAdminModel.Suite);
 end.
 
