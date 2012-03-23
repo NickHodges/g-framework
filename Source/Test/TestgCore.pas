@@ -393,7 +393,10 @@ type
   protected
     procedure SetUp; override;
     procedure TearDown; override;
+  public
+    procedure ExceptionSaveInvoiceItemWithoutAnItem;
   published
+    procedure SaveInvoiceWithoutAnItem;
     procedure TestSetUp;
   end;
 
@@ -1727,6 +1730,21 @@ begin
     Result := Result + Item.Amount;
 end;
 
+procedure TestTAdminModel.ExceptionSaveInvoiceItemWithoutAnItem;
+var
+  Invoice: TInvoice;
+begin
+  Model.Customers.Current.Invoices.Add;
+  Invoice := Model.Customers.Current.Invoices.Current;
+  Invoice.Items.Add;
+  Invoice.Items.Current.Save;
+end;
+
+procedure TestTAdminModel.SaveInvoiceWithoutAnItem;
+begin
+  CheckException(ExceptionSaveInvoiceItemWithoutAnItem, EgValidation);
+end;
+
 procedure TestTAdminModel.SetUp;
 Const
   CustomerNames: Array[1..3] of String = ('Apple', 'Microsoft', 'Embarcadero');
@@ -1792,6 +1810,7 @@ procedure TestTAdminModel.TestSetUp;
 begin
   CheckEquals('My Company', Model.MyCompany.Name);
   CheckEquals('Apple', Model.Customers.Current.Name);
+  CheckEquals(15, Model.Customers.Current.Invoices.Current.Amount);
 end;
 
 initialization

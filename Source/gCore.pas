@@ -399,6 +399,7 @@ type
     FPersistenceManagers: TDictionary<TgIdentityObjectClass, TgPersistenceManager>;
     FPropertyAttributes: TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>;
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
+    FIdentityListProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     class procedure Initialize; static;
     class procedure InitializeAssignableProperties(ARTTIType: TRTTIType); static;
     /// <summary>G.InitializeAttributes initializes the cache of attributes for the
@@ -453,6 +454,8 @@ type
     class function ClassValidationAttributes(AClass: TgBaseClass): TArray<Validation>; overload; static;
     class function ClassValidationAttributes(ABase: TgBase): TArray<Validation>; overload; static;
     class function DataPath: String; static;
+    class function IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
+    class function IdentityListProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
     class function PersistenceManagerPath: String; static;
     class function PersistenceManagers(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager; static;
     class function PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>; static;
@@ -1019,7 +1022,6 @@ type
     private
       FCurrentIndex: Integer;
       FList: TgIdentityList<T>;
-      SavedCurrentIndex: Integer;
       function GetCurrent: T;
     public
       procedure Init(AList: TgIdentityList<T>);
@@ -1671,16 +1673,27 @@ end;
 
 class procedure G.InitializeObjectProperties(ARTTIType: TRTTIType);
 Var
+  BaseClass: TgBaseClass;
   RTTIProperty : TRTTIProperty;
   RTTIProperties: TArray<TRTTIProperty>;
 Begin
-  for RTTIProperty in G.Properties(TgBaseClass(ARTTIType.AsInstance.MetaclassType)) do
+  BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
+  for RTTIProperty in G.Properties(BaseClass) do
   if (RTTIProperty.Visibility = mvPublished) And RTTIProperty.PropertyType.IsInstance then
   Begin
-    FObjectProperties.TryGetValue(TgBaseClass(ARTTIType.AsInstance.MetaclassType), RTTIProperties);
+    FObjectProperties.TryGetValue(BaseClass, RTTIProperties);
     SetLength(RTTIProperties, Length(RTTIProperties) + 1);
     RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
-    FObjectProperties.AddOrSetValue(TgBaseClass(ARTTIType.AsInstance.MetaclassType), RTTIProperties);
+    FObjectProperties.AddOrSetValue(BaseClass, RTTIProperties);
+
+    if RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityList) then
+    begin
+      FIdentityListProperties.TryGetValue(BaseClass, RTTIProperties);
+      SetLength(RTTIProperties, Length(RTTIProperties) + 1);
+      RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
+      FIdentityListProperties.AddOrSetValue(BaseClass, RTTIProperties);
+    end;
+
   End;
 end;
 
@@ -1707,6 +1720,7 @@ begin
   FPropertyAttributes := TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>.Create();
   FPersistenceManagers := TDictionary<TgIdentityObjectClass, TgPersistenceManager>.Create();
   FAssignableProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
+  FIdentityListProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   Initialize;
 end;
 
@@ -1716,6 +1730,7 @@ var
 begin
   for PersistenceManager in FPersistenceManagers.Values do
     PersistenceManager.Free;
+  FreeAndNil(FIdentityListProperties);
   FreeAndNil(FAssignableProperties);
   FreeAndNil(FPersistenceManagers);
   FreeAndNil(FPropertyAttributes);
@@ -2108,6 +2123,16 @@ end;
 class function G.DataPath: String;
 begin
   Result := IncludeTrailingPathDelimiter(ApplicationPath + 'Data');
+end;
+
+class function G.IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
+begin
+  FIdentityListProperties.TryGetValue(ABaseClass, Result);
+end;
+
+class function G.IdentityListProperties(ABase: TgBase): TArray<TRTTIProperty>;
+begin
+  Result := IdentityListProperties(TgBaseClass(ABase.ClassType));
 end;
 
 class procedure G.InitializeAssignableProperties(ARTTIType: TRTTIType);
@@ -3497,8 +3522,8 @@ end;
 
 procedure Required.Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty);
 var
+  IdentityObject: TgIdentityObject;
   RaiseException: Boolean;
-  TempObject: TObject;
   Value: Variant;
 begin
   if Not Enabled Then
@@ -3506,8 +3531,10 @@ begin
   RaiseException := False;
   If ARTTIProperty.PropertyType.IsInstance then
   begin
-    TempObject := ARTTIProperty.GetValue(AObject).AsObject;
-    if Not Assigned(TempObject) then
+    IdentityObject := TgIdentityObject(AObject.Inspect(ARTTIProperty));
+    if Not Assigned(IdentityObject) then
+      RaiseException := True
+    Else if IdentityObject.InheritsFrom(TgIdentityObject) And Not (IdentityObject.HasIdentity And (IdentityObject.IsLoaded or (AObject.Owns(IdentityObject) and IdentityObject.Load))) then
       RaiseException := True;
   end
   Else
@@ -3609,10 +3636,10 @@ var
   RTTIProperty: TRTTIProperty;
 begin
   PersistenceManager.SaveObject(Self);
-  for RTTIProperty in G.ObjectProperties(Self) do
-  if RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityList) then
+  IsLoaded := True;
+  for RTTIProperty in G.IdentityListProperties(Self) do
   Begin
-    IdentityList := TgIdentityList(RTTIProperty.GetValue(Self).AsObject);
+    IdentityList := TgIdentityList(Inspect(RTTIProperty));
     if Assigned(IdentityList) then
       IdentityList.Save;
   End;
@@ -3626,7 +3653,7 @@ end;
 
 function TgIdentityObject.GetCanSave: Boolean;
 begin
-  Result := IsModified;
+  Result := Not HasIdentity or IsModified;
   If Result And Not IsValid Then
     Raise EgValidation.Create( AllValidationErrors );
 end;
@@ -3748,8 +3775,26 @@ begin
 end;
 
 procedure TgIdentityObject.SetID(const AValue: Variant);
+var
+  HadIdentity: Boolean;
+  IdentityList: TgIdentityList;
+  RTTIProperty: TRTTIProperty;
 begin
-  FID := AValue;
+  if FID <> AValue then
+  Begin
+    HadIdentity := HasIdentity;
+    FID := AValue;
+    IsLoaded := False;
+    if HadIdentity then
+    Begin
+      for RTTIProperty in G.IdentityListProperties(Self) do
+      begin
+        IdentityList := TgIdentityList(Inspect(RTTIProperty));
+        if Assigned(IdentityList) then
+          IdentityList.Active := False;
+      end;
+    End;
+  End;
 end;
 
 procedure TgIdentityObject.SetIsDeleting(const AValue: Boolean);
@@ -3768,10 +3813,7 @@ begin
     InitializeOriginalValues;
   End
   else if (osLoaded in FStates) then
-  Begin
     Exclude(FStates, osLoaded);
-    RemoveIdentity;
-  End;
 end;
 
 procedure TgIdentityObject.SetIsOriginalValues(const AValue: Boolean);
@@ -3907,7 +3949,10 @@ begin
       AObject.IsLoaded := True;
     End
     Else
+    Begin
       AObject.IsLoaded := False;
+      AObject.RemoveIdentity;
+    End;
   finally
     List.Free;
   end;
@@ -4228,13 +4273,11 @@ function TgIdentityList<T>.TgEnumerator.GetCurrent: T;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
-  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 procedure TgIdentityList<T>.TgEnumerator.Init(AList: TgIdentityList<T>);
 begin
   FList := AList;
-  SavedCurrentIndex := FList.CurrentIndex;
   FList.First;
   FCurrentIndex := -1;
 end;
@@ -4250,7 +4293,6 @@ begin
   End;
   Inc(FCurrentIndex);
   Result := Not FList.EOL;
-  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 class function TgSerializationHelperXMLIdentityObject.BaseClass: TgBaseClass;
