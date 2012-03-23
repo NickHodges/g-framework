@@ -1073,6 +1073,18 @@ type
     function PersistenceSegmentationString: String; virtual;
   end;
 
+type
+  TString50 = record
+  strict private
+    FValue: String;
+  public
+    function GetValue: String;
+    procedure SetValue(const AValue: String);
+    class operator implicit(AValue: Variant): TString50; overload;
+    class operator Implicit(AValue: TString50): Variant; overload;
+    property Value: String read GetValue write SetValue;
+  end;
+
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 
 Function FileToString(AFileName : String) : String;
@@ -2298,7 +2310,7 @@ begin
   FVisibleProperties.TryGetValue(ABaseClass, Result);
 end;
 
-Constructor DefaultValue.Create(Const AValue : String);
+Constructor DefaultValue.Create(AValue : Double);
 Begin
   FValue := AValue;
 End;
@@ -2308,7 +2320,7 @@ Begin
   FValue := AValue;
 End;
 
-Constructor DefaultValue.Create(AValue : Double);
+Constructor DefaultValue.Create(Const AValue : String);
 Begin
   FValue := AValue;
 End;
@@ -2344,18 +2356,6 @@ begin
     raise E.CreateFmt('Serializer could not find class %s in which to deserialize.', [BaseClassName]);
 end;
 
-constructor TgSerializerJSON.Create;
-begin
-  inherited Create;
-  FJSONObject := TJSONObject.Create();
-end;
-
-destructor TgSerializerJSON.Destroy;
-begin
-  FreeAndNil(FJSONObject);
-  inherited Destroy;
-end;
-
 procedure TgSerializerJSON.AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase);
 var
   SerializationHelperJSONBaseClass: TgSerializationHelperJSONBaseClass;
@@ -2377,6 +2377,12 @@ begin
   JSONObject.AddPair(AName, AValue);
 end;
 
+constructor TgSerializerJSON.Create;
+begin
+  inherited Create;
+  FJSONObject := TJSONObject.Create();
+end;
+
 procedure TgSerializerJSON.Deserialize(AObject: TgBase; const AString: string);
 var
   SerializationHelperJSONBaseClass: TgSerializationHelperJSONBaseClass;
@@ -2385,6 +2391,12 @@ begin
     Load(AString);
   SerializationHelperJSONBaseClass := TgSerializationHelperJSONBaseClass(G.SerializationHelpers(TgSerializerJSON, AObject));
   SerializationHelperJSONBaseClass.Deserialize(AObject, JSONObject);
+end;
+
+destructor TgSerializerJSON.Destroy;
+begin
+  FreeAndNil(FJSONObject);
+  inherited Destroy;
 end;
 
 function TgSerializerJSON.ExtractClassName(const AString: string): string;
@@ -2408,15 +2420,6 @@ begin
   Result := JSONObject.ToString;
 end;
 
-constructor TgSerializerXML.Create;
-begin
-  inherited Create;
-  FDocument := TXMLDocument.Create(Nil);
-  FDocumentInterface := FDocument;
-  FDocument.DOMVendor := GetDOMVendor('MSXML');
-  FDocument.Options := [doNodeAutoIndent];
-end;
-
 procedure TgSerializerXML.AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase);
 var
   SerializationHelperXMLBaseClass: TgSerializationHelperXMLBaseClass;
@@ -2434,6 +2437,15 @@ var
 begin
   ChildNode := CurrentNode.AddChild(AName);
   ChildNode.Text := AValue;
+end;
+
+constructor TgSerializerXML.Create;
+begin
+  inherited Create;
+  FDocument := TXMLDocument.Create(Nil);
+  FDocumentInterface := FDocument;
+  FDocument.DOMVendor := GetDOMVendor('MSXML');
+  FDocument.Options := [doNodeAutoIndent];
 end;
 
 procedure TgSerializerXML.Deserialize(AObject: TgBase; const AString: String);
@@ -3231,12 +3243,6 @@ begin
   End;
 end;
 
-constructor TgList.TgComparer.Create(AOrderByList: TObjectList<TgOrderByItem>);
-begin
-  inherited Create;
-  FOrderByList := AOrderByList;
-end;
-
 function TgList.TgComparer.Compare(const Left, Right: TgBase): Integer;
 Var
   Value1 : Variant;
@@ -3269,6 +3275,12 @@ Begin
       End;
     End;
   End;
+end;
+
+constructor TgList.TgComparer.Create(AOrderByList: TObjectList<TgOrderByItem>);
+begin
+  inherited Create;
+  FOrderByList := AOrderByList;
 end;
 
 { TgList<T>.TgEnumerator }
@@ -3440,6 +3452,12 @@ begin
   Else
     Exclude(FStates, osInspecting);
 end;
+
+procedure TgObject.TgValidationErrors.Clear;
+begin
+  FDictionary.Clear;
+end;
+
 { TgObject.TgValidationErrors }
 constructor TgObject.TgValidationErrors.Create(AOwner: TgBase = Nil);
 begin
@@ -3451,11 +3469,6 @@ destructor TgObject.TgValidationErrors.Destroy;
 begin
   FreeAndNil(FDictionary);
   inherited Destroy;
-end;
-
-procedure TgObject.TgValidationErrors.Clear;
-begin
-  FDictionary.Clear;
 end;
 
 function TgObject.TgValidationErrors.DoGetValues(const APath: string; out AValue: Variant): Boolean;
@@ -3623,6 +3636,7 @@ end;
 procedure TgIdentityObject.DoDelete;
 begin
   PersistenceManager.DeleteObject(Self);
+  RemoveIdentity;
 end;
 
 procedure TgIdentityObject.DoLoad;
@@ -3915,7 +3929,6 @@ begin
       ID := AObject.ID;
       Raise E.CreateFmt('Delete failed. %s with an key of %s not found.', [AObject.ClassName, ID]);
     End;
-    AObject.RemoveIdentity;
     SaveList(List);
   finally
     List.Free;
@@ -4358,14 +4371,34 @@ begin
   AObject.ID := ObjectID;
 end;
 
+function TgModel.IsAuthorized: Boolean;
+begin
+  Result := True;
+end;
+
 function TgModel.PersistenceSegmentationString: String;
 begin
   Result := '';
 end;
 
-function TgModel.IsAuthorized: Boolean;
+function TString50.GetValue: String;
 begin
-  Result := True;
+  Result := FValue;
+end;
+
+procedure TString50.SetValue(const AValue: String);
+begin
+  FValue := Copy(AValue, 1, 50);
+end;
+
+class operator TString50.implicit(AValue: Variant): TString50;
+begin
+  Result.Value := AValue;
+end;
+
+class operator TString50.Implicit(AValue: TString50): Variant;
+begin
+  Result := AValue.Value;
 end;
 
 Initialization
