@@ -20,6 +20,7 @@ type
   TInvoiceItem = class;
   TInvoice = class;
   TItem = class;
+  TCustomer = class;
   // Test methods for class TgBase
 
   ///	<summary>
@@ -334,7 +335,37 @@ type
   TMyCompany = class(TCompany)
   end;
 
+  TInvoiceItem = class(TgIDObject)
+  strict private
+    FAmount: Currency;
+    FInvoice: TInvoice;
+    FItem: TItem;
+  published
+    property Invoice: TInvoice read FInvoice;
+    property Item: TItem read FItem;
+    property Amount: Currency read FAmount write FAmount;
+  end;
+
+  TInvoice = class(TgIDObject)
+  strict private
+    FCustomer: TCustomer;
+    FDate: TDate;
+    FDueDate: TDate;
+    FItems: TgIdentityList<TInvoiceItem>;
+    function GetAmount: Currency;
+  published
+    property Amount: Currency read GetAmount;
+    property Customer: TCustomer read FCustomer;
+    property Date: TDate read FDate write FDate;
+    property DueDate: TDate read FDueDate write FDueDate;
+    property Items: TgIdentityList<TInvoiceItem> read FItems;
+  end;
+
   TCustomer = class(TCompany)
+  strict private
+    FInvoices: TgIdentityList<TInvoice>;
+  published
+    property Invoices: TgIdentityList<TInvoice> read FInvoices;
   end;
 
   TItem = class(TgIDObject)
@@ -350,35 +381,10 @@ type
     FItems: TgIdentityList<TItem>;
     FMyCompany: TMyCompany;
   published
+    [Singleton]
     property MyCompany: TMyCompany read FMyCompany;
     property Customers: TgIdentityList<TCustomer> read FCustomers;
     property Items: TgIdentityList<TItem> read FItems;
-  end;
-
-  TInvoiceItem = class(TgIDObject)
-  strict private
-    FAmount: Currency;
-    FInvoice: TInvoice;
-    FItem: TItem;
-  published
-    property Invoice: TInvoice read FInvoice;
-    property Item: TItem read FItem;
-    property Amount: Currency read FAmount write FAmount;
-  end;
-
-  TInvoice = class(TIDObject)
-  strict private
-    FCustomer: TCustomer;
-    FDate: TDate;
-    FDueDate: TDate;
-    FItems: TgIdentityList<TInvoiceItem>;
-    function GetAmount: Currency;
-  published
-    property Amount: Currency read GetAmount;
-    property Customer: TCustomer read FCustomer;
-    property Date: TDate read FDate write FDate;
-    property DueDate: TDate read FDueDate write FDueDate;
-    property Items: TgIdentityList<TInvoiceItem> read FItems;
   end;
 
   TestTAdminModel = class(TTestCase)
@@ -1728,33 +1734,52 @@ Const
 var
   CustomerName: String;
   ItemName: String;
+  Customer : TCustomer;
+  Invoice: TInvoice;
+  InvoiceItem: TInvoiceItem;
 begin
-  Model := TAdminModel.Create;
-
   TMyCompany.PersistenceManager.CreatePersistentStorage;
   TCustomer.PersistenceManager.CreatePersistentStorage;
   TInvoice.PersistenceManager.CreatePersistentStorage;
   TInvoiceItem.PersistenceManager.CreatePersistentStorage;
   TItem.PersistenceManager.CreatePersistentStorage;
 
+  Model := TAdminModel.Create;
+
   Model.MyCompany.Name := 'My Company';
   Model.MyCompany.Save;
-
-  for CustomerName in CustomerNames do
-  begin
-    Model.Customers.Add;
-    Model.Customers.Current.Name := CustomerName;
-    Model.Customers.Current.Save;
-  end;
-  Model.Customers.Active := False;
 
   for ItemName in ItemNames do
   begin
     Model.Items.Add;
     Model.Items.Current.Name := ItemName;
-    Model.Items.Current.Save;
   end;
-  Model.Customers.Active := False;
+  Model.Items.Save;
+
+  for CustomerName in CustomerNames do
+  begin
+    Model.Customers.Add;
+    Customer := Model.Customers.Current;
+    Customer.Name := CustomerName;
+    Customer.Invoices.Add;
+    Invoice := Customer.Invoices.Current;
+    Invoice.Date := Date;
+    Invoice.DueDate := Date + 30;
+    Invoice.Items.Add;
+    InvoiceItem := Invoice.Items.Current;
+    InvoiceItem.Item.ID := 1;
+    InvoiceItem.Amount := 5;
+    Invoice.Items.Add;
+    InvoiceItem := Invoice.Items.Current;
+    InvoiceItem.Item.ID := 2;
+    InvoiceItem.Amount := 10;
+  end;
+  Model.Customers.Save;
+
+
+  Model.Free;
+  Model := TAdminModel.Create;
+
 
 end;
 
@@ -1765,6 +1790,7 @@ end;
 
 procedure TestTAdminModel.TestSetUp;
 begin
+  CheckEquals('My Company', Model.MyCompany.Name);
   CheckEquals('Apple', Model.Customers.Current.Name);
 end;
 

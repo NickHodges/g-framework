@@ -166,6 +166,9 @@ type
   NotComposite = class(TCustomAttribute)
   end;
 
+  Singleton = class(TgPropertyAttribute)
+  end;
+
   TgSerializerClass = class of TgSerializer;
 
   ///	<summary>
@@ -263,6 +266,7 @@ type
     function GetIsInspecting: Boolean; virtual;
     function GetPathName: String; virtual;
     function GetValues(Const APath : String): Variant; virtual;
+    procedure LoadSingletons; virtual;
     /// <summary>TgBase.OwnerByClass walks up the Owner path looking for an owner whose
     /// class type matches the AClass parameter. This method gets used by the
     /// AutoCreate method to determine if an object property should get created, or
@@ -991,6 +995,7 @@ type
     procedure Assign(ASource: TgBase); override;
     procedure AssignActive(const AValue: Boolean);
     function ExtendedWhere: String; virtual;
+    procedure Save; virtual;
     property Active: Boolean read GetActive write SetActive;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
     property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
@@ -1224,6 +1229,7 @@ begin
   inherited Create;
   FOwner := AOwner;
   AutoCreate;
+  LoadSingletons;
 end;
 
 class function TgBase.AddAttributes(ARTTIProperty: TRttiProperty): TArray<TCustomAttribute>;
@@ -1405,7 +1411,9 @@ Begin
             case (VarType(AValue) and varTypeMask) of
               varString, varUString:
               if SameText(RTTIProperty.PropertyType.Name, 'TDate') or SameText(RTTIProperty.PropertyType.Name, 'TDateTime') then
-                Value := StrToDateTime(AValue);
+                Value := StrToDateTime(AValue)
+              else
+                Value := StrToFloat(AValue);
             Else
               Value := TValue.FromVariant(VarAsType(AValue, VarDouble));
             end;
@@ -1491,6 +1499,22 @@ begin
   IsInspecting := True;
   Result := ARTTIProperty.GetValue(Self).AsObject;
   IsInspecting := False;
+end;
+
+procedure TgBase.LoadSingletons;
+var
+  Attribute: TCustomAttribute;
+  IDObject: TgIDObject;
+begin
+  for Attribute in G.Attributes(Self, Singleton) do
+  begin
+    IDObject := TgIDObject(Singleton(Attribute).RTTIProperty.GetValue(Self).AsObject);
+    if Assigned(IDObject) then
+    Begin
+      IDObject.ID := 1;
+      IDObject.Load;
+    End;
+  end;
 end;
 
 function TgBase.OwnerProperty: TRTTIProperty;
@@ -2483,7 +2507,7 @@ var
   DoubleValue: Double;
   ObjectProperty: TgBase;
   RTTIProperty: TRTTIProperty;
-  Value: String;
+  Value: Variant;
 begin
   ASerializer.JSONObject.AddPair('ClassName', AObject.QualifiedClassName);
   For RTTIProperty In G.SerializableProperties(AObject) Do
@@ -2496,7 +2520,9 @@ begin
        If SameText(RTTIProperty.PropertyType.Name, 'TDate') then
          Value := FormatDateTime('m/d/yyyy', DoubleValue)
        Else if SameText(RTTIProperty.PropertyType.Name, 'TDateTime') then
-         Value := FormatDateTime('m/d/yyyy hh:nn:ss', DoubleValue);
+         Value := FormatDateTime('m/d/yyyy hh:nn:ss', DoubleValue)
+       Else
+         Value := DoubleValue;
       End
       Else
         Value := AObject[RTTIProperty.Name];
@@ -2561,7 +2587,7 @@ var
   DoubleValue: Double;
   ObjectProperty: TgBase;
   RTTIProperty: TRTTIProperty;
-  Value: String;
+  Value: Variant;
 begin
   For RTTIProperty In G.SerializableProperties(AObject) Do
   Begin
@@ -2579,7 +2605,9 @@ begin
        If SameText(RTTIProperty.PropertyType.Name, 'TDate') then
          Value := FormatDateTime('m/d/yyyy', DoubleValue)
        Else if SameText(RTTIProperty.PropertyType.Name, 'TDateTime') then
-         Value := FormatDateTime('m/d/yyyy hh:nn:ss', DoubleValue);
+         Value := FormatDateTime('m/d/yyyy hh:nn:ss', DoubleValue)
+       Else
+         Value := DoubleValue;
       End
       Else
         Value := AObject[RTTIProperty.Name];
@@ -3576,8 +3604,18 @@ begin
 end;
 
 procedure TgIdentityObject.DoSave;
+var
+  IdentityList: TgIdentityList;
+  RTTIProperty: TRTTIProperty;
 begin
   PersistenceManager.SaveObject(Self);
+  for RTTIProperty in G.ObjectProperties(Self) do
+  if RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityList) then
+  Begin
+    IdentityList := TgIdentityList(RTTIProperty.GetValue(Self).AsObject);
+    if Assigned(IdentityList) then
+      IdentityList.Save;
+  End;
 end;
 
 function TgIdentityObject.GetCanDelete: Boolean;
@@ -3724,13 +3762,16 @@ end;
 
 procedure TgIdentityObject.SetIsLoaded(const AValue: Boolean);
 begin
-  if AValue then
+  if AValue And Not (osLoaded in FStates) then
   Begin
     Include(FStates, osLoaded);
     InitializeOriginalValues;
   End
-  else
+  else if (osLoaded in FStates) then
+  Begin
     Exclude(FStates, osLoaded);
+    RemoveIdentity;
+  End;
 end;
 
 procedure TgIdentityObject.SetIsOriginalValues(const AValue: Boolean);
@@ -4074,6 +4115,14 @@ procedure TgIdentityList.Previous;
 begin
   EnsureActive;
   inherited;
+end;
+
+procedure TgIdentityList.Save;
+var
+  Counter: Integer;
+begin
+  for Counter := 0 to FList.Count - 1 do
+    Items[Counter].Save;
 end;
 
 procedure TgIdentityList.SetActive(const AValue: Boolean);
