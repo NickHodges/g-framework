@@ -253,9 +253,25 @@ type
       end;
 
   strict private
-    FOwner: TgBase;
+    function GetIsAutoCreating: Boolean;
     function GetModel: TgModel;
+    procedure SetIsAutoCreating(const AValue: Boolean);
   strict protected
+    type
+      TState =
+        (
+          // TgBase
+          osAutoCreating, osInspecting,
+          // TgIdentityObject
+          osCreatingOriginalValues, osOriginalValues, osLoaded, osLoading, osSaving, osDeleting,
+          // TgList
+          osOrdered, osFiltered, osSorted, osActivating, osActive
+        );
+      TStates = Set of TState;
+    var
+    FOwner: TgBase;
+    FStates: TStates;
+
     /// <summary>TgBase.AutoCreate gets called by the Create constructor to instantiate
     /// object properties. You may override this method in a descendant class to alter
     /// its behavior.
@@ -266,7 +282,6 @@ type
     function GetIsInspecting: Boolean; virtual;
     function GetPathName: String; virtual;
     function GetValues(Const APath : String): Variant; virtual;
-    procedure LoadSingletons; virtual;
     /// <summary>TgBase.OwnerByClass walks up the Owner path looking for an owner whose
     /// class type matches the AClass parameter. This method gets used by the
     /// AutoCreate method to determine if an object property should get created, or
@@ -301,6 +316,7 @@ type
     /// <param name="ABase"> (TgBase) </param>
     function Owns(ABase : TgBase): Boolean;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
+    property IsAutoCreating: Boolean read GetIsAutoCreating write SetIsAutoCreating;
     property IsInspecting: Boolean read GetIsInspecting write SetIsInspecting;
 
     ///	<summary>
@@ -375,6 +391,12 @@ type
         constructor Create(ARTTIProperty: TRttiProperty; AAttributeClass: TCustomAttributeClass);
       end;
 
+      TgIdentityObjectClassProperty = record
+      public
+        IdentityObjectClass: TgIdentityObjectClass;
+        RTTIProperty: TRTTIProperty;
+        constructor Create(AIdentityObjectClass: TgIdentityObjectClass; ARTTIProperty: TRTTIProperty);
+      end;
 
   strict private
   class var
@@ -400,6 +422,7 @@ type
     FPropertyAttributes: TDictionary<TgPropertyAttributeClassKey, TArray<TCustomAttribute>>;
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FIdentityListProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
+    FReferences: TDictionary<TgIdentityObjectClass, TArray<TgIdentityObjectClassProperty>>;
     class procedure Initialize; static;
     class procedure InitializeAssignableProperties(ARTTIType: TRTTIType); static;
     /// <summary>G.InitializeAttributes initializes the cache of attributes for the
@@ -459,6 +482,8 @@ type
     class function PersistenceManagerPath: String; static;
     class function PersistenceManagers(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager; static;
     class function PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>; static;
+    class function References(AIdentityObjectClass: TgIdentityObjectClass): TArray<TgIdentityObjectClassProperty>; overload; static;
+    class function References(AIdentityObject: TgIdentityObject): TArray<TgIdentityObjectClassProperty>; overload; static;
     class function VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; static;
   end;
   { TODO -oJim -cDefinations : What is the difference between a helper and the regular serialization strucutre }
@@ -532,8 +557,6 @@ type
  ///  <seealso cref="gCore|TgList{T}" />
   TgList = class(TgBase)
     Type
-      TState = (lsInspecting, lsOrdered, lsFiltered, lsSorted, lsActivating, lsActive);
-      TStates = Set of TState;
 
       TgOrderByItem = class(TObject)
       public
@@ -584,7 +607,6 @@ type
     procedure SetIsFiltered(const AValue: Boolean);
     procedure SetIsOrdered(const AValue: Boolean);
   strict protected
-    FStates: TStates;
     FList: TObjectList<TgBase>;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; override;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; override;
@@ -598,12 +620,10 @@ type
     function GetEOL: Boolean; virtual;
     function GetHasItems: Boolean; virtual;
     function GetIndexString: String; virtual;
-    function GetIsInspecting: Boolean; override;
     function GetItemClass: TgBaseClass; virtual;
     function GetItems(AIndex : Integer): TgBase; virtual;
     procedure SetCurrentIndex(const AIndex: Integer); virtual;
     procedure SetIndexString(const AValue: String); virtual;
-    procedure SetIsInspecting(const AValue: Boolean); override;
     procedure SetItemClass(const Value: TgBaseClass); virtual;
     procedure SetItems(AIndex : Integer; const AValue: TgBase); virtual;
     procedure SetOrderBy(const AValue: String); virtual;
@@ -745,8 +765,6 @@ type
   TgObject = class(TgBase)
   public
     type
-      TState = (osInspecting, osOriginalValues, osLoaded, osLoading, osSaving, osDeleting);
-      TStates = Set Of TState;
       ///	<summary>
       ///	  Used to collectect validation errors when a
       ///	  <see cref="TgObject" />'s published
@@ -774,12 +792,9 @@ type
     function GetValidationErrors: TgValidationErrors;
     procedure PopulateDefaultValues;
   strict protected
-    FStates: TStates;
     function GetDisplayName: String; virtual;
     function GetIsValid: Boolean; virtual;
     procedure GetIsValidInternal; virtual;
-    function GetIsInspecting: Boolean; override;
-    procedure SetIsInspecting(const AValue: Boolean); override;
   public
     constructor Create(AOwner: TgBase = nil); override;
     destructor Destroy; override;
@@ -825,7 +840,7 @@ type
     function Count(AIdentityList: TgIdentityList): Integer; virtual; abstract;
     procedure CreatePersistentStorage; virtual; abstract;
     procedure DeleteObject(AObject: TgIdentityObject); virtual; abstract;
-    procedure LoadObject(AObject: TgIdentityObject); virtual;
+    procedure LoadObject(AObject: TgIdentityObject); virtual; abstract;
     function PersistentStorageExists: Boolean; virtual; abstract;
     procedure RollBack(AObject: TgIdentityObject); virtual; abstract;
     procedure SaveObject(AObject: TgIdentityObject); virtual; abstract;
@@ -849,11 +864,13 @@ type
     FID: Variant;
     FOriginalValues: TgIdentityObject;
     function GetIsDeleting: Boolean;
+    function GetIsCreatingOriginalValues: Boolean;
     function GetIsLoaded: Boolean;
     function GetIsOriginalValues: Boolean;
     function GetIsSaving: Boolean;
     function GetOriginalValues: TgBase;
     procedure SetIsDeleting(const AValue: Boolean);
+    procedure SetIsCreatingOriginalValues(const AValue: Boolean);
     procedure SetIsLoaded(const AValue: Boolean);
     procedure SetIsOriginalValues(const AValue: Boolean);
     procedure SetIsSaving(const AValue: Boolean);
@@ -878,7 +895,9 @@ type
     procedure Assign(ASource: TgBase); reintroduce; override;
     function HasIdentity: Boolean; virtual;
     procedure RemoveIdentity;
+    constructor Create(AOwner: TgBase = nil); override;
     property IsDeleting: Boolean read GetIsDeleting write SetIsDeleting;
+    property IsCreatingOriginalValues: Boolean read GetIsCreatingOriginalValues write SetIsCreatingOriginalValues;
     property IsLoaded: Boolean read GetIsLoaded write SetIsLoaded;
     property IsModified: Boolean read GetIsModified;
     property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
@@ -924,6 +943,8 @@ type
   ///	  This class is used to make the <see cref="TgIdentityObject{T}.ID">ID</see> property a Integer
   ///	</summary>
   TgIDObject = class(TgIdentityObject<Integer>)
+  public
+    constructor Create(AOwner: TgBase = nil); override;
   end;
 
   ///	<summary>
@@ -974,6 +995,19 @@ type
   end;
 
   TgIdentityList = class(TgList)
+
+    Type
+      TgEnumerator = record
+      private
+        FCurrentIndex: Integer;
+        FList: TgList;
+        function GetCurrent: TgIdentityObject;
+      public
+        procedure Init(AList: TgList);
+        function MoveNext: Boolean;
+        property Current: TgIdentityObject read GetCurrent;
+      End;
+
   strict private
     FCurrentKey: String;
     procedure EnsureActive;
@@ -998,6 +1032,7 @@ type
     procedure Assign(ASource: TgBase); override;
     procedure AssignActive(const AValue: Boolean);
     function ExtendedWhere: String; virtual;
+    function GetEnumerator: TgEnumerator;
     procedure Save; virtual;
     property Active: Boolean read GetActive write SetActive;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
@@ -1073,7 +1108,9 @@ type
     function PersistenceSegmentationString: String; virtual;
   end;
 
-type
+  CascadeDelete = class(TCustomAttribute)
+  end;
+
   TString50 = record
   strict private
     FValue: String;
@@ -1243,7 +1280,6 @@ begin
   inherited Create;
   FOwner := AOwner;
   AutoCreate;
-  LoadSingletons;
 end;
 
 class function TgBase.AddAttributes(ARTTIProperty: TRttiProperty): TArray<TCustomAttribute>;
@@ -1298,7 +1334,11 @@ begin
     // See if there is a owner that can populate this property
     ObjectProperty := OwnerByClass(ObjectPropertyClass);
     if Not Assigned(ObjectProperty) then
+    begin
+      IsAutoCreating := True;
       ObjectProperty := ObjectPropertyClass.Create(Self);
+      IsAutoCreating := False;
+    end;
     Value := ObjectProperty;
     Field := TRTTIInstanceProperty(RTTIProperty).PropInfo^.GetProc;
     Value.Cast(RTTIProperty.PropertyType.Handle).ExtractRawData(PByte(Self) + (IntPtr(Field) and (not PROPSLOT_MASK)));
@@ -1469,9 +1509,14 @@ Begin
   Result := FriendlyName;
 End;
 
+function TgBase.GetIsAutoCreating: Boolean;
+begin
+  Result := osAutoCreating in FStates;
+end;
+
 function TgBase.GetIsInspecting: Boolean;
 begin
-  Result := False;
+  Result := osInspecting in FStates;
 end;
 
 function TgBase.GetModel: TgModel;
@@ -1515,22 +1560,6 @@ begin
   IsInspecting := False;
 end;
 
-procedure TgBase.LoadSingletons;
-var
-  Attribute: TCustomAttribute;
-  IDObject: TgIDObject;
-begin
-  for Attribute in G.Attributes(Self, Singleton) do
-  begin
-    IDObject := TgIDObject(Singleton(Attribute).RTTIProperty.GetValue(Self).AsObject);
-    if Assigned(IDObject) then
-    Begin
-      IDObject.ID := 1;
-      IDObject.Load;
-    End;
-  end;
-end;
-
 function TgBase.OwnerProperty: TRTTIProperty;
 var
   RTTIProperty: TRTTIProperty;
@@ -1560,9 +1589,20 @@ begin
   end;
 end;
 
+procedure TgBase.SetIsAutoCreating(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, osAutoCreating)
+  else
+    Exclude(FStates, osAutoCreating);
+end;
+
 procedure TgBase.SetIsInspecting(const AValue: Boolean);
 begin
-
+  if AValue then
+    Include(FStates, osInspecting)
+  else
+    Exclude(FStates, osInspecting)
 end;
 
 procedure TgBase.SetValues(Const APath : String; AValue : Variant);
@@ -1686,8 +1726,11 @@ end;
 class procedure G.InitializeObjectProperties(ARTTIType: TRTTIType);
 Var
   BaseClass: TgBaseClass;
+  PropertyClass: TgIdentityObjectClass;
   RTTIProperty : TRTTIProperty;
   RTTIProperties: TArray<TRTTIProperty>;
+  IdentityObjectClassProperties : TArray<TgIdentityObjectClassProperty>;
+
 Begin
   BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
   for RTTIProperty in G.Properties(BaseClass) do
@@ -1698,7 +1741,16 @@ Begin
     RTTIProperties[Length(RTTIProperties) - 1] := RTTIProperty;
     FObjectProperties.AddOrSetValue(BaseClass, RTTIProperties);
 
-    if RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityList) then
+    PropertyClass := TgIdentityObjectClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+    if BaseClass.InheritsFrom(TgIdentityObject) And PropertyClass.InheritsFrom(TgIdentityObject) then
+    Begin
+      FReferences.TryGetValue(PropertyClass, IdentityObjectClassProperties);
+      SetLength(IdentityObjectClassProperties, Length(IdentityObjectClassProperties) + 1);
+      IdentityObjectClassProperties[Length(IdentityObjectClassProperties) - 1] := TgIdentityObjectClassProperty.Create(TgIdentityObjectClass(BaseClass), RTTIProperty);
+      FReferences.AddOrSetValue(PropertyClass, IdentityObjectClassProperties);
+    End;
+
+    if PropertyClass.InheritsFrom(TgIdentityList) then
     begin
       FIdentityListProperties.TryGetValue(BaseClass, RTTIProperties);
       SetLength(RTTIProperties, Length(RTTIProperties) + 1);
@@ -1733,6 +1785,7 @@ begin
   FPersistenceManagers := TDictionary<TgIdentityObjectClass, TgPersistenceManager>.Create();
   FAssignableProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FIdentityListProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
+  FReferences := TDictionary<TgIdentityObjectClass, TArray<TgIdentityObjectClassProperty>>.Create();
   Initialize;
 end;
 
@@ -1742,6 +1795,7 @@ var
 begin
   for PersistenceManager in FPersistenceManagers.Values do
     PersistenceManager.Free;
+  FreeAndNil(FReferences);
   FreeAndNil(FIdentityListProperties);
   FreeAndNil(FAssignableProperties);
   FreeAndNil(FPersistenceManagers);
@@ -2303,6 +2357,16 @@ end;
 class function G.PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>;
 begin
   FPropertyAttributes.TryGetValue(APropertyAttributeClassKey, Result);
+end;
+
+class function G.References(AIdentityObjectClass: TgIdentityObjectClass): TArray<TgIdentityObjectClassProperty>;
+begin
+  FReferences.TryGetValue(AIdentityObjectClass, Result);
+end;
+
+class function G.References(AIdentityObject: TgIdentityObject): TArray<TgIdentityObjectClassProperty>;
+begin
+  Result := References(TgIdentityObjectClass(AIdentityObject.ClassType));;
 end;
 
 class function G.VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
@@ -2876,17 +2940,12 @@ end;
 
 function TgList.GetIsFiltered: Boolean;
 begin
-  Result := lsFiltered In FStates;
-end;
-
-function TgList.GetIsInspecting: Boolean;
-begin
-  Result := lsInspecting in FStates;
+  Result := osFiltered In FStates;
 end;
 
 function TgList.GetIsOrdered: Boolean;
 begin
-  Result := lsOrdered In FStates;
+  Result := osOrdered In FStates;
 end;
 
 function TgList.GetItemClass: TgBaseClass;
@@ -2955,26 +3014,18 @@ end;
 procedure TgList.SetIsFiltered(const AValue: Boolean);
 begin
   If AValue Then
-    Include(FStates, lsFiltered)
+    Include(FStates, osFiltered)
   Else
-    Exclude(FStates, lsFiltered);
+    Exclude(FStates, osFiltered);
   FCurrentIndex := -1;
-end;
-
-procedure TgList.SetIsInspecting(const AValue: Boolean);
-begin
-  if AValue then
-    Include(FStates, lsInspecting)
-  Else
-    Exclude(FStates, lsInspecting);
 end;
 
 procedure TgList.SetIsOrdered(const AValue: Boolean);
 begin
   If AValue Then
-    Include(FStates, lsOrdered)
+    Include(FStates, osOrdered)
   Else
-    Exclude(FStates, lsOrdered);
+    Exclude(FStates, osOrdered);
 end;
 
 procedure TgList.SetItemClass(const Value: TgBaseClass);
@@ -3380,11 +3431,6 @@ begin
     SetLength(Result,  Length(Result) - 2);
 end;
 
-function TgObject.GetIsInspecting: Boolean;
-begin
-  Result := osInspecting in FStates;
-end;
-
 function TgObject.GetIsValid: Boolean;
 var
   ObjectProperty: TgObject;
@@ -3444,14 +3490,6 @@ Begin
   For Attribute In G.Attributes(Self, DefaultValue) Do
     DefaultValue(Attribute).Execute(Self);
 End;
-
-procedure TgObject.SetIsInspecting(const AValue: Boolean);
-begin
-  if AValue then
-    Include(FStates, osInspecting)
-  Else
-    Exclude(FStates, osInspecting);
-end;
 
 procedure TgObject.TgValidationErrors.Clear;
 begin
@@ -3601,6 +3639,25 @@ begin
   inherited ID := TValue.From<T>(AValue).AsVariant;
 end;
 
+constructor TgIdentityObject.Create(AOwner: TgBase = nil);
+var
+  TempOwner: TgIdentityObject;
+begin
+  // When a TgIdentityObject begins to create its OriginalValues
+  // it sets IsCreatingOriginalValues, then passes itself as the owner.
+  // This constructor checks for the owner's IsCreatingOriginalValues and, if true,
+  // sets IsOriginalValues for the current object and resets its owner
+  // to the main object
+
+  TempOwner := TgIdentityObject(AOwner);
+  If Assigned(TempOwner) And TempOwner.InheritsFrom(TgIdentityObject) And TempOwner.IsCreatingOriginalValues Then
+  Begin
+    TempOwner := TgIdentityObject(TempOwner.Owner);
+    IsOriginalValues := True;
+  End;
+  inherited Create(TempOwner);
+end;
+
 { TgIdentityObject }
 
 destructor TgIdentityObject.Destroy;
@@ -3634,7 +3691,28 @@ begin
 end;
 
 procedure TgIdentityObject.DoDelete;
+var
+  IdentityList: TgIdentityList;
+  IdentityObjectClassProperty: G.TgIdentityObjectClassProperty;
+  IDString: String;
 begin
+
+  //Delete the objects with references
+  for IdentityObjectClassProperty in G.References(Self) do
+  begin
+    IdentityList := TgIdentityList.Create;
+    try
+      IdentityList.ItemClass := IdentityObjectClassProperty.IdentityObjectClass;
+      IDString := ID;
+      IdentityList.Where := Format('%s.ID = ''%s''', [IdentityObjectClassProperty.RTTIProperty.Name, IDString]);
+      IdentityList.Last;
+      while Not IdentityList.BOL do
+        IdentityList.Delete;
+    finally
+      IdentityList.Free;
+    end;
+  end;
+
   PersistenceManager.DeleteObject(Self);
   RemoveIdentity;
 end;
@@ -3660,9 +3738,57 @@ begin
 end;
 
 function TgIdentityObject.GetCanDelete: Boolean;
+var
+  IdentityObjectClassProperty: G.TgIdentityObjectClassProperty;
+  IdentityList: TgIdentityList;
+  IDString : String;
+  IdentityObject: TgIdentityObject;
 begin
-{ TODO : Create a real implementation }
+  // Delete is impossible without identity
   Result := HasIdentity;
+  if Result then
+  Begin
+    // If Delete is possible, but the CascadeDelete Attribute is not present...
+    if (Length(G.Attributes(Self, CascadeDelete)) = 0) then
+    Begin
+      // Check all references
+      for IdentityObjectClassProperty in G.References(Self) do
+      begin
+        IdentityList := TgIdentityList.Create;
+        try
+          IdentityList.ItemClass := IdentityObjectClassProperty.IdentityObjectClass;
+          IDString := ID;
+          IdentityList.Where := Format('%s.ID = ''%s''', [IdentityObjectClassProperty.RTTIProperty.Name, IDString]);
+          // Return False if one is found
+          Result := Not IdentityList.HasItems;
+        finally
+          IdentityList.Free;
+        end;
+      end;
+    End
+    Else
+    // If the CascadeDelete Attribute is present...
+    Begin
+      // Check all references
+      for IdentityObjectClassProperty in G.References(Self) do
+      begin
+        IdentityList := TgIdentityList.Create;
+        try
+          IdentityList.ItemClass := IdentityObjectClassProperty.IdentityObjectClass;
+          IDString := ID;
+          IdentityList.Where := Format('%s.ID = ''%s''', [IdentityObjectClassProperty.RTTIProperty.Name, IDString]);
+          for IdentityObject in IdentityList do
+          begin
+            Result := IdentityObject.CanDelete;
+            if Not Result then
+              Exit;
+          end;
+        finally
+          IdentityList.Free;
+        end;
+      end;
+    End;
+  End;
 end;
 
 function TgIdentityObject.GetCanSave: Boolean;
@@ -3680,6 +3806,11 @@ end;
 function TgIdentityObject.GetIsDeleting: Boolean;
 begin
   Result := osDeleting in FStates;
+end;
+
+function TgIdentityObject.GetIsCreatingOriginalValues: Boolean;
+begin
+  Result := osCreatingOriginalValues in FStates;
 end;
 
 function TgIdentityObject.GetIsLoaded: Boolean;
@@ -3711,8 +3842,9 @@ function TgIdentityObject.GetOriginalValues: TgBase;
 begin
   if Not IsInspecting And Not IsOriginalValues And Not Assigned(FOriginalValues) then
   Begin
-    FOriginalValues := TgIdentityObjectClass(Self.ClassType).Create(Owner);
-    FOriginalValues.IsOriginalValues := True;
+    IsCreatingOriginalValues := True;
+    FOriginalValues := TgIdentityObjectClass(Self.ClassType).Create(Self);
+    IsCreatingOriginalValues := False;
   End;
   Result := FOriginalValues;
 end;
@@ -3817,6 +3949,14 @@ begin
     Include(FStates, osDeleting)
   Else
     Exclude(FStates, osDeleting);
+end;
+
+procedure TgIdentityObject.SetIsCreatingOriginalValues(const AValue: Boolean);
+begin
+  if AValue then
+    Include(FStates, osCreatingOriginalValues)
+  else
+    Exclude(FStates, osCreatingOriginalValues);
 end;
 
 procedure TgIdentityObject.SetIsLoaded(const AValue: Boolean);
@@ -3951,7 +4091,6 @@ procedure TgPersistenceManagerFile.LoadObject(AObject: TgIdentityObject);
 var
   List: TList;
 begin
-  Inherited LoadObject(AObject);
   List := TList.Create;
   try
     List.ItemClass := TgBaseClass(AObject.ClassType);
@@ -4045,9 +4184,9 @@ end;
 procedure TgIdentityList.AssignActive(const AValue: Boolean);
 begin
   if AValue then
-    Include(FStates, lsActive)
+    Include(FStates, osActive)
   else
-    Exclude(FStates, lsActive);
+    Exclude(FStates, osActive);
 end;
 
 procedure TgIdentityList.Delete;
@@ -4102,7 +4241,7 @@ end;
 
 function TgIdentityList.GetActive: Boolean;
 begin
-  Result := lsActive in FStates;
+  Result := osActive in FStates;
 end;
 
 function TgIdentityList.GetBOL: Boolean;
@@ -4131,6 +4270,11 @@ begin
   Result := FCurrentKey;
 end;
 
+function TgIdentityList.GetEnumerator: TgEnumerator;
+Begin
+  Result.Init(Self);
+End;
+
 function TgIdentityList.GetEOL: Boolean;
 begin
   EnsureActive;
@@ -4144,7 +4288,7 @@ end;
 
 function TgIdentityList.GetIsActivating: Boolean;
 begin
-  Result := lsActivating in FStates;
+  Result := osActivating in FStates;
 end;
 
 function TgIdentityList.GetItemClass: TgIdentityObjectClass;
@@ -4229,9 +4373,9 @@ end;
 procedure TgIdentityList.SetIsActivating(const AValue: Boolean);
 begin
   if AValue then
-    Include(FStates, lsActivating)
+    Include(FStates, osActivating)
   Else
-    Exclude(FStates, lsActivating);
+    Exclude(FStates, osActivating);
 end;
 
 procedure TgIdentityList.SetItemClass(const Value: TgIdentityObjectClass);
@@ -4356,21 +4500,6 @@ begin
     Inherited Serialize(AObject, ASerializer, ARTTIProperty);
 end;
 
-procedure TgPersistenceManager.LoadObject(AObject: TgIdentityObject);
-var
-  ObjectClass: TgIdentityObjectClass;
-  ObjectID: Variant;
-  ObjectOwner: TgBase;
-begin
-  //Initialize the object before loading it.
-  ObjectID := AObject.ID;
-  ObjectOwner := AObject.Owner;
-  ObjectClass := TgIdentityObjectClass(AObject.ClassType);
-  AObject.Free;
-  AObject := ObjectClass.Create(ObjectOwner);
-  AObject.ID := ObjectID;
-end;
-
 function TgModel.IsAuthorized: Boolean;
 begin
   Result := True;
@@ -4399,6 +4528,51 @@ end;
 class operator TString50.Implicit(AValue: TString50): Variant;
 begin
   Result := AValue.Value;
+end;
+
+constructor G.TgIdentityObjectClassProperty.Create(AIdentityObjectClass: TgIdentityObjectClass; ARTTIProperty: TRTTIProperty);
+begin
+  IdentityObjectClass := AIdentityObjectClass;
+  RTTIProperty := ARTTIProperty;
+end;
+
+function TgIdentityList.TgEnumerator.GetCurrent: TgIdentityObject;
+begin
+  FList.CurrentIndex := FCurrentIndex;
+  Result := TgIdentityObject(FList.Current);
+end;
+
+procedure TgIdentityList.TgEnumerator.Init(AList: TgList);
+begin
+  FList := AList;
+  FList.First;
+  FCurrentIndex := -1;
+end;
+
+function TgIdentityList.TgEnumerator.MoveNext: Boolean;
+begin
+  If FList.Count = 0 Then
+    Exit(False);
+  if FCurrentIndex > -1 then
+  Begin
+    FList.CurrentIndex := FCurrentIndex;
+    FList.Next;
+  End;
+  Inc(FCurrentIndex);
+  Result := Not FList.EOL;
+end;
+
+constructor TgIDObject.Create(AOwner: TgBase = nil);
+begin
+  Inherited Create(AOwner);
+
+  // If this is a singleton, load it.
+  If Not IsOriginalValues And (Not Assigned(AOwner) Or AOwner.IsAutoCreating) And (Length(G.Attributes(Self, Singleton)) > 0) Then
+  Begin
+    ID := 1;
+    Load;
+  End;
+
 end;
 
 Initialization
