@@ -261,18 +261,21 @@ type
   TIDObject = class(TgIDObject)
   strict private
     FName: String;
+    FName2: String;
   published
     property Name: String read FName write FName;
+    property Name2: String read FName2 write FName2;
   end;
 
   TestTIDObject = class(TTestCase)
   strict private
-    FIDObject: TIDObject;
+    IDObject: TIDObject;
   protected
     procedure SetUp; override;
     procedure TearDown; override;
   published
     procedure Save;
+    procedure SaveChanges;
   end;
 
   TIDObject3 = class(TgIDObject)
@@ -1510,21 +1513,53 @@ end;
 
 procedure TestTIDObject.Save;
 begin
-  FIDObject.Name := 'One';
-  FIDObject.Save;
-  CheckEquals(1, FIDObject.ID);
+  IDObject.Name := 'One';
+  IDObject.Save;
+  CheckEquals(1, IDObject.ID);
+end;
+
+procedure TestTIDObject.SaveChanges;
+var
+  IDObject1: TIDObject;
+  IDObject2: TIDObject;
+begin
+  IDObject.Name := 'Name';
+  IDObject.Name2 := 'Name2';
+  IDObject.Save;
+  IDObject1 := TIDObject.Create;
+  IDObject2 := TIDObject.Create;
+  try
+    IDObject1.ID := 1;
+    IDObject1.Load;
+    IDObject2.ID := 1;
+    IDObject2.Load;
+
+    IDObject1.Name := 'One';
+    IDObject1.Save;
+
+    IDObject2.Name2 := 'Two';
+    IDObject2.Save;
+  finally
+    IDObject2.Free;
+    IDObject1.Free;
+  end;
+
+  IDObject.Load;
+  CheckEquals('One', IDObject.Name, 'Value from first field');
+  CheckEquals('Two', IDObject.Name2, 'Value from second field');
+
 end;
 
 procedure TestTIDObject.SetUp;
 begin
   inherited;
-  FIDObject := TIDObject.Create;
-  FIDObject.PersistenceManager.CreatePersistentStorage;
+  TIDObject.PersistenceManager.CreatePersistentStorage;
+  IDObject := TIDObject.Create;
 end;
 
 procedure TestTIDObject.TearDown;
 begin
-  FIDObject.Free;
+  IDObject.Free;
   inherited;
 end;
 

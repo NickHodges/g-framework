@@ -977,6 +977,7 @@ type
       end;
 
   strict private
+    procedure AssignChanged(ASourceObject, ADestinationObject: TgIdentityObject);
     function Filename: String;
     procedure LoadList(const AList: TList);
     function Locate(const AList: TList; AObject: TgIdentityObject): Boolean;
@@ -2665,7 +2666,12 @@ begin
     if Not Assigned(RTTIProperty) then
       DeserializeUnpublishedProperty(AObject, ChildNode)
     Else if Not RTTIProperty.PropertyType.IsInstance then
-      AObject[ChildNode.NodeName] := ChildNode.ChildNodes.First.Text
+    Begin
+      if ChildNode.HasChildNodes then
+        AObject[ChildNode.NodeName] := ChildNode.ChildNodes.First.Text
+      else
+        AObject[ChildNode.NodeName] := '';
+    End
     Else
     Begin
       ObjectProperty := TgBase(RTTIProperty.GetValue(AObject).AsObject);
@@ -3576,6 +3582,7 @@ var
   IdentityObject: TgIdentityObject;
   RaiseException: Boolean;
   Value: Variant;
+  LookupObject : TgIdentityObject;
 begin
   if Not Enabled Then
     Exit;
@@ -3585,8 +3592,28 @@ begin
     IdentityObject := TgIdentityObject(AObject.Inspect(ARTTIProperty));
     if Not Assigned(IdentityObject) then
       RaiseException := True
-    Else if IdentityObject.InheritsFrom(TgIdentityObject) And Not (IdentityObject.HasIdentity And (IdentityObject.IsLoaded or (AObject.Owns(IdentityObject) and IdentityObject.Load))) then
-      RaiseException := True;
+    Else 
+    Begin
+      if IdentityObject.InheritsFrom(TgIdentityObject) Then
+      Begin
+        if Not IdentityObject.HasIdentity Then
+          RaiseException := True
+        Else If Not IdentityObject.IsLoaded then
+        Begin
+          if AObject.Owns(IdentityObject) then
+          Begin
+            LookupObject := TgIdentityObjectClass(IdentityObject.ClassType).Create(IdentityObject.Owner);
+            try
+              LookupObject.ID := IdentityObject.ID;
+              If Not LookupObject.Load Then
+                RaiseException := True;
+            finally
+              LookupObject.Free;
+            end;
+          End;
+        End;
+      End;
+    End;
   end
   Else
   Begin
@@ -4018,6 +4045,36 @@ begin
   end;
 end;
 
+procedure TgPersistenceManagerFile.AssignChanged(ASourceObject, ADestinationObject: TgIdentityObject);
+Var
+  SourceObject : TgBase;
+  DestinationObject : TgBase;
+  RTTIProperty : TRTTIProperty;
+Begin
+  For RTTIProperty In G.AssignableProperties(ASourceObject) Do
+  Begin
+    If RTTIProperty.PropertyType.IsInstance Then
+    Begin
+      SourceObject := TgBase(ASourceObject.Inspect(RTTIProperty));
+      If Assigned(SourceObject) And SourceObject.InheritsFrom(TgBase) Then
+      Begin
+        DestinationObject := TgBase(RTTIProperty.GetValue(ADestinationObject).AsObject);
+        if Assigned(DestinationObject) And ADestinationObject.Owns(DestinationObject) Then
+        Begin
+         if DestinationObject.InheritsFrom(TgIdentityObject) then
+           AssignChanged(TgIdentityObject(SourceObject), TgIdentityObject(DestinationObject))
+         Else If DestinationObject.InheritsFrom(TgBase) Then
+           ADestinationObject.Assign(ASourceObject)
+        End
+        Else if RTTIProperty.IsWritable then
+          RTTIProperty.SetValue(ADestinationObject, RTTIProperty.GetValue(ASourceObject));
+      End;
+    End
+    Else if ASourceObject.IsPropertyModified(RTTIProperty) then
+      RTTIProperty.SetValue(ADestinationObject, RTTIProperty.GetValue(ASourceObject));
+  End;
+end;
+
 procedure TgPersistenceManagerFile.Commit(AObject: TgIdentityObject);
 begin
 
@@ -4162,7 +4219,7 @@ begin
       List.LastID := List.LastID + 1;
       AObject.ID := List.LastID;
     End;
-    List.Current.Assign(AObject);
+    AssignChanged(AObject, List.Current);
     SaveList(List);
   finally
     List.Free;
@@ -4215,7 +4272,8 @@ begin
     if Result > '' then
       Result := Result + ' And ';
     Result := Result + Format('(ID = ''%s'')', [CurrentKey]);
-  End;
+  End
+  Else
   for RTTIProperty in G.ObjectProperties(ItemClass) do
   begin
     IdentityObjectClass := TgIdentityObjectClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
@@ -4226,8 +4284,8 @@ begin
       Begin
         IDString := OwnerObject.ID;
         if Result > '' then
-          Result := Result + 'And';
-        Result := Result + Format('%s.ID = %s', [RTTIProperty.Name, IDString]);
+          Result := Result + ' And';
+        Result := Result + Format('(%s.ID = %s)', [RTTIProperty.Name, IDString]);
       End;
     End;
   end;
