@@ -150,15 +150,25 @@ type
   NotAutoCreate = class(TCustomAttribute)
   end;
 
-{ TODO -oJim -cDefinations : Need Defination }
+  ///	<summary>
+  ///	  This attribute is used to identify properties should be rendered in the
+  ///	  User Interface
+  ///	</summary>
   Visible = class(TCustomAttribute)
   end;
 
-{ TODO -oJim -cDefinations : Need Defination }
+  ///	<summary>
+  ///	  This attribute flags a property to be hidden when the user interface is
+  ///	  rendered
+  ///	</summary>
   NotVisible = class(TCustomAttribute)
   end;
 
-{ TODO -oJim -cDefinations : Need Defination }
+{ TODO -oJim -cDefinations : Needs more work }
+  ///	<summary>
+  ///	  used on a class property when you want the serializer to persist the
+  ///	  properties contained within the class.
+  ///	</summary>
   Composite = class(TCustomAttribute)
   end;
 
