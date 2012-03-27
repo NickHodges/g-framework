@@ -142,6 +142,7 @@ type
     procedure PathName;
     procedure SerializeXML;
     procedure SerializeJSON;
+    procedure SerializeCSV;
     procedure TestCreate;
     procedure ValidateRequired;
   end;
@@ -572,6 +573,32 @@ begin
     '  </Base>'#13#10 + //24
     '</xml>'#13#10; //25
   CheckEquals(XMLString, Base.Serialize(TgSerializerXML));
+end;
+
+procedure TestTBase.SerializeCSV;
+var
+  JSONString: string;
+begin
+  Base.String5 := '123456789';
+  Base.Phone := '5555555555';
+  Base.ManuallyConstructedObjectProperty.IntegerProperty := 6;
+  Base.ManuallyConstructedObjectProperty.String5 := '987654321';
+  Base.ManuallyConstructedObjectProperty.Phone := '4444444444';
+  Base.BooleanProperty := True;
+  Base.DateProperty := StrToDate('1/1/12');
+  Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
+
+  JSONString :=
+    '{"ClassName":"TestgCore.TBase","BooleanProperty":"True","DateProperty":"1/'+
+    '1/2012","DateTimeProperty":"1/1/2012 00:34:00","IntegerProperty":"5","Manu'+
+    'allyConstructedObjectProperty":{"ClassName":"TestgCore.TBase","BooleanProp'+
+    'erty":"False","DateProperty":"12/30/1899","DateTimeProperty":"12/30/1899 0'+
+    '0:00:00","IntegerProperty":"6","ObjectProperty":{"ClassName":"TestgCore.TB'+
+    'ase2","IntegerProperty":"2","StringProperty":"12345"},"String5":"98765","P'+
+    'hone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCore.TBase2","'+
+    'IntegerProperty":"2","StringProperty":"12345"},"String5":"12345","Phone":"'+
+    '(555) 555-5555"}';
+  CheckEquals(JSONString, Base.Serialize(TgSerializerJSON));
 end;
 
 procedure TestTBase.SerializeJSON;
