@@ -479,7 +479,7 @@ type
   public
     class function SerializerClass: TgSerializerClass; override;
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializer; ARTTIProperty: TRTTIProperty = Nil); overload; override;
-    class procedure Serialize(AObject: TgBase; ASerializer: gSerializer; ARTTIProperty: TRTTIProperty = Nil); overload; virtual; abstract;
+    class procedure Serialize(AObject: TgBase; ASerializer: gSerializer; ARTTIProperty: TRTTIProperty = Nil); reintroduce; overload;  virtual; abstract;
   end;
 
   TgSerializationHelper = TgSerializer.THelper; // This declaration is used for generic types removing the . notatation
