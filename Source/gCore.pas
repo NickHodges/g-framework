@@ -39,6 +39,7 @@ type
   TgPersistenceManager = class;
 
   TgIdentityList = class;
+
   TgModel = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
@@ -205,20 +206,17 @@ type
 
     { TODO -oJim -cDefinations : I need to better understand the helper relationship to the Serialization class }
       THelperClass = class of THelper;
+      THelperComparer = class(TComparer<TPair<TgBaseClass, THelperClass>>)
+        function Compare(const Left, Right: TPair<TgBaseClass, THelperClass>): Integer; override;
+      end;
+    { TODO -oJim -cDefinations : What is the difference between a helper and the regular serialization strucutre }
       THelper = class(TObject)
-      public
-        type
-          { TODO -oJim -cDefinations : What is the difference between a helper and the regular serialization strucutre }
-          TComparer = class(TComparer<TPair<TgBaseClass, THelperClass>>)
-            function Compare(const Left, Right: TPair<TgBaseClass, THelperClass>): Integer; override;
-          end;
-
       public
         class function BaseClass: TgBaseClass; virtual; abstract;
         class function SerializerClass: TgSerializerClass; virtual; abstract;
         class procedure Serialize(AObject: TgBase; ASerializer: TgSerializer; ARTTIProperty: TRTTIProperty = Nil); virtual; abstract;
+        class procedure Deserialize(AObject: TgBase; ASerializer: TgSerializer); virtual; abstract;
       end;
-
   Public
     constructor Create; virtual;
     procedure AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase); virtual; abstract;
@@ -228,7 +226,6 @@ type
     function ExtractClassName(const AString: string): String; virtual; abstract;
     function Serialize(AObject: TgBase): String; virtual; abstract;
   End;
-
   TgSerializationHelperClass = TgSerializer.THelperClass;
 
   /// <summary>TgBase is the base ancestor of all application specific classes you
@@ -480,6 +477,8 @@ type
     class function SerializerClass: TgSerializerClass; override;
     class procedure Serialize(AObject: TgBase; ASerializer: TgSerializer; ARTTIProperty: TRTTIProperty = Nil); overload; override;
     class procedure Serialize(AObject: TgBase; ASerializer: gSerializer; ARTTIProperty: TRTTIProperty = Nil); reintroduce; overload;  virtual; abstract;
+    class procedure Deserialize(AObject: TgBase; ASerializer: TgSerializer); overload; override;
+    class procedure Deserialize(AObject: TgBase; ASerializer: gSerializer); reintroduce; overload;  virtual; abstract;
   end;
 
   TgSerializationHelper = TgSerializer.THelper; // This declaration is used for generic types removing the . notatation
@@ -1034,14 +1033,13 @@ type
   TgSerializerXML = class(TgSerializer)
   public
     type
-      THelperBaseClass = class of THelperBase;
       THelperBase = class(TgSerializationHelper<TgSerializerXML>)
       type
         E = Class(Exception)
         End;
       public
         class function BaseClass: TgBaseClass; override;
-        class procedure Deserialize(AObject: TgBase; AXMLNode: IXMLNode); virtual;
+        class procedure Deserialize(AObject: TgBase; ASerializer: TgSerializerXML); override;
         class procedure DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode); virtual;
         class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil); override;
       end;
@@ -1067,9 +1065,10 @@ type
       end;
 
   strict private
-    FCurrentNode: IXMLNode;
+    FCurrentNode: TStack<IXMLNode>;
     FDocument: TXMLDocument;
     FDocumentInterface : IXMLDocument;
+    function GetCurrentNode: IXMLNode;
     procedure Load(const AString: String);
   public
     constructor Create; override;
@@ -1079,7 +1078,7 @@ type
     function Serialize(AObject: TgBase): string; override;
     procedure AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase); override;
     function ExtractClassName(const AString: string): string; override;
-    property CurrentNode: IXMLNode read FCurrentNode write FCurrentNode;
+    property CurrentNode: IXMLNode read GetCurrentNode;
     property Document: TXMLDocument read FDocument;
   end;
 
@@ -1090,7 +1089,6 @@ type
   TgSerializerJSON = class(TgSerializer)
   public
     type
-      THelperBaseClass = class of THelperBase;
       THelperBase = class(TgSerializationHelper<TgSerializerJSON>)
       type
         E = Class(Exception)
@@ -1135,7 +1133,81 @@ type
     function ExtractClassName(const AString: string): string; override;
     property JSONObject: TJSONObject read FJSONObject write FJSONObject;
   end;
+(*
+  ///	<summary>
+  ///	  This class, which decends from <see cref="TgSerializer" />, is used to
+  ///	  serialize the published properties of a <see cref="TgBase" /> into a comma delimited text file.
+  ///   All Classes will be assumed unless prefixed by a _className Column.  So when a export occurs if the class is different than the original it will output the _className column
+  ///	</summary>
+  TgSerializerCSV = class(TgSerializer)
+  public
+    type
+      TStringsNode = class(TStringList)
+      private
+        FName: String;
+        FgClassName: String;
+        FParentNode: TStringsNode;
+        function GetColumnName(Index: Integer): String;
+      public
+        constructor Create(Owner: TgSerializerCSV; const Name: String = ''; ParentNode: TStrings = nil);
+        property Name: String read FName write FName;
+        property gClassName: String read FgClassName write FgClassName;
+        property ParentNode: TStringsNode read FParentNode write FParentNode;
+        property ColumnName[Index: Integer]: String read GetColumnName;
+      end;
 
+      THelperBase = class(TgSerializationHelper<TgSerializerCSV>)
+      type
+        E = Class(Exception)
+        End;
+      public
+        class function BaseClass: TgBaseClass; override;
+        class procedure Deserialize(AObject: TgBase; Strings: TStrings); virtual;
+        class procedure DeserializeUnpublishedProperty(AObject: TgBase; Strings: TStrings); virtual;
+        class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
+      end;
+      { TODO -oJim -cDefinations : Not sure how this relates to serialization }
+      THelperIdentityObject = class(THelperBase)
+      public
+        class function BaseClass: TgBaseClass; override;
+        class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
+      end;
+
+      THelperList = class(THelperBase)
+      public
+        class function BaseClass: TgBaseClass; override;
+        class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
+        class procedure DeserializeUnpublishedProperty(AObject: TgBase; Strings: TStrings); override;
+      end;
+
+      THelperIdentityList = class(THelperList)
+      public
+        class function BaseClass: TgBaseClass; override;
+        class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
+      end;
+  strict private
+    FDocument: TStringsNode;
+    FCurrentNode: TStringsNode;
+    FHeadings: TStringList;
+    procedure Load(const AString: String);
+    const _classname = '_classname';
+  strict protected
+    FDelimiter: Char;
+  public
+    constructor Create; override;
+    destructor Destroy; override;
+    procedure Clear;
+    class procedure Register;
+    procedure AddValueProperty(const AName: String; AValue: Variant); override;
+    procedure Deserialize(AObject: TgBase; const AString: String); override;
+    function Serialize(AObject: TgBase): string; override;
+    procedure AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase); override;
+    function ExtractClassName(const AString: string): string; override;
+    property CurrentNode: TStringsNode read FCurrentNode write FCurrentNode;
+    property Document: TStringsNode read FDocument write FDocument;
+    property Headings: TStringList read FHeadings write FHeadings;
+  end;
+*)
   TgModel = class(TgBase)
   public
     function IsAuthorized: Boolean; virtual;
@@ -1161,8 +1233,6 @@ procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 Function FileToString(AFileName : String) : String;
 
 Procedure StringToFile(const AString, AFileName : String);
-
-function CreateAndDeserializeFromFile(ASerializerClass: TgSerializerClass; const AFileName: String): TgBase;
 
 // This method does nothing with the classes in the array.
 // However, by referencing the classes in the array, the compiler
@@ -2102,7 +2172,7 @@ var
   SerializationHelperClass: TgSerializationHelperClass;
   Pair: TPair<TgBaseClass, TgSerializationHelperClass>;
   SerializerClass: TgSerializerClass;
-  Comparer: TgSerializationHelper.TComparer;
+  Comparer: TgSerializer.THelperComparer;
   Method: TRTTIMethod;
 begin
 
@@ -2119,7 +2189,7 @@ begin
     List := TList<TPair<TgBaseClass, TgSerializationHelperClass>>.Create;
   Pair.Create(BaseClass, SerializationHelperClass);
   List.Add(Pair);
-  Comparer := TgSerializationHelper.TComparer.Create;
+  Comparer := TgSerializer.THelperComparer.Create;
   try
     List.Sort(Comparer);
   finally
@@ -2469,9 +2539,9 @@ begin
     raise E.CreateFmt('Serializer could not find class %s in which to deserialize.', [BaseClassName]);
 end;
 
-{ TgSerializationHelper.TComparer }
+{ TgSerializer.THelperComparer }
 
-function TgSerializationHelper.TComparer.Compare(const Left, Right: TPair<TgBaseClass, TgSerializationHelperClass>): Integer;
+function TgSerializer.THelperComparer.Compare(const Left, Right: TPair<TgBaseClass, TgSerializationHelperClass>): Integer;
 begin
   if Left.Key = Right.Key then
     Result := 0
@@ -2483,17 +2553,21 @@ begin
     Result := 0;
 end;
 
+
 { TgSerializerXML }
 
 procedure TgSerializerXML.AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase);
 var
-  HelperBaseClass: THelperBaseClass;
+  HelperBaseClass: TgSerializationHelperClass;
 begin
-  FCurrentNode := CurrentNode.AddChild(ARTTIProperty.Name);
-  CurrentNode.Attributes['classname'] := AObject.QualifiedClassName;
-  HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerXML, AObject));
-  HelperBaseClass.Serialize(AObject, Self, ARTTIProperty);
-  FCurrentNode := CurrentNode.ParentNode;
+  FCurrentNode.Push(CurrentNode.AddChild(ARTTIProperty.Name));
+  try
+    CurrentNode.Attributes['classname'] := AObject.QualifiedClassName;
+    HelperBaseClass := G.SerializationHelpers(TgSerializerXML, AObject);
+    HelperBaseClass.Serialize(AObject, Self, ARTTIProperty);
+  finally
+    FCurrentNode.Pop;
+  end;
 end;
 
 procedure TgSerializerXML.AddValueProperty(const AName: String; AValue: Variant);
@@ -2515,12 +2589,12 @@ end;
 
 procedure TgSerializerXML.Deserialize(AObject: TgBase; const AString: String);
 var
-  HelperBaseClass: THelperBaseClass;
+  HelperBaseClass: TgSerializationHelperClass;
 begin
   if Not Document.Active then
     Load(AString);
-  HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerXML, AObject));
-  HelperBaseClass.Deserialize(AObject, CurrentNode);
+  HelperBaseClass := G.SerializationHelpers(TgSerializerXML, AObject);
+  HelperBaseClass.Deserialize(AObject, Self);
 end;
 
 function TgSerializerXML.ExtractClassName(const AString: string): string;
@@ -2532,7 +2606,7 @@ end;
 procedure TgSerializerXML.Load(const AString: String);
 begin
   Document.LoadFromXML(AString);
-  FCurrentNode := Document.DocumentElement.ChildNodes[0];
+  FCurrentNode.Push(Document.DocumentElement.ChildNodes[0]);
 end;
 
 class procedure TgSerializerXML.Register;
@@ -2545,14 +2619,14 @@ end;
 
 function TgSerializerXML.Serialize(AObject: TgBase): string;
 var
-  HelperXMLBaseClass: THelperBaseClass;
+  HelperBaseClass: TgSerializationHelperClass;
 begin
   FDocument.Active := True;
-  FCurrentNode := Document.AddChild('xml');
+  FCurrentNode.Push := Document.AddChild('xml');
   FCurrentNode := CurrentNode.AddChild(AObject.FriendlyClassName);
   CurrentNode.Attributes['classname'] := AObject.QualifiedClassName;
-  HelperXMLBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerXML, AObject));
-  HelperXMLBaseClass.Serialize(AObject, Self);
+  HelperBaseClass := G.SerializationHelpers(TgSerializerXML, AObject);
+  HelperBaseClass.Serialize(AObject, Self);
   Result := Document.XML.Text;
 end;
 
@@ -2567,9 +2641,10 @@ class procedure TgSerializerXML.THelperBase.Deserialize(AObject: TgBase; AXMLNod
 var
   ChildNode: IXMLNode;
   Counter: Integer;
+  OldNode: IXMLNode;
   ObjectProperty: TgBase;
   RTTIProperty: TRTTIProperty;
-  HelperBaseClass: THelperBaseClass;
+  HelperBaseClass: TgSerializationHelperClass;
 begin
   if Not SameText(AXMLNode.Attributes['classname'], AObject.QualifiedClassName) then
     Raise EgParse.CreateFmt('Expected: %s, Parsed: %s', [AObject.QualifiedClassName, AXMLNode.Attributes['classname']]);
@@ -2591,7 +2666,7 @@ begin
       ObjectProperty := TgBase(RTTIProperty.GetValue(AObject).AsObject);
       If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) And AObject.Owns(ObjectProperty) Then
       Begin
-        HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerXML, ObjectProperty));
+        HelperBaseClass := G.SerializationHelpers(TgSerializerXML, ObjectProperty);
         HelperBaseClass.Deserialize(ObjectProperty, ChildNode);
       End;
     End;
@@ -2665,6 +2740,50 @@ begin
     Inherited Serialize(AObject, ASerializer, ARTTIProperty);
 end;
 
+{ TgSerializerXML.THelperList }
+
+class function TgSerializerXML.THelperList.BaseClass: TgBaseClass;
+begin
+  Result := TgList;
+end;
+
+class procedure TgSerializerXML.THelperList.DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode);
+var
+  Counter: Integer;
+  HelperBaseClass: THelperBaseClass;
+begin
+  if SameText(AXMLNode.NodeName, 'List') then
+  Begin
+    for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
+    Begin
+      TgList(AObject).Add;
+      HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerXML, TgList(AObject).Current));
+      HelperBaseClass.Deserialize(TgList(AObject).Current, AXMLNode.ChildNodes[Counter]);
+    End;
+  End
+  Else
+    Inherited;
+end;
+
+class procedure TgSerializerXML.THelperList.Serialize(AObject: TgBase; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil);
+var
+  ItemObject: TgBase;
+  ItemPointer: TObject;
+  HelperBaseClass: THelperBaseClass;
+begin
+  Inherited Serialize(AObject, ASerializer);
+  ASerializer.CurrentNode := ASerializer.CurrentNode.AddChild('List');
+  for ItemPointer in TgList(AObject) do
+  Begin
+    ItemObject := TgBase(ItemPointer);
+    ASerializer.CurrentNode := ASerializer.CurrentNode.AddChild(ItemObject.FriendlyClassName);
+    ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName;
+    HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerXML, ItemObject));
+    HelperBaseClass.Serialize(ItemObject, ASerializer);
+    ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
+  End;
+  ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
+end;
 
 { TgSerializerJSON.THelperBase }
 
@@ -2907,6 +3026,245 @@ begin
   Result := JSONObject.ToString;
 end;
 
+{ TgSerializerCSV }
+
+procedure TgSerializerCSV.AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase);
+var
+  HelperBaseClass: THelperBaseClass;
+begin
+  FCurrentNode := TStringsNode.Create(Self,ARTTIProperty.Name,FCurrentNode);
+  CurrentNode.Values[_classname] := AObject.QualifiedClassName;
+  HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerCSV, AObject));
+  HelperBaseClass.Serialize(AObject, Self, ARTTIProperty);
+  FCurrentNode := CurrentNode.ParentNode;
+end;
+
+procedure TgSerializerCSV.Clear;
+begin
+  FHeadings.Clear;
+  FDocument.Clear;
+  FCurrentNode := nil;
+end;
+
+procedure TgSerializerCSV.AddValueProperty(const AName: String; AValue: Variant);
+begin
+  CurrentNode.Values[AName] := AValue;
+end;
+
+constructor TgSerializerCSV.Create;
+begin
+  inherited Create;
+  FDocument := TStringsNode.Create(Self);
+  FDelimiter := ',';
+  FHeadings := TStringList.Create;
+end;
+
+procedure TgSerializerCSV.Deserialize(AObject: TgBase; const AString: String);
+var
+  HelperBaseClass: THelperBaseClass;
+begin
+  if FDocument.Count = 0 then
+    Load(AString);
+  HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerCSV, AObject));
+  HelperBaseClass.Deserialize(AObject, CurrentNode);
+end;
+
+function TgSerializerCSV.ExtractClassName(const AString: string): string;
+begin
+  Load(AString);
+  Result := CurrentNode.Values[_className];
+end;
+
+procedure TgSerializerCSV.Load(const AString: String);
+var Strings: TStringList;
+begin
+  Clear;
+  Strings := TStringList.Create(True);
+  Strings.Text := AString;
+  if Strings.Count > 0 then begin
+    case FDelimiter of
+      ','
+      :  FHeadings.CommaText := Strings[0];
+    end;
+{ TODO : Finish }
+  end;
+end;
+
+class procedure TgSerializerCSV.Register;
+begin
+  RegisterRuntimeClasses([
+      THelperBase, THelperList, THelperIdentityObject, THelperIdentityList
+    ]);
+end;
+
+function TgSerializerCSV.Serialize(AObject: TgBase): string;
+var
+  HelperXMLBaseClass: THelperBaseClass;
+begin
+  // This is the base so the list is assumed to be passed in
+  G.
+  FCurrentNode := FDocument.AddChild('xml');
+  FCurrentNode := CurrentNode.AddChild(AObject.FriendlyClassName);
+  CurrentNode.Attributes['classname'] := AObject.QualifiedClassName;
+  HelperXMLBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerCSV, AObject));
+  HelperXMLBaseClass.Serialize(AObject, Self);
+  Result := Document.XML.Text;
+end;
+
+{ TgSerializerCSV.THelperBase }
+
+class function TgSerializerCSV.THelperBase.BaseClass: TgBaseClass;
+begin
+  Result := TgBase;
+end;
+
+class procedure TgSerializerCSV.THelperBase.Deserialize(AObject: TgBase; AXMLNode: IXMLNode);
+var
+  ChildNode: IXMLNode;
+  Counter: Integer;
+  ObjectProperty: TgBase;
+  RTTIProperty: TRTTIProperty;
+  HelperBaseClass: THelperBaseClass;
+begin
+  if Not SameText(AXMLNode.Attributes['classname'], AObject.QualifiedClassName) then
+    Raise EgParse.CreateFmt('Expected: %s, Parsed: %s', [AObject.QualifiedClassName, AXMLNode.Attributes['classname']]);
+  for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
+  begin
+    ChildNode := AXMLNode.ChildNodes[Counter];
+    RTTIProperty := G.PropertyByName(AObject, ChildNode.NodeName);
+    if Not Assigned(RTTIProperty) then
+      DeserializeUnpublishedProperty(AObject, ChildNode)
+    Else if Not RTTIProperty.PropertyType.IsInstance then
+    Begin
+      if ChildNode.HasChildNodes then
+        AObject[ChildNode.NodeName] := ChildNode.ChildNodes.First.Text
+      else
+        AObject[ChildNode.NodeName] := '';
+    End
+    Else
+    Begin
+      ObjectProperty := TgBase(RTTIProperty.GetValue(AObject).AsObject);
+      If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) And AObject.Owns(ObjectProperty) Then
+      Begin
+        HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerCSV, ObjectProperty));
+        HelperBaseClass.Deserialize(ObjectProperty, ChildNode);
+      End;
+    End;
+  end;
+end;
+
+class procedure TgSerializerCSV.THelperBase.DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode);
+begin
+  raise E.CreateFmt('Attempt to deserialize unknown property %s.', [AXMLNode.NodeName]);
+end;
+
+class procedure TgSerializerCSV.THelperBase.Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil);
+var
+  DoubleValue: Double;
+  ObjectProperty: TgBase;
+  RTTIProperty: TRTTIProperty;
+  Value: Variant;
+begin
+  For RTTIProperty In G.SerializableProperties(AObject) Do
+  Begin
+    if RTTIProperty.PropertyType.IsInstance then
+    Begin
+      ObjectProperty := TgBase(AObject.Inspect(RTTIProperty));
+      If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) Then
+        ASerializer.AddObjectProperty(RTTIProperty, ObjectProperty);
+    End
+    Else
+    Begin
+      if (RTTIProperty.PropertyType.TypeKind = tkFloat) then
+      Begin
+       DoubleValue := RTTIProperty.GetValue(AObject).AsVariant;
+       If SameText(RTTIProperty.PropertyType.Name, 'TDate') then
+         Value := FormatDateTime('m/d/yyyy', DoubleValue)
+       Else if SameText(RTTIProperty.PropertyType.Name, 'TDateTime') then
+         Value := FormatDateTime('m/d/yyyy hh:nn:ss', DoubleValue)
+       Else
+         Value := DoubleValue;
+      End
+      Else
+        Value := AObject[RTTIProperty.Name];
+      ASerializer.AddValueProperty(RTTIProperty.Name, Value);
+    End
+  End;
+end;
+
+{ TgSerializerCSV.THelperIdentityObject }
+
+class function TgSerializerCSV.THelperIdentityObject.BaseClass: TgBaseClass;
+begin
+  Result := TgIdentityObject;
+end;
+
+class procedure TgSerializerCSV.THelperIdentityObject.Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil);
+begin
+  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
+    Inherited Serialize(AObject, ASerializer, ARTTIProperty)
+  Else
+    ASerializer.AddValueProperty('ID', TgIdentityObject(AObject).ID);
+end;
+
+{ TgSerializerCSV.THelperIdentityList }
+
+class function TgSerializerCSV.THelperIdentityList.BaseClass: TgBaseClass;
+begin
+  Result := TgIdentityList;
+end;
+
+class procedure TgSerializerCSV.THelperIdentityList.Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil);
+begin
+  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
+    Inherited Serialize(AObject, ASerializer, ARTTIProperty);
+end;
+
+{ TgSerializerCSV.THelperList }
+
+class function TgSerializerCSV.THelperList.BaseClass: TgBaseClass;
+begin
+  Result := TgList;
+end;
+
+class procedure TgSerializerCSV.THelperList.DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode);
+var
+  Counter: Integer;
+  HelperBaseClass: THelperBaseClass;
+begin
+  if SameText(AXMLNode.NodeName, 'List') then
+  Begin
+    for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
+    Begin
+      TgList(AObject).Add;
+      HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerCSV, TgList(AObject).Current));
+      HelperBaseClass.Deserialize(TgList(AObject).Current, AXMLNode.ChildNodes[Counter]);
+    End;
+  End
+  Else
+    Inherited;
+end;
+
+class procedure TgSerializerCSV.THelperList.Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil);
+var
+  ItemObject: TgBase;
+  ItemPointer: TObject;
+  HelperBaseClass: THelperBaseClass;
+begin
+  Inherited Serialize(AObject, ASerializer);
+  ASerializer.CurrentNode := ASerializer.CurrentNode.AddChild('List');
+  for ItemPointer in TgList(AObject) do
+  Begin
+    ItemObject := TgBase(ItemPointer);
+    ASerializer.CurrentNode := ASerializer.CurrentNode.AddChild(ItemObject.FriendlyClassName);
+    ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName;
+    HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerCSV, ItemObject));
+    HelperBaseClass.Serialize(ItemObject, ASerializer);
+    ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
+  End;
+  ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
+end;
+*)
 { TgList<T> }
 
 constructor TgList<T>.Create(AOwner: TgBase = nil);
@@ -3304,51 +3662,6 @@ begin
   Inc(FCurrentIndex);
   Result := Not FList.EOL;
   FList.CurrentIndex := SavedCurrentIndex;
-end;
-
-{ TgSerializationHelperXMLList }
-
-class function TgSerializerXML.THelperList.BaseClass: TgBaseClass;
-begin
-  Result := TgList;
-end;
-
-class procedure TgSerializerXML.THelperList.DeserializeUnpublishedProperty(AObject: TgBase; AXMLNode: IXMLNode);
-var
-  Counter: Integer;
-  HelperBaseClass: THelperBaseClass;
-begin
-  if SameText(AXMLNode.NodeName, 'List') then
-  Begin
-    for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
-    Begin
-      TgList(AObject).Add;
-      HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerXML, TgList(AObject).Current));
-      HelperBaseClass.Deserialize(TgList(AObject).Current, AXMLNode.ChildNodes[Counter]);
-    End;
-  End
-  Else
-    Inherited;
-end;
-
-class procedure TgSerializerXML.THelperList.Serialize(AObject: TgBase; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil);
-var
-  ItemObject: TgBase;
-  ItemPointer: TObject;
-  HelperBaseClass: THelperBaseClass;
-begin
-  Inherited Serialize(AObject, ASerializer);
-  ASerializer.CurrentNode := ASerializer.CurrentNode.AddChild('List');
-  for ItemPointer in TgList(AObject) do
-  Begin
-    ItemObject := TgBase(ItemPointer);
-    ASerializer.CurrentNode := ASerializer.CurrentNode.AddChild(ItemObject.FriendlyClassName);
-    ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName;
-    HelperBaseClass := THelperBaseClass(G.SerializationHelpers(TgSerializerXML, ItemObject));
-    HelperBaseClass.Serialize(ItemObject, ASerializer);
-    ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
-  End;
-  ASerializer.CurrentNode := ASerializer.CurrentNode.ParentNode;
 end;
 
 { TgBaseClassComparer }
@@ -4721,8 +5034,10 @@ begin
   Serialize(AObject, ASerializer as gSerializer, ARTTIProperty);
 end;
 
+
 Initialization
-  TgSerializerJSON.Register;
-  TgSerializerXML.Register;
+//  TgSerializerJSON.Register;
+//  TgSerializerXML.Register;
+//  TgSerializerCSV.Register;
 end.
 

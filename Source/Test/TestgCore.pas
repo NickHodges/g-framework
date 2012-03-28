@@ -314,6 +314,24 @@ type
     procedure SaveItem;
   end;
 
+  TestTSerializeCSV = class(TTestCase)
+  public
+    type
+      TgTest = class(TgBase)
+      private
+        FName: String;
+        FPrice: Currency;
+      published
+        property Name: String read FName write FName;
+        property Price: Currency read FPrice write FPrice;
+      end;
+  protected
+    FSerializer: TgSerializerCSV;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Simple;
+  end;
 
 
 implementation
@@ -577,7 +595,7 @@ end;
 
 procedure TestTBase.SerializeCSV;
 var
-  JSONString: string;
+  CSVString: string;
 begin
   Base.String5 := '123456789';
   Base.Phone := '5555555555';
@@ -588,7 +606,7 @@ begin
   Base.DateProperty := StrToDate('1/1/12');
   Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
 
-  JSONString :=
+  CSVString :=
     '{"ClassName":"TestgCore.TBase","BooleanProperty":"True","DateProperty":"1/'+
     '1/2012","DateTimeProperty":"1/1/2012 00:34:00","IntegerProperty":"5","Manu'+
     'allyConstructedObjectProperty":{"ClassName":"TestgCore.TBase","BooleanProp'+
@@ -598,7 +616,7 @@ begin
     'hone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCore.TBase2","'+
     'IntegerProperty":"2","StringProperty":"12345"},"String5":"12345","Phone":"'+
     '(555) 555-5555"}';
-  CheckEquals(JSONString, Base.Serialize(TgSerializerJSON));
+  CheckEquals(CSVString, Base.Serialize(TgSerializerCSV));
 end;
 
 procedure TestTBase.SerializeJSON;
@@ -1671,6 +1689,57 @@ begin
   FIDObject.Free;
   FIDObject2.Free;
   inherited;
+end;
+
+{ TestTSerializeCSV }
+
+procedure TestTSerializeCSV.Headings;
+begin
+  FSerializer.Deserialize(nil,'Name,Price'#13#10'Jim,12.30'#13#10);
+  CheckEquals('Name',FSerializer.Headings[0]);
+  CheckEquals('Price',FSerializer.Headings[1]);
+end;
+
+procedure TestTSerializeCSV.SetUp;
+begin
+  inherited;
+  FSerializer := TgSerializerCSV.Create;
+end;
+
+procedure TestTSerializeCSV.Simple;
+var
+  List: TgList<TgTest>;
+  S: String;
+begin
+  List := TgList<TgTest>.Create;
+  List.Add;
+  List.Current.Name := 'Jim';
+  List.Current.Price := 12.30;
+  List.Add;
+  List.Current.Name := 'Fred';
+  List.Current.Price := 50;
+  S := FSerializer.Serialize(List);
+  CheckEquals('',S);
+  List.Clear;
+  FSerializer.Deserialize(List,S);
+  List.First;
+  CheckFalse(List.EOL);
+  CheckEquals('Jim',List.Current.Name);
+  CheckEquals(12.30,List.Current.Price);
+  List.Next;
+  CheckFalse(List.EOL);
+  CheckEquals('Fred',List.Current.Name);
+  CheckEquals(50,List.Current.Price);
+  List.Next;
+  CheckTrue(List.EOL);
+  List.Free;
+end;
+
+procedure TestTSerializeCSV.TearDown;
+begin
+  FreeAndNil(FSerializer);
+  inherited;
+
 end;
 
 initialization
