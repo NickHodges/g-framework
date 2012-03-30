@@ -233,6 +233,7 @@ type
     procedure SetUp; override;
     procedure TearDown; override;
   published
+    procedure ForInEmpty;
     procedure Add;
     procedure BOL;
     procedure EOL;
@@ -315,6 +316,15 @@ type
   end;
 
 (*
+  TestTgNodeCSV = class(TTestCase)
+  protected
+    FNode: TgNodeCSV;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure ColumnName;
+    procedure NestedColumnName;
+  end;
   TestTSerializeCSV = class(TTestCase)
   public
     type
@@ -334,7 +344,6 @@ type
     procedure Simple;
   end;
 *)
-
 implementation
 
 Uses
@@ -1415,6 +1424,17 @@ begin
   CheckTrue(FIdentityObjectList.Active, 'Calling Current should activate the list.')
 end;
 
+procedure TestTIdentityObjectList.ForInEmpty;
+var
+  Item: TgIdentityObject;
+  Items: TgIdentityList<TIdentityObject>;
+begin
+  Items := TgIdentityList<TIdentityObject>.Create;
+  for Item in Items do
+    CheckFalse(True,'The list should be empty');
+  Items.Free;
+end;
+
 procedure TestTIdentityObjectList.SerializeJSON;
 var
   JSONString: string;
@@ -1748,9 +1768,47 @@ procedure TestTSerializeCSV.TearDown;
 begin
   FreeAndNil(FSerializer);
   inherited;
+end;
+
+{ TestTgNodeCSV }
+
+procedure TestTgNodeCSV.ColumnName;
+begin
+  FNode.Values['Name'] := 'Jim';
+  FNode.Values['Price'] := '12.50';
+  CheckEquals('Name',FNode.ColumnNames[0]);
+  CheckEquals('Price',FNode.ColumnNames[1]);
+end;
+
+procedure TestTgNodeCSV.NestedColumnName;
+var Node: TgNodeCSV;
+begin
+  FNode.Add('Name','Jim');
+  FNode.Add('Price','12.50');
+  CheckEquals('Name',FNode.ColumnNames[0]);
+  CheckEquals('Price',FNode.ColumnNames[1]);
+  Node := FNode.AddChildNode('SubStuff');
+  Node.Add('Item','Juice');
+  Node.Add('Category','Liquid');
+  CheckEquals('SubStuff.Item',Node.ColumnNames[0]);
+  CheckEquals('SubStuff.Category',Node.ColumnNames[1]);
+end;
+
+procedure TestTgNodeCSV.SetUp;
+begin
+  inherited;
+  FNode := TgNodeCSV.Create(nil);
+end;
+
+procedure TestTgNodeCSV.TearDown;
+
+begin
+  FNode.Free;
+  inherited;
 
 end;
 *)
+
 initialization
 
   // Register any test cases with the test runner
@@ -1762,5 +1820,6 @@ initialization
   RegisterTest(TestTBase3.Suite);
   RegisterTest(TestTIDObject.Suite);
   RegisterTest(TestTIDObject2.Suite);
+//  RegisterTest(TestTgNodeCSV.Suite);
 end.
 
