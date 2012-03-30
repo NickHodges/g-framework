@@ -564,7 +564,6 @@ type
       private
         FCurrentIndex: Integer;
         FList: TgList;
-        SavedCurrentIndex: Integer;
         function GetCurrent: TgBase;
       public
         procedure Init(AList: TgList);
@@ -711,7 +710,6 @@ type
       private
         FCurrentIndex: Integer;
         FList: TgList<T>;
-        SavedCurrentIndex: Integer;
         function GetCurrent: T;
       public
         procedure Init(AList: TgList<T>);
@@ -3465,7 +3463,6 @@ end;
 procedure TgList.TgEnumerator.Init(AList: TgList);
 begin
   FList := AList;
-  SavedCurrentIndex := FList.CurrentIndex;
   FCurrentIndex := -1;
   FList.First;
 end;
@@ -3474,7 +3471,6 @@ function TgList.TgEnumerator.GetCurrent: TgBase;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
-  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 function TgList.TgEnumerator.MoveNext: Boolean;
@@ -3488,7 +3484,6 @@ begin
   End;
   Inc(FCurrentIndex);
   Result := Not FList.EOL;
-  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 { TgBaseClassComparer }
@@ -3607,13 +3602,11 @@ function TgList<T>.TgEnumerator.GetCurrent: T;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
-  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 procedure TgList<T>.TgEnumerator.Init(AList: TgList<T>);
 begin
   FList := AList;
-  SavedCurrentIndex := FList.CurrentIndex;
   FList.First;
   FCurrentIndex := -1;
 end;
@@ -3629,7 +3622,6 @@ begin
   End;
   Inc(FCurrentIndex);
   Result := Not FList.EOL;
-  FList.CurrentIndex := SavedCurrentIndex;
 end;
 
 constructor TgObject.Create(AOwner: TgBase = nil);
