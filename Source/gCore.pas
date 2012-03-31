@@ -1160,7 +1160,6 @@ type
     property JSONObject: TJSONObject read FJSONObject write FJSONObject;
   end;
 
-(*
   TgSerializerCSV = class;
 
   TgNodeCSV = class(TStringList)
@@ -1239,7 +1238,7 @@ type
     function ExtractClassName(const AString: string): string; override;
     property Headings: TStringList read FHeadings write FHeadings;
   end;
-*)
+
   TgModel = class(TgBase)
   public
     function IsAuthorized: Boolean; virtual;
