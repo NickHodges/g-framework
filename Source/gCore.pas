@@ -1163,19 +1163,26 @@ type
   TgSerializerCSV = class;
 
   TgNodeCSV = class(TStringList)
+  public
+    type
+      TForEach = reference to procedure(const ColumnName,Value: String; Node: TgNodeCSV);
+
   private
     FName: String;
     FOwner: TgSerializerCSV;
     FgClassName: String;
     FParentNode: TgNodeCSV;
-    function GetColumnNames(Index: Integer): String;
+    function GetColumnNames(Index: Integer): String; inline;
     procedure GetPath(var Builder: TStringBuilder);
   public
     constructor Create(Owner: TgSerializerCSV; const Name: String = ''; ParentNode: TgNodeCSV = nil);
     destructor Destroy; override;
+    procedure ForEach(Anon: TForEach); inline;
     function Add(const Name,Value: String): Integer; overload;
     procedure Add(Value: TgNodeCSV); overload;
-    function AddChildNode(const Name: String): TgNodeCSV;
+    function AddChild(const Name: String): TgNodeCSV;
+    function QualifiedColumnName(const AName: String): String;
+    procedure ToRow(Columns: TStrings);
     property Name: String read FName write FName;
     property gClassName: String read FgClassName write FgClassName;
     property ColumnNames[Index: Integer]: String read GetColumnNames;
@@ -1191,52 +1198,51 @@ type
   TgSerializerCSV = class(TgSerializerStackBase<TgNodeCSV>)
   public
     type
-      THelperBase = class(TgSerializationHelper<TgSerializerCSV>)
+      TProcedure = reference to procedure;
+      THelper<gBase: TgBase> = class(TgSerializationHelper<gBase,TgSerializerCSV>)
       type
         E = Class(Exception)
         End;
       public
-        class function BaseClass: TgBaseClass; override;
-        class procedure Deserialize(AObject: TgBase; Strings: TStrings); virtual;
-        class procedure DeserializeUnpublishedProperty(AObject: TgBase; Strings: TStrings); virtual;
-        class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
+        class procedure Deserialize(AObject: gBase; ASerializer: TgSerializerCSV); override;
+        class procedure Serialize(AObject: gBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
       end;
+      THelperBase = class(THelper<TgBase>);
+
       { TODO -oJim -cDefinations : Not sure how this relates to serialization }
-      THelperIdentityObject = class(THelperBase)
+      THelperIdentityObject = class(THelper<TgIdentityObject>)
       public
-        class function BaseClass: TgBaseClass; override;
-        class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
+        class procedure Serialize(AObject: TgIdentityObject; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
       end;
 
-      THelperList = class(THelperBase)
+      THelperList = class(THelper<TgList>)
       public
-        class function BaseClass: TgBaseClass; override;
-        class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
-        class procedure DeserializeUnpublishedProperty(AObject: TgBase; Strings: TStrings); override;
+        class procedure Serialize(AObject: TgList; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
+        class procedure DeserializeUnpublishedProperty(AObject: TgList; ASerializer: TgSerializerCSV; const PropertyName: String); override;
       end;
 
-      THelperIdentityList = class(THelperList)
+      THelperIdentityList = class(THelper<TgIdentityList>)
       public
-        class function BaseClass: TgBaseClass; override;
-        class procedure Serialize(AObject: TgBase; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
+        class procedure Serialize(AObject: TgIdentityList; ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil); override;
       end;
+
   strict private
     FHeadings: TStringList;
+    FDocument: TStringList;
+    FBaseClass: TStack<TgBaseClass>;
+    FDelimiter: Char;
     procedure Load(const AString: String);
     const _classname = '_classname';
-  strict protected
-    FDelimiter: Char;
   public
     constructor Create; override;
     destructor Destroy; override;
-    procedure Clear;
     class procedure Register;
     procedure AddValueProperty(const AName: String; AValue: Variant); override;
     procedure Deserialize(AObject: TgBase; const AString: String); override;
     function Serialize(AObject: TgBase): string; override;
     procedure AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase); override;
     function ExtractClassName(const AString: string): string; override;
-    property Headings: TStringList read FHeadings write FHeadings;
+    property Headings: TStringList read FHeadings;
   end;
 
   TgModel = class(TgBase)
@@ -4893,7 +4899,7 @@ begin
     FNodeStack.Pop;
   end;
 end;
-(*
+
 { TgNodeCSV }
 
 function TgNodeCSV.Add(const Name, Value: String): Integer;
@@ -4908,7 +4914,7 @@ begin
   Objects[Index] := Value;
 end;
 
-function TgNodeCSV.AddChildNode(const Name: String): TgNodeCSV;
+function TgNodeCSV.AddChild(const Name: String): TgNodeCSV;
 begin
   Result := TgNodeCSV.Create(Owner,Name,Self);
   Add(Result);
@@ -4933,21 +4939,22 @@ begin
   inherited;
 end;
 
-function TgNodeCSV.GetColumnNames(Index: Integer): String;
-var Builder: TStringBuilder;
+
+procedure TgNodeCSV.ForEach(Anon: TForEach);
+var
+  Index: Integer;
 begin
-  Builder := TStringBuilder.Create;
-  try
-    GetPath(Builder);
-    if Builder.Length <> 0 then
-      Builder.Append('.');
-    Builder.Append(Names[Index]);
-    Result := Builder.ToString;
-  finally
-    Builder.Free;
-  end;
+  Index := Count-1;
+  for Index := 0 to Index do
+    Anon(ColumnNames[Index],ValueFromIndex[Index],Objects[Index] as TgNodeCSV);
+
+
 end;
 
+function TgNodeCSV.GetColumnNames(Index: Integer): String;
+begin
+  Result := QualifiedColumnName(Names[Index]);
+end;
 
 procedure TgNodeCSV.GetPath(var Builder: TStringBuilder);
 begin
@@ -4958,13 +4965,342 @@ begin
   if (Name <> '') then
     Builder.Append(Name);
 end;
-*)
 
+
+
+function TgNodeCSV.QualifiedColumnName(const AName: String): String;
+var Builder: TStringBuilder;
+begin
+  Builder := TStringBuilder.Create;
+  try
+    GetPath(Builder);
+    if Builder.Length <> 0 then
+      Builder.Append('.');
+    Builder.Append(AName);
+    Result := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
+end;
+
+
+procedure TgNodeCSV.ToRow(Columns: TStrings);
+begin
+  ForEach(procedure(const Name,Value: String; Node: TgNodeCSV)
+    var
+      ColumnIndex: Integer;
+    begin
+      if Value <> '' then begin
+        ColumnIndex := FOwner.Headings.IndexOf(Name);
+        if ColumnIndex >= 0 then begin
+          while Columns.Count <= ColumnIndex do
+            Columns.Add('');
+          Columns[ColumnIndex] := Value;
+        end;
+      end
+      else if Assigned(Node) then
+        Node.ToRow(Columns);
+    end);
+end;
+
+{ TgSerializerCSV.THelper<gBase> }
+
+class procedure TgSerializerCSV.THelper<gBase>.Deserialize(AObject: gBase;
+  ASerializer: TgSerializerCSV);
+var
+  Counter: Integer;
+  ObjectProperty: TgBase;
+  RTTIProperty: TRTTIProperty;
+  HelperClass: TgSerializationHelperClass;
+  Node: TgNodeCSV;
+  AName: String;
+  AValue: String;
+  ANode: TgNodeCSV;
+begin
+  Node := ASerializer.CurrentNode;
+  AName := Node.Values[_classname];
+  if (AName <> '') and not SameText(AName, AObject.QualifiedClassName) then
+    Raise EgParse.CreateFmt('Expected: %s, Parsed: %s', [AObject.QualifiedClassName, AName]);
+  for Counter := 0 to Node.Count - 1 do
+  begin
+    AName := Node.Names[Counter];
+    AValue := Node.ValueFromIndex[Counter];
+    RTTIProperty := G.PropertyByName(AObject, AName);
+    if Not Assigned(RTTIProperty) then
+      DeserializeUnpublishedProperty(AObject, ASerializer, AName)
+    Else if Not RTTIProperty.PropertyType.IsInstance then
+      AObject.Values[AName] := AValue
+    Else
+    Begin
+      ObjectProperty := TgBase(RTTIProperty.GetValue(AObject.AsPointer).AsObject);
+      If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) And AObject.Owns(ObjectProperty) Then
+      Begin
+        HelperClass := G.SerializationHelpers(TgSerializerCSV, ObjectProperty);
+        ANode := Node.Objects[Counter] as TgNodeCSV;
+        if Assigned(ANode) then
+          ASerializer.TemporaryCurrentNode(ANode,procedure
+          begin
+            HelperClass.Deserialize(ObjectProperty, ASerializer);
+          end);
+      End;
+    End;
+  end;
+end;
+
+class procedure TgSerializerCSV.THelper<gBase>.Serialize(AObject: gBase;
+  ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty);
+var
+  DoubleValue: Double;
+  ObjectProperty: TgBase;
+  RTTIProperty: TRTTIProperty;
+  Value: Variant;
+begin
+  For RTTIProperty In G.SerializableProperties(AObject) Do
+  Begin
+    if RTTIProperty.PropertyType.IsInstance then
+    Begin
+      ObjectProperty := TgBase(AObject.Inspect(RTTIProperty));
+      If Assigned(ObjectProperty) And ObjectProperty.InheritsFrom(TgBase) Then
+        ASerializer.AddObjectProperty(RTTIProperty, ObjectProperty);
+    End
+    Else
+    Begin
+      if (RTTIProperty.PropertyType.TypeKind = tkFloat) then
+      Begin
+       DoubleValue := RTTIProperty.GetValue(AObject.AsPointer).AsVariant;
+       If SameText(RTTIProperty.PropertyType.Name, 'TDate') then
+         Value := FormatDateTime('m/d/yyyy', DoubleValue)
+       Else if SameText(RTTIProperty.PropertyType.Name, 'TDateTime') then
+         Value := FormatDateTime('m/d/yyyy hh:nn:ss', DoubleValue)
+       Else
+         Value := DoubleValue;
+      End
+      Else
+        Value := AObject.Values[RTTIProperty.Name];
+      ASerializer.AddValueProperty(RTTIProperty.Name, Value);
+    End
+  End;
+end;
+
+{ TgSerializerCSV.THelperIdentityObject }
+
+class procedure TgSerializerCSV.THelperIdentityObject.Serialize(
+  AObject: TgIdentityObject; ASerializer: TgSerializerCSV;
+  ARTTIProperty: TRTTIProperty);
+begin
+  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
+    Inherited Serialize(AObject, ASerializer, ARTTIProperty)
+  Else
+    ASerializer.AddValueProperty('ID', AObject.ID);
+end;
+
+{ TgSerializerCSV.THelperList }
+
+class procedure TgSerializerCSV.THelperList.DeserializeUnpublishedProperty(
+  AObject: TgList; ASerializer: TgSerializerCSV; const PropertyName: String);
+var
+  Counter: Integer;
+  HelperClass: TgSerializationHelperClass;
+  Node: TgNodeCSV;
+  ANode: TgNodeCSV;
+begin
+  if SameText(PropertyName, 'List') then
+  Begin
+    Node := ASerializer.CurrentNode;
+    for Counter := 0 to Node.Count - 1 do
+    Begin
+      AObject.Add;
+      ANode := Node.Objects[Counter] as TgNodeCSV;
+{ TODO : Shouldn't we use the classname to create this object? ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName; }
+      HelperClass := G.SerializationHelpers(TgSerializerCSV, AObject.Current);
+      ASerializer.TemporaryCurrentNode(ANode,procedure
+        begin
+          HelperClass.Deserialize(AObject.Current, ASerializer);
+        end);
+    End;
+  End
+  Else
+    Inherited;
+end;
+
+class procedure TgSerializerCSV.THelperList.Serialize(AObject: TgList;
+  ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty);
+var
+  ItemObject: TgBase;
+  HelperClass: TgSerializationHelperClass;
+  Index: Integer;
+begin
+  Inherited Serialize(AObject, ASerializer);
+  Index := 0;
+  ASerializer.FBaseClass.Push(AObject.ItemClass);
+  try
+    for ItemObject in AObject do
+    Begin
+      Inc(Index);
+      if Assigned(ARTTIProperty) then begin
+        ASerializer.TemporaryCurrentNode(ASerializer.CurrentNode.AddChild(Format('%s[%d]',[ARTTIProperty.Name,Index])),procedure
+          begin
+            if AObject.ItemClass <> ItemObject.ClassType then
+              ASerializer.CurrentNode.Values[_className] := ItemObject.QualifiedClassName;
+            HelperClass := G.SerializationHelpers(TgSerializerCSV, ItemObject);
+            HelperClass.Serialize(ItemObject, ASerializer);
+          end);
+      end
+      else begin
+        if AObject.ItemClass <> ItemObject.ClassType then
+          ASerializer.CurrentNode.Values[_className] := ItemObject.QualifiedClassName;
+        HelperClass := G.SerializationHelpers(TgSerializerCSV, ItemObject);
+        HelperClass.Serialize(ItemObject, ASerializer);
+      end;
+    End;
+  finally
+    ASerializer.FBaseClass.Pop;
+  end;
+end;
+
+{ TgSerializerCSV.THelperIdentityList }
+
+class procedure TgSerializerCSV.THelperIdentityList.Serialize(
+  AObject: TgIdentityList; ASerializer: TgSerializerCSV;
+  ARTTIProperty: TRTTIProperty);
+begin
+  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
+    Inherited Serialize(AObject, ASerializer, ARTTIProperty);
+end;
+
+{ TgSerializerCSV }
+
+procedure TgSerializerCSV.AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase);
+var
+  HelperClass: TgSerializationHelperClass;
+begin
+  TemporaryCurrentNode(CurrentNode.AddChild(ARTTIProperty.Name),procedure
+    begin
+      if AObject.ClassType <> FBaseClass.Peek then
+        CurrentNode.Values[_classname] := AObject.QualifiedClassName;
+      HelperClass := G.SerializationHelpers(TgSerializerCSV, AObject);
+      HelperClass.Serialize(AObject, Self, ARTTIProperty);
+    end);
+end;
+procedure TgSerializerCSV.AddValueProperty(const AName: String; AValue: Variant);
+var
+  Index: integer;
+  ColumnName: String;
+begin
+  ColumnName := CurrentNode.QualifiedColumnName(AName);
+  Index := FHeadings.IndexOf(ColumnName);
+  if Index < 0 then
+    FHeadings.Add(ColumnName);
+  CurrentNode.Values[AName] := AValue;
+end;
+
+constructor TgSerializerCSV.Create;
+begin
+  inherited;
+  FHeadings := TStringList.Create;
+  FDocument := TStringList.Create;
+  FBaseClass := TStack<TgBaseClass>.Create;
+end;
+
+procedure TgSerializerCSV.Deserialize(AObject: TgBase; const AString: String);
+var
+  HelperClass: TgSerializationHelperClass;
+begin
+  if FDocument.Count = 0 then
+    Load(AString);
+  HelperClass := G.SerializationHelpers(TgSerializerCSV, AObject);
+  HelperClass.Deserialize(AObject, Self);
+end;
+
+destructor TgSerializerCSV.Destroy;
+begin
+  FreeAndNil(FBaseClass);
+  FreeAndNil(FHeadings);
+  FreeAndNil(FDocument);
+  inherited;
+end;
+
+function TgSerializerCSV.ExtractClassName(const AString: string): string;
+begin
+  raise E.Create('Fix This');
+//  Load(AString);
+//  Result := CurrentNode.Attributes['classname'];
+end;
+
+procedure TgSerializerCSV.Load(const AString: String);
+begin
+  FHeadings.Clear;
+  FDocument.Clear;
+  FDocument.Text := AString;
+  if FDocument.Count > 0 then
+    Headings.CommaText := FDocument[0];
+end;
+
+class procedure TgSerializerCSV.Register;
+begin
+  RegisterRuntimeClasses([
+      THelperBase, THelperList, THelperIdentityObject, THelperIdentityList
+    ]);
+
+end;
+
+function TgSerializerCSV.Serialize(AObject: TgBase): string;
+var
+  HelperBaseClass: TgSerializationHelperClass;
+  ResultText: String;
+  Node: TgNodeCSV;
+  Row: TStringList;
+  Index: integer;
+begin
+  FHeadings.Clear;
+  FDocument.Clear;
+  Node := TgNodeCSV.Create(Self);
+  try
+    FBaseClass.Push(TgBaseClass(AObject.ClassType));
+    try
+      TemporaryCurrentNode(Node,procedure
+        begin
+          HelperBaseClass := G.SerializationHelpers(TgSerializerCSV, AObject);
+          HelperBaseClass.Serialize(AObject, Self);
+        end);
+    finally
+      FBaseClass.Pop;
+    end;
+    Row := TStringList.Create;
+    try
+      Row.Clear;
+      Node.ForEach(procedure(const Name,Value: String; Node: TgNodeCSV)
+        var Index: Integer;
+        begin
+          if Assigned(Node) then begin
+            Node.ToRow(Row);
+            FDocument.Add(Row.CommaText);
+            Row.Clear;
+          end
+          else begin
+            Index := Headings.IndexOf(Name);
+            while Index >= Row.Count do
+              Row.Add('');
+            Row[Index] := Value;
+          end;
+        end);
+      if Row.Count > 0 then
+        FDocument.Add(Row.CommaText);
+    finally
+      Row.Free;
+    end;
+  finally
+    Node.Free;
+  end;
+  FDocument.Insert(0,FHeadings.CommaText);
+  Result := FDocument.Text;
+end;
 
 
 Initialization
   TgSerializerJSON.Register;
   TgSerializerXML.Register;
+  TgSerializerCSV.Register;
 //  TgSerializerCSV.Register;
 end.
 

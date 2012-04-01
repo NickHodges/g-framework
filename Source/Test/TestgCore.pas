@@ -315,7 +315,6 @@ type
     procedure SaveItem;
   end;
 
-(*
   TestTgNodeCSV = class(TTestCase)
   protected
     FNode: TgNodeCSV;
@@ -325,6 +324,7 @@ type
     procedure ColumnName;
     procedure NestedColumnName;
   end;
+
   TestTSerializeCSV = class(TTestCase)
   public
     type
@@ -341,9 +341,10 @@ type
     procedure SetUp; override;
     procedure TearDown; override;
   published
-    procedure Simple;
+    procedure Serialize1;
+    procedure Deserialize1;
   end;
-*)
+
 implementation
 
 Uses
@@ -1726,7 +1727,6 @@ begin
   inherited;
 end;
 
-(*
 { TestTSerializeCSV }
 
 procedure TestTSerializeCSV.SetUp;
@@ -1735,7 +1735,28 @@ begin
   FSerializer := TgSerializerCSV.Create;
 end;
 
-procedure TestTSerializeCSV.Simple;
+procedure TestTSerializeCSV.Deserialize1;
+var
+  List: TgList<TgTest>;
+  S: String;
+begin
+  S := 'Name,Price'#$D#$A'Fred,50'#$D#$A;
+  List := TgList<TgTest>.Create;
+  FSerializer.Deserialize(List,S);
+  List.First;
+  CheckFalse(List.EOL);
+  CheckEquals('Jim',List.Current.Name);
+  CheckEquals(12.30,List.Current.Price);
+  List.Next;
+  CheckFalse(List.EOL);
+  CheckEquals('Fred',List.Current.Name);
+  CheckEquals(50,List.Current.Price);
+  List.Next;
+  CheckTrue(List.EOL);
+  FreeAndNil(List);
+end;
+
+procedure TestTSerializeCSV.Serialize1;
 var
   List: TgList<TgTest>;
   S: String;
@@ -1748,20 +1769,8 @@ begin
   List.Current.Name := 'Fred';
   List.Current.Price := 50;
   S := FSerializer.Serialize(List);
-  CheckEquals('',S);
-  List.Clear;
-  FSerializer.Deserialize(List,S);
-  List.First;
-  CheckFalse(List.EOL);
-  CheckEquals('Jim',List.Current.Name);
-  CheckEquals(12.30,List.Current.Price);
-  List.Next;
-  CheckFalse(List.EOL);
-  CheckEquals('Fred',List.Current.Name);
-  CheckEquals(50,List.Current.Price);
-  List.Next;
-  CheckTrue(List.EOL);
-  List.Free;
+  CheckEquals('Name,Price'#$D#$A'Fred,50'#$D#$A,S);
+  FreeAndNil(List);
 end;
 
 procedure TestTSerializeCSV.TearDown;
@@ -1787,7 +1796,7 @@ begin
   FNode.Add('Price','12.50');
   CheckEquals('Name',FNode.ColumnNames[0]);
   CheckEquals('Price',FNode.ColumnNames[1]);
-  Node := FNode.AddChildNode('SubStuff');
+  Node := FNode.AddChild('SubStuff');
   Node.Add('Item','Juice');
   Node.Add('Category','Liquid');
   CheckEquals('SubStuff.Item',Node.ColumnNames[0]);
@@ -1805,9 +1814,7 @@ procedure TestTgNodeCSV.TearDown;
 begin
   FNode.Free;
   inherited;
-
 end;
-*)
 
 initialization
 
@@ -1820,6 +1827,7 @@ initialization
   RegisterTest(TestTBase3.Suite);
   RegisterTest(TestTIDObject.Suite);
   RegisterTest(TestTIDObject2.Suite);
-//  RegisterTest(TestTgNodeCSV.Suite);
+  RegisterTest(TestTgNodeCSV.Suite);
+  RegisterTest(TestTSerializeCSV.Suite);
 end.
 
