@@ -341,8 +341,8 @@ type
     procedure SetUp; override;
     procedure TearDown; override;
   published
-    procedure Serialize1;
-    procedure Deserialize1;
+    procedure Serialize;
+    procedure Deserialize;
   end;
 
 implementation
@@ -1735,12 +1735,12 @@ begin
   FSerializer := TgSerializerCSV.Create;
 end;
 
-procedure TestTSerializeCSV.Deserialize1;
+procedure TestTSerializeCSV.Deserialize;
 var
   List: TgList<TgTest>;
   S: String;
 begin
-  S := 'Name,Price'#$D#$A'Fred,50'#$D#$A;
+  S := 'Name,Price'#$D#$A'Jim,12.3'#$D#$A'Fred,50'#$D#$A;
   List := TgList<TgTest>.Create;
   FSerializer.Deserialize(List,S);
   List.First;
@@ -1756,7 +1756,7 @@ begin
   FreeAndNil(List);
 end;
 
-procedure TestTSerializeCSV.Serialize1;
+procedure TestTSerializeCSV.Serialize;
 var
   List: TgList<TgTest>;
   S: String;
@@ -1769,7 +1769,7 @@ begin
   List.Current.Name := 'Fred';
   List.Current.Price := 50;
   S := FSerializer.Serialize(List);
-  CheckEquals('Name,Price'#$D#$A'Fred,50'#$D#$A,S);
+  CheckEquals('Name,Price'#$D#$A'Jim,12.3'#$D#$A'Fred,50'#$D#$A,S);
   FreeAndNil(List);
 end;
 

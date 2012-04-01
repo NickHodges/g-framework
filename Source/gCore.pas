@@ -1181,6 +1181,7 @@ type
     function Add(const Name,Value: String): Integer; overload;
     procedure Add(Value: TgNodeCSV); overload;
     function AddChild(const Name: String): TgNodeCSV;
+    function AddItem(Index: Integer): TgNodeCSV;
     function QualifiedColumnName(const AName: String): String;
     procedure ToRow(Columns: TStrings);
     property Name: String read FName write FName;
@@ -4911,12 +4912,19 @@ procedure TgNodeCSV.Add(Value: TgNodeCSV);
 var Index: Integer;
 begin
   Index := Add(Value.Name,'');
+  Value.Name := '';
   Objects[Index] := Value;
 end;
 
 function TgNodeCSV.AddChild(const Name: String): TgNodeCSV;
 begin
   Result := TgNodeCSV.Create(Owner,Name,Self);
+  Add(Result);
+end;
+
+function TgNodeCSV.AddItem(Index: Integer): TgNodeCSV;
+begin
+  Result := TgNodeCSV.Create(Owner,Format('%s[%d]',[Name,Index]),Self);
   Add(Result);
 end;
 
@@ -5129,6 +5137,7 @@ var
   ItemObject: TgBase;
   HelperClass: TgSerializationHelperClass;
   Index: Integer;
+  Node: TgNodeCSV;
 begin
   Inherited Serialize(AObject, ASerializer);
   Index := 0;
@@ -5149,8 +5158,11 @@ begin
       else begin
         if AObject.ItemClass <> ItemObject.ClassType then
           ASerializer.CurrentNode.Values[_className] := ItemObject.QualifiedClassName;
-        HelperClass := G.SerializationHelpers(TgSerializerCSV, ItemObject);
-        HelperClass.Serialize(ItemObject, ASerializer);
+        ASerializer.TemporaryCurrentNode(ASerializer.CurrentNode.AddItem(Index),procedure
+          begin
+            HelperClass := G.SerializationHelpers(TgSerializerCSV, ItemObject);
+            HelperClass.Serialize(ItemObject, ASerializer);
+          end);
       end;
     End;
   finally
