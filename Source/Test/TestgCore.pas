@@ -315,6 +315,7 @@ type
     procedure SaveItem;
   end;
 
+(*
   TestTgNodeCSV = class(TTestCase)
   protected
     FNode: TgNodeCSV;
@@ -324,17 +325,27 @@ type
     procedure ColumnName;
     procedure NestedColumnName;
   end;
-
+*)
   TestTSerializeCSV = class(TTestCase)
   public
     type
+      TgName = class(TgBase)
+      private
+        FName: String;
+      published
+        property Name: String read FName write FName;
+      end;
       TgTest = class(TgBase)
       private
         FName: String;
         FPrice: Currency;
+        FNames: TgList<TgName>;
+      public
+        constructor Create(AOwner: TgBase = nil); override;
       published
         property Name: String read FName write FName;
         property Price: Currency read FPrice write FPrice;
+        property Names: TgList<TgName> read FNames write FNames;
       end;
   protected
     FSerializer: TgSerializerCSV;
@@ -343,6 +354,9 @@ type
   published
     procedure Serialize;
     procedure Deserialize;
+    procedure DeserializeArr;
+    procedure SerializeList;
+    procedure DeserializeList;
   end;
 
 implementation
@@ -1737,6 +1751,32 @@ end;
 
 procedure TestTSerializeCSV.Deserialize;
 var
+  Item: TgTest;
+begin
+  Item := TgTest.Create;
+  FSerializer.Deserialize(Item,'Name,Price'#$D#$A'Judy,34.23'#$D#$A);
+  CheckEquals('Judy',Item.Name);
+  CheckEquals(34.23,Item.Price);
+  FreeAndNil(Item);
+end;
+
+procedure TestTSerializeCSV.DeserializeArr;
+var
+  Item: TgTest;
+begin
+  Item := TgTest.Create;
+  FSerializer.Deserialize(Item,'Name,Price,Names.Count,Names[0].Name,Names[1].Name'#$D#$A'Judy,34.23,2,Hello,There'#$D#$A);
+  CheckEquals('Judy',Item.Name);
+  CheckEquals(34.23,Item.Price);
+  CheckEquals(2,Item.Names.Count);
+  CheckEquals('Hello',Item.Names[0].Name);
+  CheckEquals('There',Item.Names[1].Name);
+  FreeAndNil(Item);
+
+end;
+
+procedure TestTSerializeCSV.DeserializeList;
+var
   List: TgList<TgTest>;
   S: String;
 begin
@@ -1757,6 +1797,24 @@ begin
 end;
 
 procedure TestTSerializeCSV.Serialize;
+var
+  Item: TgTest;
+  S: String;
+begin
+  Item := TgTest.Create;
+  Item.Name := 'Judy';
+  Item.Price := 34.23;
+  CheckEquals('Name,Price'#$D#$A'Judy,34.23'#$D#$A,FSerializer.Serialize(Item));
+  Item.Names.Add;
+  Item.Names.Current.Name := 'Hello';
+  Item.Names.Add;
+  Item.Names.Current.Name := 'There';
+  S := FSerializer.Serialize(Item);
+  CheckEquals('Name,Price,Names.Count,Names[0].Name,Names[1].Name'#$D#$A'Judy,34.23,2,Hello,There'#$D#$A,S);
+  FreeAndNil(Item);
+end;
+
+procedure TestTSerializeCSV.SerializeList;
 var
   List: TgList<TgTest>;
   S: String;
@@ -1779,14 +1837,13 @@ begin
   inherited;
 end;
 
+(*
 { TestTgNodeCSV }
 
 procedure TestTgNodeCSV.ColumnName;
 begin
   FNode.Values['Name'] := 'Jim';
   FNode.Values['Price'] := '12.50';
-  CheckEquals('Name',FNode.ColumnNames[0]);
-  CheckEquals('Price',FNode.ColumnNames[1]);
 end;
 
 procedure TestTgNodeCSV.NestedColumnName;
@@ -1815,6 +1872,15 @@ begin
   FNode.Free;
   inherited;
 end;
+*)
+{ TestTSerializeCSV.TgTest }
+
+constructor TestTSerializeCSV.TgTest.Create(AOwner: TgBase);
+begin
+  inherited;
+  FNames := TgList<TgName>.Create(Self);
+
+end;
 
 initialization
 
@@ -1827,7 +1893,7 @@ initialization
   RegisterTest(TestTBase3.Suite);
   RegisterTest(TestTIDObject.Suite);
   RegisterTest(TestTIDObject2.Suite);
-  RegisterTest(TestTgNodeCSV.Suite);
+//  RegisterTest(TestTgNodeCSV.Suite);
   RegisterTest(TestTSerializeCSV.Suite);
 end.
 
