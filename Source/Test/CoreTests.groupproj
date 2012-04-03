@@ -9,6 +9,9 @@
 			<Projects Include="pgCoreTests.dproj">
 				<Dependencies/>
 			</Projects>
+			<Projects Include="..\..\..\Invoice\Source\InvoiceTests.dproj">
+				<Dependencies/>
+			</Projects>
 		</ItemGroup>
 		<ProjectExtensions>
 			<Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -35,14 +38,23 @@
 		<Target Name="pgCoreTests:Make">
 			<MSBuild Projects="pgCoreTests.dproj" Targets="Make"/>
 		</Target>
+		<Target Name="InvoiceTests">
+			<MSBuild Projects="..\..\..\Invoice\Source\InvoiceTests.dproj"/>
+		</Target>
+		<Target Name="InvoiceTests:Clean">
+			<MSBuild Projects="..\..\..\Invoice\Source\InvoiceTests.dproj" Targets="Clean"/>
+		</Target>
+		<Target Name="InvoiceTests:Make">
+			<MSBuild Projects="..\..\..\Invoice\Source\InvoiceTests.dproj" Targets="Make"/>
+		</Target>
 		<Target Name="Build">
-			<CallTarget Targets="pgCore;pgCoreTests"/>
+			<CallTarget Targets="pgCore;pgCoreTests;InvoiceTests"/>
 		</Target>
 		<Target Name="Clean">
-			<CallTarget Targets="pgCore:Clean;pgCoreTests:Clean"/>
+			<CallTarget Targets="pgCore:Clean;pgCoreTests:Clean;InvoiceTests:Clean"/>
 		</Target>
 		<Target Name="Make">
-			<CallTarget Targets="pgCore:Make;pgCoreTests:Make"/>
+			<CallTarget Targets="pgCore:Make;pgCoreTests:Make;InvoiceTests:Make"/>
 		</Target>
 		<Import Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')" Project="$(BDS)\Bin\CodeGear.Group.Targets"/>
 	</Project>

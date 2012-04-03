@@ -1029,6 +1029,7 @@ type
     procedure SetItems(AIndex : Integer; const AValue: TgIdentityObject); reintroduce; virtual;
     function GetIndexString: string; override;
     procedure SetIndexString(const AValue: String); override;
+    procedure SetWhere(const AValue: string); override;
   public
     procedure Assign(ASource: TgBase); override;
     procedure AssignActive(const AValue: Boolean);
@@ -4445,6 +4446,15 @@ procedure TgIdentityList.SetItems(AIndex : Integer; const AValue: TgIdentityObje
 Begin
   Inherited SetItems(AIndex, AValue);
 End;
+
+procedure TgIdentityList.SetWhere(const AValue: string);
+begin
+  if AValue <> Where then
+  Begin
+    Active := False;
+    inherited;
+  End;
+end;
 
 constructor TgIdentityList<T>.Create(AOwner: TgBase = nil);
 begin
