@@ -139,9 +139,11 @@ type
     procedure Assign;
     procedure DeserializeXML;
     procedure DeserializeJSON;
+    procedure DeserializeCSV;
     procedure PathName;
     procedure SerializeXML;
     procedure SerializeJSON;
+    procedure SerializeCSV;
     procedure TestCreate;
     procedure ValidateRequired;
   end;
@@ -192,8 +194,10 @@ type
     procedure Previous;
     procedure SerializeXML;
     procedure SerializeJSON;
+    procedure SerializeCSV;
     procedure DeserializeXML;
     procedure DeserializeJSON;
+    procedure DeserializeCSV;
     procedure Filter;
     procedure SetValue;
     procedure Sort;
@@ -232,6 +236,7 @@ type
     procedure SetUp; override;
     procedure TearDown; override;
   published
+    procedure ForInEmpty;
     procedure Add;
     procedure BOL;
     procedure EOL;
@@ -240,9 +245,11 @@ type
     procedure Delete;
     procedure DeserializeJSON;
     procedure DeserializeXML;
+    procedure DeserializeCSV;
     procedure Filter;
     procedure SerializeJSON;
     procedure SerializeXML;
+    procedure SerializeCSV;
   end;
 
   TestTBase3 = class(TTestCase)
@@ -254,7 +261,9 @@ type
     procedure TearDown; override;
   published
     procedure SerializeXML;
+    procedure SerializeCSV;
     procedure DeserializeXML;
+    procedure DeserializeCSV;
     procedure PathName;
   end;
 
@@ -313,7 +322,49 @@ type
     procedure SaveItem;
   end;
 
-
+(*
+  TestTgNodeCSV = class(TTestCase)
+  protected
+    FNode: TgNodeCSV;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure ColumnName;
+    procedure NestedColumnName;
+  end;
+*)
+  TestTSerializeCSV = class(TTestCase)
+  public
+    type
+      TgName = class(TgBase)
+      private
+        FName: String;
+      published
+        property Name: String read FName write FName;
+      end;
+      TgTest = class(TgBase)
+      private
+        FName: String;
+        FPrice: Currency;
+        FNames: TgList<TgName>;
+      public
+        constructor Create(AOwner: TgBase = nil); override;
+      published
+        property Name: String read FName write FName;
+        property Price: Currency read FPrice write FPrice;
+        property Names: TgList<TgName> read FNames write FNames;
+      end;
+  protected
+    FSerializer: TgSerializerCSV;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Serialize;
+    procedure Deserialize;
+    procedure DeserializeArr;
+    procedure SerializeList;
+    procedure DeserializeList;
+  end;
 
 implementation
 
@@ -501,6 +552,29 @@ begin
   CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
 end;
 
+procedure TestTBase.DeserializeCSV;
+var
+  CSVString: string;
+begin
+  CSVString :=
+    'BooleanProperty,DateProperty,DateTimeProperty,IntegerProperty,StringProperty,String5,Phone,ManuallyConstructedObjectProperty.BooleanProperty,ManuallyConstructedObjectProperty.DateProperty,ManuallyConstructedObjectProperty.DateTimeProperty,'
+       +'ManuallyConstructedObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.StringProperty,ManuallyConstructedObjectProperty.String5,'
+       +'ManuallyConstructedObjectProperty.Phone,ObjectProperty.IntegerProperty,ObjectProperty.StringProperty'#$D#$A
+    +'True,1/1/2012,"1/1/2012 00:34:00",5,,,,False,12/30/1899,"12/30/1899 00:00:00",6,2,12345,98765,"(444) 444-4444"'#$D#$A
+    +',,,,,,,,,,,,,,,2,12345'#$D#$A
+    +',,,,,12345,"(555) 555-5555"'#$D#$A;
+  Base.Deserialize(TgSerializerCSV, CSVString);
+  CheckEquals('12345', Base.String5);
+  CheckEquals('(555) 555-5555', Base.Phone);
+  CheckEquals(6, Base.ManuallyConstructedObjectProperty.IntegerProperty);
+  CheckEquals('98765', Base.ManuallyConstructedObjectProperty.String5);
+  CheckEquals('(444) 444-4444', Base.ManuallyConstructedObjectProperty.Phone);
+  CheckEquals(True, Base.BooleanProperty);
+  CheckEquals(StrToDate('1/1/12'), Base.DateProperty);
+  CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
+
+end;
+
 procedure TestTBase.DeserializeJSON;
 var
   JSONString: string;
@@ -572,6 +646,29 @@ begin
     '  </Base>'#13#10 + //24
     '</xml>'#13#10; //25
   CheckEquals(XMLString, Base.Serialize(TgSerializerXML));
+end;
+
+procedure TestTBase.SerializeCSV;
+var
+  CSVString1, CSVString: string;
+begin
+  Base.String5 := '123456789';
+  Base.Phone := '5555555555';
+  Base.ManuallyConstructedObjectProperty.IntegerProperty := 6;
+  Base.ManuallyConstructedObjectProperty.String5 := '987654321';
+  Base.ManuallyConstructedObjectProperty.Phone := '4444444444';
+  Base.BooleanProperty := True;
+  Base.DateProperty := StrToDate('1/1/12');
+  Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
+  CSVString1 := Base.Serialize(TgSerializerCSV);
+  CSVString :=
+    'BooleanProperty,DateProperty,DateTimeProperty,IntegerProperty,StringProperty,String5,Phone,ManuallyConstructedObjectProperty.BooleanProperty,ManuallyConstructedObjectProperty.DateProperty,ManuallyConstructedObjectProperty.DateTimeProperty,'
+       +'ManuallyConstructedObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.StringProperty,ManuallyConstructedObjectProperty.String5,'
+       +'ManuallyConstructedObjectProperty.Phone,ObjectProperty.IntegerProperty,ObjectProperty.StringProperty'#$D#$A
+    +'True,1/1/2012,"1/1/2012 00:34:00",5,,,,False,12/30/1899,"12/30/1899 00:00:00",6,2,12345,98765,"(444) 444-4444"'#$D#$A
+    +',,,,,,,,,,,,,,,2,12345'#$D#$A
+    +',,,,,12345,"(555) 555-5555"'#$D#$A;
+  CheckEquals(CSVString,CSVString1);
 end;
 
 procedure TestTBase.SerializeJSON;
@@ -1044,6 +1141,15 @@ begin
   CheckEquals(XMLString, FBase2List.Serialize(TgSerializerXML));
 end;
 
+procedure TestTBase2List.SerializeCSV;
+var
+  CSVString: string;
+begin
+  Add3;
+  CSVString := 'IntegerProperty,StringProperty'#$D#$A'1,12345'#$D#$A'2,12345'#$D#$A'3,12345'#$D#$A;
+  CheckEquals(CSVString, FBase2List.Serialize(TgSerializerCSV));
+end;
+
 procedure TestTBase2List.SerializeJSON;
 var
   JSONString: string;
@@ -1081,6 +1187,15 @@ begin
     '  </Base2List>'#13#10 + //16
     '</xml>'#13#10; //17
   FBase2List.Deserialize(TgSerializerXML, XMLString);
+  CheckEquals(3, FBase2List.Items[2].IntegerProperty);
+end;
+
+procedure TestTBase2List.DeserializeCSV;
+var
+  CSVString: string;
+begin
+  CSVString := 'IntegerProperty,StringProperty'#$D#$A'1,12345'#$D#$A'2,12345'#$D#$A'3,12345'#$D#$A;
+  FBase2List.Deserialize(TgSerializerCSV, CSVString);
   CheckEquals(3, FBase2List.Items[2].IntegerProperty);
 end;
 
@@ -1306,6 +1421,20 @@ begin
   CheckEquals(3, FIdentityObjectList.Current.ID, 'The 3rd item should have taken the place of the 2nd');
 end;
 
+procedure TestTIdentityObjectList.DeserializeCSV;
+var
+  CSVString: string;
+begin
+  CSVString :=
+     'ID,Name'#13#10
+    +'1,One'#13#10
+    +'2,Two'#13#10
+    +'3,Three'#13#10
+    ;
+  FIdentityObjectList.Deserialize(TgSerializerCSV, CSVString);
+  CheckEquals(3, FIdentityObjectList.Items[2].ID);
+end;
+
 procedure TestTIdentityObjectList.DeserializeJSON;
 var
   JSONString: string;
@@ -1355,6 +1484,31 @@ begin
   CheckFalse(FIdentityObjectList.Active, 'We should be able to get the count without activating.');
   CheckEquals(2, FIdentityObjectList.Current.ID, 'The filter should have removed ID 1.');
   CheckTrue(FIdentityObjectList.Active, 'Calling Current should activate the list.')
+end;
+
+procedure TestTIdentityObjectList.ForInEmpty;
+var
+  Item: TgIdentityObject;
+  Items: TgIdentityList<TIdentityObject>;
+begin
+  Items := TgIdentityList<TIdentityObject>.Create;
+  for Item in Items do
+    CheckFalse(True,'The list should be empty');
+  Items.Free;
+end;
+
+procedure TestTIdentityObjectList.SerializeCSV;
+var
+  CSVString: string;
+begin
+  Add3;
+  CSVString :=
+     'ID,Name'#13#10
+    +'1,One'#13#10
+    +'2,Two'#13#10
+    +'3,Three'#13#10
+    ;
+  CheckEquals(CSVString, FIdentityObjectList.Serialize(TgSerializerCSV));
 end;
 
 procedure TestTIdentityObjectList.SerializeJSON;
@@ -1424,6 +1578,18 @@ begin
   end;
 end;
 
+procedure TestTBase3.SerializeCSV;
+var
+  CSVString: string;
+begin
+  Base3.Name := 'One';
+  Add3;
+  CSVString :=
+    'IntegerProperty,StringProperty,Name,List.Count,List[0].IntegerProperty,List[0].StringProperty,List[1].IntegerProperty,List[1].StringProperty,List[2].IntegerProperty,List[2].StringProperty'#$D#$A
+   +'2,12345,One,3,1,A,2,B,3,C'#$D#$A;
+  CheckEquals(CSVString, Base3.Serialize(TgSerializerCSV));
+end;
+
 procedure TestTBase3.SerializeXML;
 var
   XMLString: string;
@@ -1455,6 +1621,18 @@ begin
     '  </Base3>'#13#10 + //21
     '</xml>'#13#10; //22
   CheckEquals(XMLString, Base3.Serialize(TgSerializerXML));
+end;
+
+procedure TestTBase3.DeserializeCSV;
+var
+  CSVString: string;
+begin
+  CSVString :=
+    'IntegerProperty,StringProperty,Name,List.Count,List[0].IntegerProperty,List[0].StringProperty,List[1].IntegerProperty,List[1].StringProperty,List[2].IntegerProperty,List[2].StringProperty'#$D#$A
+   +'2,12345,One,3,1,A,2,B,3,C'#$D#$A;
+  Base3.Deserialize(TgSerializerCSV, CSVString);
+  CheckEquals('One', Base3.Name);
+  CheckEquals('C', Base3.List[2].StringProperty);
 end;
 
 procedure TestTBase3.DeserializeXML;
@@ -1646,6 +1824,147 @@ begin
   inherited;
 end;
 
+{ TestTSerializeCSV }
+
+procedure TestTSerializeCSV.SetUp;
+begin
+  inherited;
+  FSerializer := TgSerializerCSV.Create;
+end;
+
+procedure TestTSerializeCSV.Deserialize;
+var
+  Item: TgTest;
+begin
+  Item := TgTest.Create;
+  FSerializer.Deserialize(Item,'Name,Price'#$D#$A'Judy,34.23'#$D#$A);
+  CheckEquals('Judy',Item.Name);
+  CheckEquals(34.23,Item.Price);
+  FreeAndNil(Item);
+end;
+
+procedure TestTSerializeCSV.DeserializeArr;
+var
+  Item: TgTest;
+begin
+  Item := TgTest.Create;
+  FSerializer.Deserialize(Item,'Name,Price,Names.Count,Names[0].Name,Names[1].Name'#$D#$A'Judy,34.23,2,Hello,There'#$D#$A);
+  CheckEquals('Judy',Item.Name);
+  CheckEquals(34.23,Item.Price);
+  CheckEquals(2,Item.Names.Count);
+  CheckEquals('Hello',Item.Names[0].Name);
+  CheckEquals('There',Item.Names[1].Name);
+  FreeAndNil(Item);
+
+end;
+
+procedure TestTSerializeCSV.DeserializeList;
+var
+  List: TgList<TgTest>;
+  S: String;
+begin
+  S := 'Name,Price'#$D#$A'Jim,12.3'#$D#$A'Fred,50'#$D#$A;
+  List := TgList<TgTest>.Create;
+  FSerializer.Deserialize(List,S);
+  List.First;
+  CheckFalse(List.EOL);
+  CheckEquals('Jim',List.Current.Name);
+  CheckEquals(12.30,List.Current.Price);
+  List.Next;
+  CheckFalse(List.EOL);
+  CheckEquals('Fred',List.Current.Name);
+  CheckEquals(50,List.Current.Price);
+  List.Next;
+  CheckTrue(List.EOL);
+  FreeAndNil(List);
+end;
+
+procedure TestTSerializeCSV.Serialize;
+var
+  Item: TgTest;
+  S: String;
+begin
+  Item := TgTest.Create;
+  Item.Name := 'Judy';
+  Item.Price := 34.23;
+  CheckEquals('Name,Price'#$D#$A'Judy,34.23'#$D#$A,FSerializer.Serialize(Item));
+  Item.Names.Add;
+  Item.Names.Current.Name := 'Hello';
+  Item.Names.Add;
+  Item.Names.Current.Name := 'There';
+  S := FSerializer.Serialize(Item);
+  CheckEquals('Name,Price,Names.Count,Names[0].Name,Names[1].Name'#$D#$A'Judy,34.23,2,Hello,There'#$D#$A,S);
+  FreeAndNil(Item);
+end;
+
+procedure TestTSerializeCSV.SerializeList;
+var
+  List: TgList<TgTest>;
+  S: String;
+begin
+  List := TgList<TgTest>.Create;
+  List.Add;
+  List.Current.Name := 'Jim';
+  List.Current.Price := 12.30;
+  List.Add;
+  List.Current.Name := 'Fred';
+  List.Current.Price := 50;
+  S := FSerializer.Serialize(List);
+  CheckEquals('Name,Price'#$D#$A'Jim,12.3'#$D#$A'Fred,50'#$D#$A,S);
+  FreeAndNil(List);
+end;
+
+procedure TestTSerializeCSV.TearDown;
+begin
+  FreeAndNil(FSerializer);
+  inherited;
+end;
+
+(*
+{ TestTgNodeCSV }
+
+procedure TestTgNodeCSV.ColumnName;
+begin
+  FNode.Values['Name'] := 'Jim';
+  FNode.Values['Price'] := '12.50';
+end;
+
+procedure TestTgNodeCSV.NestedColumnName;
+var Node: TgNodeCSV;
+begin
+  FNode.Add('Name','Jim');
+  FNode.Add('Price','12.50');
+  CheckEquals('Name',FNode.ColumnNames[0]);
+  CheckEquals('Price',FNode.ColumnNames[1]);
+  Node := FNode.AddChild('SubStuff');
+  Node.Add('Item','Juice');
+  Node.Add('Category','Liquid');
+  CheckEquals('SubStuff.Item',Node.ColumnNames[0]);
+  CheckEquals('SubStuff.Category',Node.ColumnNames[1]);
+end;
+
+procedure TestTgNodeCSV.SetUp;
+begin
+  inherited;
+  FNode := TgNodeCSV.Create(nil);
+end;
+
+procedure TestTgNodeCSV.TearDown;
+
+begin
+  FNode.Free;
+  inherited;
+end;
+*)
+{ TestTSerializeCSV.TgTest }
+
+constructor TestTSerializeCSV.TgTest.Create(AOwner: TgBase);
+begin
+  inherited;
+  FNames := TgList<TgName>.Create(Self);
+
+end;
+
 initialization
 
   // Register any test cases with the test runner
@@ -1657,5 +1976,7 @@ initialization
   RegisterTest(TestTBase3.Suite);
   RegisterTest(TestTIDObject.Suite);
   RegisterTest(TestTIDObject2.Suite);
+//  RegisterTest(TestTgNodeCSV.Suite);
+  RegisterTest(TestTSerializeCSV.Suite);
 end.
 

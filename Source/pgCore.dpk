@@ -37,6 +37,10 @@ requires
 contains
   gCore in 'gCore.pas',
   gExpressionEvaluator in 'gExpressionEvaluator.pas',
-  gParse in 'gParse.pas';
+  gParse in 'gParse.pas',
+  gExpressionConstants in 'gExpressionConstants.pas',
+  gExpressionLiterals in 'gExpressionLiterals.pas',
+  gExpressionOperators in 'gExpressionOperators.pas',
+  gExpressionFunctions in 'gExpressionFunctions.pas';
 
 end.
