@@ -503,7 +503,6 @@ type
     class procedure Deserialize(AObject: gBase; ASerializer: gSerializer; ARTTIProperty: TRTTIProperty = Nil); reintroduce; overload;  virtual; abstract;
     class procedure DeserializeUnpublishedProperty(AObject: TgBase; ASerializer: TgSerializer; const PropertyName: String); overload; override;
     class procedure DeserializeUnpublishedProperty(AObject: gBase; ASerializer: gSerializer; const PropertyName: String); reintroduce; overload;  virtual;
-
   end;
 
   TgSerializationHelper = TgSerializer.THelper; // This declaration is used for generic types removing the . notatation
@@ -1224,6 +1223,7 @@ type
 
   strict private
     FHeadings: TStringList;
+    FObjectNames: TStringList;
     FCurrentRow: TStringList;
     FAppendPath: TStack<String>;
     FDocument: TStringList;
@@ -1236,6 +1236,7 @@ type
     constructor Create; override;
     destructor Destroy; override;
     class procedure Register;
+    procedure AddObjectName(const Name: String);
     function GetCurrentColumnIndex(const AName: String; AutoAdd: Boolean = True): Integer;
     procedure AddValueProperty(const AName: String; AValue: Variant); override;
     procedure ForEachRow(Anon: TProcedure);
@@ -5015,9 +5016,24 @@ begin
       if RTTIProperty.PropertyType.IsInstance then begin
         ASerializer.AppendPath(RTTIProperty.Name,procedure
           begin
-            ObjectProperty := TgBase(AObject.Inspect(RTTIProperty));
-            HelperClass := G.SerializationHelpers(TgSerializerCSV, ObjectProperty);
-            HelperClass.Deserialize(ObjectProperty,ASerializer,RTTIProperty);
+//            ObjectProperty := TgBase(AObject.Inspect(RTTIProperty));
+            if ASerializer.FObjectNames.IndexOf(ASerializer.AppendName) < 0 then exit;
+
+            ObjectProperty := TgBase(RTTIProperty.GetValue(AObject.AsPointer).AsObject);
+(*
+            if not Assigned(ObjectProperty) then begin
+              if ASerializer.GetColumnValue(_classname,AClassName) then
+                gBaseClass := G.ClassByName(AClassName)
+              else
+                gBaseClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+              ObjectProperty := gBaseClass.Create(AObject);
+              RTTIProperty.SetValue(Self,ObjectProperty);sd
+            end;
+*)
+            if Assigned(ObjectProperty) then begin
+              HelperClass := G.SerializationHelpers(TgSerializerCSV, ObjectProperty);
+              HelperClass.Deserialize(ObjectProperty,ASerializer,RTTIProperty);
+            end;
           end);
       end
       else begin
@@ -5193,6 +5209,23 @@ end;
 
 { TgSerializerCSV }
 
+procedure TgSerializerCSV.AddObjectName(const Name: String);
+var
+  Index: Integer;
+  AObject: String;
+begin
+  Index := Length(Name);
+  while (Index > 0) and (Name[Index] <> '.') do
+    Dec(Index);
+  if Index = 0 then exit;
+  AObject := Copy(Name,1,Index-1);
+  if FObjectNames.IndexOf(AObject) >= 0 then exit;
+  FObjectNames.Add(AObject);
+
+
+
+end;
+
 procedure TgSerializerCSV.AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase);
 var
   HelperClass: TgSerializationHelperClass;
@@ -5223,6 +5256,8 @@ constructor TgSerializerCSV.Create;
 begin
   inherited;
   FHeadings := TStringList.Create;
+  FObjectNames := TStringList.Create;
+  FObjectNames.Sorted := True;
   FDocument := TStringList.Create;
   FAppendPath := TStack<String>.Create;
   FBaseClass := TStack<TgBaseClass>.Create;
@@ -5240,6 +5275,7 @@ end;
 
 destructor TgSerializerCSV.Destroy;
 begin
+  FreeAndNil(FObjectNames);
   FreeAndNil(FAppendPath);
   FreeAndNil(FBaseClass);
   FreeAndNil(FHeadings);
@@ -5257,10 +5293,15 @@ end;
 procedure TgSerializerCSV.ForEachRow(Anon: TProcedure);
 var
   Index: Integer;
+  S: String;
 begin
   FHeadings.Clear;
   if FDocument.Count > 0 then
     Headings.CommaText := FDocument[0];
+  FObjectNames.Clear;
+  for S in Headings do
+    AddObjectName(S);
+
   FCurrentRow := TStringList.Create;
   try
     Index := FDocument.Count-1;
@@ -5325,8 +5366,11 @@ begin
     begin
       Name := AppendName;
       Index := FHeadings.IndexOf(Name);
-      if AutoAdd and (Index < 0) then
+      if AutoAdd and (Index < 0) then begin
         Index := FHeadings.Add(Name);
+        AddObjectName(Name);
+      end;
+
     end);
   Result := Index;
 end;
@@ -5343,6 +5387,7 @@ end;
 procedure TgSerializerCSV.Load(const AString: String);
 begin
   FHeadings.Clear;
+  FObjectNames.Clear;
   FDocument.Clear;
   FDocument.Text := AString;
 end;

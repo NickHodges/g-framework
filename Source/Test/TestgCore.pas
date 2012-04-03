@@ -139,6 +139,7 @@ type
     procedure Assign;
     procedure DeserializeXML;
     procedure DeserializeJSON;
+    procedure DeserializeCSV;
     procedure PathName;
     procedure SerializeXML;
     procedure SerializeJSON;
@@ -193,8 +194,10 @@ type
     procedure Previous;
     procedure SerializeXML;
     procedure SerializeJSON;
+    procedure SerializeCSV;
     procedure DeserializeXML;
     procedure DeserializeJSON;
+    procedure DeserializeCSV;
     procedure Filter;
     procedure SetValue;
     procedure Sort;
@@ -242,9 +245,11 @@ type
     procedure Delete;
     procedure DeserializeJSON;
     procedure DeserializeXML;
+    procedure DeserializeCSV;
     procedure Filter;
     procedure SerializeJSON;
     procedure SerializeXML;
+    procedure SerializeCSV;
   end;
 
   TestTBase3 = class(TTestCase)
@@ -256,7 +261,9 @@ type
     procedure TearDown; override;
   published
     procedure SerializeXML;
+    procedure SerializeCSV;
     procedure DeserializeXML;
+    procedure DeserializeCSV;
     procedure PathName;
   end;
 
@@ -545,11 +552,33 @@ begin
   CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
 end;
 
+procedure TestTBase.DeserializeCSV;
+var
+  CSVString: string;
+begin
+  CSVString :=
+    'BooleanProperty,DateProperty,DateTimeProperty,IntegerProperty,StringProperty,String5,Phone,ManuallyConstructedObjectProperty.BooleanProperty,ManuallyConstructedObjectProperty.DateProperty,ManuallyConstructedObjectProperty.DateTimeProperty,'
+       +'ManuallyConstructedObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.StringProperty,ManuallyConstructedObjectProperty.String5,'
+       +'ManuallyConstructedObjectProperty.Phone,ObjectProperty.IntegerProperty,ObjectProperty.StringProperty'#$D#$A
+    +'True,1/1/2012,"1/1/2012 00:34:00",5,,,,False,12/30/1899,"12/30/1899 00:00:00",6,2,12345,98765,"(444) 444-4444"'#$D#$A
+    +',,,,,,,,,,,,,,,2,12345'#$D#$A
+    +',,,,,12345,"(555) 555-5555"'#$D#$A;
+  Base.Deserialize(TgSerializerCSV, CSVString);
+  CheckEquals('12345', Base.String5);
+  CheckEquals('(555) 555-5555', Base.Phone);
+  CheckEquals(6, Base.ManuallyConstructedObjectProperty.IntegerProperty);
+  CheckEquals('98765', Base.ManuallyConstructedObjectProperty.String5);
+  CheckEquals('(444) 444-4444', Base.ManuallyConstructedObjectProperty.Phone);
+  CheckEquals(True, Base.BooleanProperty);
+  CheckEquals(StrToDate('1/1/12'), Base.DateProperty);
+  CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
+
+end;
+
 procedure TestTBase.DeserializeJSON;
 var
   JSONString: string;
 begin
-(*
   JSONString :=
     '{"ClassName":"TestgCore.TBase","BooleanProperty":"True","DateProperty":"1/'+
     '1/2012","DateTimeProperty":"1/1/2012 00:34:00","IntegerProperty":"5","Manu'+
@@ -569,7 +598,6 @@ begin
   CheckEquals(True, Base.BooleanProperty);
   CheckEquals(StrToDate('1/1/12'), Base.DateProperty);
   CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
-*)
 end;
 
 procedure TestTBase.PathName;
@@ -622,9 +650,8 @@ end;
 
 procedure TestTBase.SerializeCSV;
 var
-  CSVString: string;
+  CSVString1, CSVString: string;
 begin
-(*
   Base.String5 := '123456789';
   Base.Phone := '5555555555';
   Base.ManuallyConstructedObjectProperty.IntegerProperty := 6;
@@ -633,26 +660,21 @@ begin
   Base.BooleanProperty := True;
   Base.DateProperty := StrToDate('1/1/12');
   Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
-
+  CSVString1 := Base.Serialize(TgSerializerCSV);
   CSVString :=
-    '{"ClassName":"TestgCore.TBase","BooleanProperty":"True","DateProperty":"1/'+
-    '1/2012","DateTimeProperty":"1/1/2012 00:34:00","IntegerProperty":"5","Manu'+
-    'allyConstructedObjectProperty":{"ClassName":"TestgCore.TBase","BooleanProp'+
-    'erty":"False","DateProperty":"12/30/1899","DateTimeProperty":"12/30/1899 0'+
-    '0:00:00","IntegerProperty":"6","ObjectProperty":{"ClassName":"TestgCore.TB'+
-    'ase2","IntegerProperty":"2","StringProperty":"12345"},"String5":"98765","P'+
-    'hone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCore.TBase2","'+
-    'IntegerProperty":"2","StringProperty":"12345"},"String5":"12345","Phone":"'+
-    '(555) 555-5555"}';
-  CheckEquals(CSVString, Base.Serialize(TgSerializerCSV));
-*)
+    'BooleanProperty,DateProperty,DateTimeProperty,IntegerProperty,StringProperty,String5,Phone,ManuallyConstructedObjectProperty.BooleanProperty,ManuallyConstructedObjectProperty.DateProperty,ManuallyConstructedObjectProperty.DateTimeProperty,'
+       +'ManuallyConstructedObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.StringProperty,ManuallyConstructedObjectProperty.String5,'
+       +'ManuallyConstructedObjectProperty.Phone,ObjectProperty.IntegerProperty,ObjectProperty.StringProperty'#$D#$A
+    +'True,1/1/2012,"1/1/2012 00:34:00",5,,,,False,12/30/1899,"12/30/1899 00:00:00",6,2,12345,98765,"(444) 444-4444"'#$D#$A
+    +',,,,,,,,,,,,,,,2,12345'#$D#$A
+    +',,,,,12345,"(555) 555-5555"'#$D#$A;
+  CheckEquals(CSVString,CSVString1);
 end;
 
 procedure TestTBase.SerializeJSON;
 var
   JSONString: string;
 begin
-(*
   Base.String5 := '123456789';
   Base.Phone := '5555555555';
   Base.ManuallyConstructedObjectProperty.IntegerProperty := 6;
@@ -672,7 +694,6 @@ begin
     'IntegerProperty":"2","StringProperty":"12345"},"String5":"12345","Phone":"'+
     '(555) 555-5555"}';
   CheckEquals(JSONString, Base.Serialize(TgSerializerJSON));
-*)
 end;
 
 procedure TestTBase.TestCreate;
@@ -1120,11 +1141,19 @@ begin
   CheckEquals(XMLString, FBase2List.Serialize(TgSerializerXML));
 end;
 
+procedure TestTBase2List.SerializeCSV;
+var
+  CSVString: string;
+begin
+  Add3;
+  CSVString := 'IntegerProperty,StringProperty'#$D#$A'1,12345'#$D#$A'2,12345'#$D#$A'3,12345'#$D#$A;
+  CheckEquals(CSVString, FBase2List.Serialize(TgSerializerCSV));
+end;
+
 procedure TestTBase2List.SerializeJSON;
 var
   JSONString: string;
 begin
-(*
   Add3;
   JSONString :=
   '{"ClassName":"TestgCore.TBase2List","List":[{"ClassName":"TestgCore.TBase2'+
@@ -1132,7 +1161,6 @@ begin
   'TBase2","IntegerProperty":"2","StringProperty":"12345"},{"ClassName":"Test'+
   'gCore.TBase2","IntegerProperty":"3","StringProperty":"12345"}]}';
   CheckEquals(JSONString, FBase2List.Serialize(TgSerializerJSON));
-*)
 end;
 
 procedure TestTBase2List.DeserializeXML;
@@ -1162,11 +1190,19 @@ begin
   CheckEquals(3, FBase2List.Items[2].IntegerProperty);
 end;
 
+procedure TestTBase2List.DeserializeCSV;
+var
+  CSVString: string;
+begin
+  CSVString := 'IntegerProperty,StringProperty'#$D#$A'1,12345'#$D#$A'2,12345'#$D#$A'3,12345'#$D#$A;
+  FBase2List.Deserialize(TgSerializerCSV, CSVString);
+  CheckEquals(3, FBase2List.Items[2].IntegerProperty);
+end;
+
 procedure TestTBase2List.DeserializeJSON;
 var
   JSONString: string;
 begin
-(*
   JSONString :=
   '{"ClassName":"TestgCore.TBase2List","List":[{"ClassName":"TestgCore.TBase2'+
   '","IntegerProperty":"1","StringProperty":"12345"},{"ClassName":"TestgCore.'+
@@ -1174,7 +1210,6 @@ begin
   'gCore.TBase2","IntegerProperty":"3","StringProperty":"12345"}]}';
   FBase2List.Deserialize(TgSerializerJSON, JSONString);
   CheckEquals(3, FBase2List.Items[2].IntegerProperty);
-*)
 end;
 
 procedure TestTBase2List.Filter;
@@ -1386,11 +1421,24 @@ begin
   CheckEquals(3, FIdentityObjectList.Current.ID, 'The 3rd item should have taken the place of the 2nd');
 end;
 
+procedure TestTIdentityObjectList.DeserializeCSV;
+var
+  CSVString: string;
+begin
+  CSVString :=
+     'ID,Name'#13#10
+    +'1,One'#13#10
+    +'2,Two'#13#10
+    +'3,Three'#13#10
+    ;
+  FIdentityObjectList.Deserialize(TgSerializerCSV, CSVString);
+  CheckEquals(3, FIdentityObjectList.Items[2].ID);
+end;
+
 procedure TestTIdentityObjectList.DeserializeJSON;
 var
   JSONString: string;
 begin
-(*
   JSONString :=
   '{"ClassName":"TestgCore.TIdentityObjectList","List":[{"ClassName":"TestgCore'+
   '.TIdentityObject","ID":"1","Name":"One"},{"ClassName":"TestgCore.TIdentityOb'+
@@ -1398,7 +1446,6 @@ begin
   '3","Name":"Three"}]}';
   FIdentityObjectList.Deserialize(TgSerializerJSON, JSONString);
   CheckEquals(3, FIdentityObjectList.Items[2].ID);
-*)
 end;
 
 procedure TestTIdentityObjectList.DeserializeXML;
@@ -1450,11 +1497,24 @@ begin
   Items.Free;
 end;
 
+procedure TestTIdentityObjectList.SerializeCSV;
+var
+  CSVString: string;
+begin
+  Add3;
+  CSVString :=
+     'ID,Name'#13#10
+    +'1,One'#13#10
+    +'2,Two'#13#10
+    +'3,Three'#13#10
+    ;
+  CheckEquals(CSVString, FIdentityObjectList.Serialize(TgSerializerCSV));
+end;
+
 procedure TestTIdentityObjectList.SerializeJSON;
 var
   JSONString: string;
 begin
-(*
   Add3;
   JSONString :=
   '{"ClassName":"TestgCore.TIdentityObjectList","List":[{"ClassName":"TestgCore'+
@@ -1462,7 +1522,6 @@ begin
   'ject","ID":"2","Name":"Two"},{"ClassName":"TestgCore.TIdentityObject","ID":"'+
   '3","Name":"Three"}]}';
   CheckEquals(JSONString, FIdentityObjectList.Serialize(TgSerializerJSON));
-  *)
 end;
 
 procedure TestTIdentityObjectList.SerializeXML;
@@ -1519,6 +1578,18 @@ begin
   end;
 end;
 
+procedure TestTBase3.SerializeCSV;
+var
+  CSVString: string;
+begin
+  Base3.Name := 'One';
+  Add3;
+  CSVString :=
+    'IntegerProperty,StringProperty,Name,List.Count,List[0].IntegerProperty,List[0].StringProperty,List[1].IntegerProperty,List[1].StringProperty,List[2].IntegerProperty,List[2].StringProperty'#$D#$A
+   +'2,12345,One,3,1,A,2,B,3,C'#$D#$A;
+  CheckEquals(CSVString, Base3.Serialize(TgSerializerCSV));
+end;
+
 procedure TestTBase3.SerializeXML;
 var
   XMLString: string;
@@ -1550,6 +1621,18 @@ begin
     '  </Base3>'#13#10 + //21
     '</xml>'#13#10; //22
   CheckEquals(XMLString, Base3.Serialize(TgSerializerXML));
+end;
+
+procedure TestTBase3.DeserializeCSV;
+var
+  CSVString: string;
+begin
+  CSVString :=
+    'IntegerProperty,StringProperty,Name,List.Count,List[0].IntegerProperty,List[0].StringProperty,List[1].IntegerProperty,List[1].StringProperty,List[2].IntegerProperty,List[2].StringProperty'#$D#$A
+   +'2,12345,One,3,1,A,2,B,3,C'#$D#$A;
+  Base3.Deserialize(TgSerializerCSV, CSVString);
+  CheckEquals('One', Base3.Name);
+  CheckEquals('C', Base3.List[2].StringProperty);
 end;
 
 procedure TestTBase3.DeserializeXML;
