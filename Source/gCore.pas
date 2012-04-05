@@ -16,7 +16,9 @@ Uses
   gExpressionConstants,
   gExpressionLiterals,
   gExpressionOperators,
-  gExpressionFunctions
+  gExpressionFunctions,
+  Data.SQLExpr,
+  Data.DB
 ;
 
 type
@@ -24,6 +26,7 @@ type
   TSystemCustomAttribute = System.TCustomAttribute; // Gets around Class complete not supporting the . in some generics
   TCustomAttributeClass = class of TCustomAttribute;
   TgBaseClass = class of TgBase;
+  TgPersistenceManagerClass = class of TgPersistenceManager;
   {$M+}
   TgBase = class;
   {$M-}
@@ -437,7 +440,7 @@ type
     class procedure InitializeDisplayPropertyNames(ARTTIType: TRTTIType); static;
     class procedure InitializeMethodByName(ARTTIType: TRTTIType); static;
     class procedure InitializeObjectProperties(ARTTIType: TRTTIType); static;
-    class procedure InitializePersistenceManagers(ARTTIType: TRTTIType); static;
+    class procedure InitializePersistenceManager(ARTTIType: TRTTIType); static;
     class procedure InitializeProperties(ARTTIType: TRTTIType); static;
     class procedure InitializePropertyByName(ARTTIType: TRTTIType); static;
     class procedure InitializeRecordProperty(ARTTIType: TRTTIType); static;
@@ -449,6 +452,8 @@ type
     class procedure InitializePersistableProperties(ARTTIType: TRTTIType); static;
     class procedure InitializePropertyValidationAttributes(ARTTIType: TRTTIType); static;
   public
+  class var
+    DefaultPersistenceManagerClass: TgPersistenceManagerClass;
     class constructor Create;
     class destructor Destroy;
     class function ApplicationPath: String; static;
@@ -482,8 +487,10 @@ type
     class function DataPath: String; static;
     class function IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function IdentityListProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
+    class function IsComposite(ARTTIProperty: TRTTIProperty): Boolean; static;
     class function PersistenceManagerPath: String; static;
-    class function PersistenceManagers(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager; static;
+    class function PersistenceManager(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager; static;
+    class function PersistenceManagers: TArray<TPair<TgIdentityObjectClass, TgPersistenceManager>>; static;
     class function PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>; static;
     class function References(AIdentityObjectClass: TgIdentityObjectClass): TArray<TgIdentityObjectClassProperty>; overload; static;
     class function References(AIdentityObject: TgIdentityObject): TArray<TgIdentityObjectClassProperty>; overload; static;
@@ -810,6 +817,7 @@ type
     function Count(AIdentityList: TgIdentityList): Integer; virtual; abstract;
     procedure CreatePersistentStorage; virtual; abstract;
     procedure DeleteObject(AObject: TgIdentityObject); virtual; abstract;
+    procedure Initialize; virtual;
     procedure LoadObject(AObject: TgIdentityObject); virtual; abstract;
     function PersistentStorageExists: Boolean; virtual; abstract;
     procedure RollBack(AObject: TgIdentityObject); virtual; abstract;
@@ -1261,6 +1269,64 @@ type
   end;
 
   CascadeDelete = class(TCustomAttribute)
+  end;
+
+  TgWithQueryProcedure = Reference to Procedure(AQuery: TSQLQuery);
+
+  TgPersistenceManagerSQL = class(TgPersistenceManager)
+  strict private
+    FObjectRelationalMap: TDictionary<String, String>;
+    FParams: TStringList;
+  strict protected
+    class function ConformIdentifier(const AName: String): String; virtual;
+    function DeleteStatement: String;
+    procedure ExecuteStatement(const AStatement: String; ABase: TgBase); virtual; abstract;
+    function GetIdentity: Variant; virtual; abstract;
+    function InsertStatement: String;
+    function LoadStatement: String;
+    function TableName: String; virtual;
+    function UpdateStatement(AObject: TgIdentityObject): String;
+    property ObjectRelationalMap: TDictionary<String, String> read FObjectRelationalMap;
+    property Params: TStringList read FParams;
+  public
+    constructor Create(AOwner: TgBase = nil); override;
+    destructor Destroy; override;
+    procedure DeleteObject(AObject: TgIdentityObject); override;
+    procedure Initialize; override;
+    procedure SaveObject(AObject: TgIdentityObject); override;
+  end;
+
+  TgPersistenceManagerDBX = class(TgPersistenceManagerSQL)
+  strict private
+    function GetDatabase: String;
+    procedure SetDatabase(const AValue: String);
+    procedure WithQuery(AWithQueryProcedure: TgWithQueryProcedure);
+  strict protected
+    procedure AssignQueryParams(AParams: TParams; ABase: TgBase);
+    function DriverName: String; virtual; abstract;
+    procedure ExecuteStatement(const AStatement: String; ABase: TgBase); override;
+  public
+    procedure ActivateList(AIdentityList: TgIdentityList); override;
+    procedure Commit(AObject: TgIdentityObject); override;
+    function Count(AIdentityList: TgIdentityList): Integer; override;
+    procedure LoadObject(AObject: TgIdentityObject); override;
+    procedure RollBack(AObject: TgIdentityObject); override;
+    procedure StartTransaction(AObject: TgIdentityObject;ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); override;
+  published
+    property Database: String read GetDatabase write SetDatabase;
+  end;
+
+  TgPersistenceManagerDBXFirebird = class(TgPersistenceManagerDBX)
+  strict private
+    function GetPassword: String;
+    function GetUserName: String;
+    procedure SetPassword(const AValue: String);
+    procedure SetUserName(const AValue: String);
+  strict protected
+    function DriverName: string; override;
+  published
+    property Password: String read GetPassword write SetPassword;
+    property UserName: String read GetUserName write SetUserName;
   end;
 
   TString50 = record
@@ -1776,6 +1842,7 @@ var
   BaseTypes: TList<TRTTIType>;
   RTTIType: TRTTIType;
   Comparer: TgBaseClassComparer;
+  Pair: TPair<TgIdentityObjectClass, TgPersistenceManager>;
 begin
   for RTTIType in FRTTIContext.GetTypes do
   begin
@@ -1811,11 +1878,13 @@ begin
       InitializeSerializableProperties(RTTIType);
       InitializeVisibleProperties(RTTIType);
       InitializePersistableProperties(RTTIType);
-      InitializePersistenceManagers(RTTIType);
+      InitializePersistenceManager(RTTIType);
     end;
   finally
     BaseTypes.Free;
   end;
+  for Pair in G.PersistenceManagers do
+    Pair.Value.Initialize;
 end;
 
 class procedure G.InitializeAttributes(ARTTIType: TRTTIType);
@@ -2432,7 +2501,7 @@ var
 begin
   BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
   for RTTIProperty in ObjectProperties(BaseClass) do
-  if (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, Composite))) > 0) Or (Not RTTIProperty.IsWritable And Not (BaseClass.InheritsFrom(TgIdentityObject) or BaseClass.InheritsFrom(TgIdentityList)) And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, NotComposite))) = 0)) then
+  if IsComposite(RTTIProperty) then
   begin
     FCompositeProperties.TryGetValue(BaseClass, RTTIProperties);
     SetLength(RTTIProperties, Length(RTTIProperties) + 1);
@@ -2441,7 +2510,7 @@ begin
   end;
 end;
 
-class procedure G.InitializePersistenceManagers(ARTTIType: TRTTIType);
+class procedure G.InitializePersistenceManager(ARTTIType: TRTTIType);
 var
   FileName: string;
   IdentityObjectClass: TgIdentityObjectClass;
@@ -2515,14 +2584,27 @@ begin
   end;
 end;
 
+class function G.IsComposite(ARTTIProperty: TRTTIProperty): Boolean;
+var
+  BaseClass: TClass;
+begin
+  BaseClass := ARTTIProperty.Parent.AsInstance.MetaclassType;
+  Result := (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) Or (Not ARTTIProperty.IsWritable And Not (BaseClass.InheritsFrom(TgIdentityObject) or BaseClass.InheritsFrom(TgIdentityList)) And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(ARTTIProperty, NotComposite))) = 0));
+end;
+
 class function G.PersistenceManagerPath: String;
 begin
   Result := IncludeTrailingPathDelimiter(ApplicationPath + 'PersistenceManagers');
 end;
 
-class function G.PersistenceManagers(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager;
+class function G.PersistenceManager(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager;
 begin
   FPersistenceManagers.TryGetValue(AIdentityObjectClass, Result);
+end;
+
+class function G.PersistenceManagers: TArray<TPair<TgIdentityObjectClass, TgPersistenceManager>>;
+begin
+  Result := FPersistenceManagers.ToArray;
 end;
 
 class function G.PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>;
@@ -3859,7 +3941,7 @@ begin
     IdentityObject := TgIdentityObject(AObject.Inspect(ARTTIProperty));
     if Not Assigned(IdentityObject) then
       RaiseException := True
-    Else 
+    Else
     Begin
       if IdentityObject.InheritsFrom(TgIdentityObject) Then
       Begin
@@ -4156,7 +4238,7 @@ end;
 
 class function TgIdentityObject.PersistenceManager: TgPersistenceManager;
 begin
-  Result := G.PersistenceManagers(Self);
+  Result := G.PersistenceManager(Self);
   if Not Assigned(Result) then
     raise E.CreateFmt('%s has no persistence manager.', [ClassName]);
 end;
@@ -5462,6 +5544,328 @@ begin
   Result := FDocument.Text;
 end;
 
+procedure TgPersistenceManagerDBX.ActivateList(AIdentityList: TgIdentityList);
+begin
+
+end;
+
+procedure TgPersistenceManagerDBX.AssignQueryParams(AParams: TParams; ABase: TgBase);
+Var
+  CollectionItem : TCollectionItem;
+  Param : TParam;
+begin
+  For CollectionItem In AParams Do
+  Begin
+    Param := TParam(CollectionItem);
+    Param.Value := ABase[Param.Name];
+  End;
+end;
+
+procedure TgPersistenceManagerDBX.Commit(AObject: TgIdentityObject);
+begin
+
+end;
+
+function TgPersistenceManagerDBX.Count(AIdentityList: TgIdentityList): Integer;
+begin
+  Result := 0;
+end;
+
+procedure TgPersistenceManagerDBX.ExecuteStatement(const AStatement: String; ABase: TgBase);
+begin
+  WithQuery(
+    Procedure(AQuery: TSQLQuery)
+    Begin
+      AQuery.SQL.Text := AStatement;
+      AssignQueryParams(AQuery.Params, ABase);
+      AQuery.ExecSQL;
+    End
+  );
+end;
+
+function TgPersistenceManagerDBX.GetDatabase: String;
+begin
+  Result := Params.Values['Database'];
+end;
+
+procedure TgPersistenceManagerDBX.LoadObject(AObject: TgIdentityObject);
+begin
+  WithQuery(
+    Procedure(AQuery: TSQLQuery)
+    var
+      Pair: TPair<String, String>;
+    Begin
+      AQuery.SQL.Text := LoadStatement;
+      AssignQueryParams(AQuery.Params, AObject);
+      AQuery.Open;
+      for Pair in ObjectRelationalMap do
+        AObject[Pair.Key] := AQuery.FieldValues[Pair.Value];
+    End
+  );
+end;
+
+procedure TgPersistenceManagerDBX.WithQuery(AWithQueryProcedure: TgWithQueryProcedure);
+var
+  Connection: TSQLConnection;
+  Query : TSQLQuery;
+begin
+  Connection := TSQLConnection.Create(Nil);
+  try
+    Connection.DriverName := DriverName;
+    Connection.Params.Assign(Params);
+    Connection.Open;
+    Query := TSQLQuery.Create(Nil);
+    try
+      Query.SQLConnection := Connection;
+      AWithQueryProcedure(Query);
+    finally
+      Query.Free;
+    end;
+  finally
+    Connection.Free;
+  end;
+end;
+
+procedure TgPersistenceManagerDBX.RollBack(AObject: TgIdentityObject);
+begin
+
+end;
+
+procedure TgPersistenceManagerDBX.SetDatabase(const AValue: String);
+begin
+  Params.Values['Database'] := AValue;
+end;
+
+procedure TgPersistenceManagerDBX.StartTransaction(AObject: TgIdentityObject;ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
+begin
+
+end;
+
+procedure TgPersistenceManager.Initialize;
+begin
+
+end;
+
+function TgPersistenceManagerDBXFirebird.DriverName: string;
+begin
+  Result := 'Firebird';
+end;
+
+function TgPersistenceManagerDBXFirebird.GetPassword: String;
+begin
+  Result := Params.Values['Password'];
+end;
+
+function TgPersistenceManagerDBXFirebird.GetUserName: String;
+begin
+  Result := Params.Values['User_Name'];
+end;
+
+procedure TgPersistenceManagerDBXFirebird.SetPassword(const AValue: String);
+begin
+  Params.Values['Password'] := AValue;
+end;
+
+procedure TgPersistenceManagerDBXFirebird.SetUserName(const AValue: String);
+begin
+  Params.Values['User_Name'];
+end;
+
+constructor TgPersistenceManagerSQL.Create(AOwner: TgBase = nil);
+begin
+  inherited Create(AOwner);
+  FObjectRelationalMap := TDictionary<String, String>.Create();
+  FParams := TStringList.Create();
+end;
+
+destructor TgPersistenceManagerSQL.Destroy;
+begin
+  FreeAndNil(FParams);
+  FreeAndNil(FObjectRelationalMap);
+  inherited Destroy;
+end;
+
+class function TgPersistenceManagerSQL.ConformIdentifier(const AName: String): String;
+begin
+  Result := AName;
+end;
+
+procedure TgPersistenceManagerSQL.DeleteObject(AObject: TgIdentityObject);
+begin
+  ExecuteStatement(DeleteStatement, AObject);
+end;
+
+function TgPersistenceManagerSQL.DeleteStatement: String;
+begin
+  Result := Format('Delete From %s where ID = :ID', [TableName]);
+end;
+
+procedure TgPersistenceManagerSQL.Initialize;
+var
+  BaseClass: TgBaseClass;
+  RTTIProperty: TRTTIProperty;
+
+  procedure PopulateComposite(APrefix: String; AClass: TgBaseClass);
+  var
+    PropertyName: String;
+    RTTIProperty : TRTTIProperty;
+    BaseClass : TgBaseClass;
+  begin
+    for RTTIProperty in G.PersistableProperties(AClass) do
+    begin
+      if RTTIProperty.PropertyType.IsInstance Then
+      Begin
+        BaseClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+        PropertyName := APrefix + '.' + RTTIProperty.Name;
+        If BaseClass.InheritsFrom(TgIdentityObject) then
+          FObjectRelationalMap.Add(PropertyName + '.ID', ConformIdentifier(PropertyName + 'ID'))
+        else if G.IsComposite(RTTIProperty) then
+          PopulateComposite(PropertyName, BaseClass);
+      end
+      else
+        FObjectRelationalMap.Add(PropertyName, ConformIdentifier(PropertyName));
+    end;
+  end;
+
+begin
+  FObjectRelationalMap := TDictionary<String, String>.Create;
+  for RTTIProperty in G.PersistableProperties(ForClass) do
+  begin
+    if SameText(RTTIProperty.Name, 'ID') then
+      FObjectRelationalMap.Add(RTTIProperty.Name, ConformIdentifier(TableName + 'ID'))
+    else if RTTIProperty.PropertyType.IsInstance Then
+    Begin
+      BaseClass := TgBaseClass(RTTIProperty.PropertyType.AsInstance.MetaclassType);
+      If BaseClass.InheritsFrom(TgIdentityObject) then
+        FObjectRelationalMap.Add(RTTIProperty.Name + '.ID', ConformIdentifier(RTTIProperty.Name + 'ID'))
+      else if G.IsComposite(RTTIProperty) then
+        PopulateComposite(RTTIProperty.Name, BaseClass);
+    end
+    else
+      FObjectRelationalMap.Add(RTTIProperty.Name, ConformIdentifier(RTTIProperty.Name));
+  end;
+end;
+
+function TgPersistenceManagerSQL.InsertStatement: String;
+var
+  First: Boolean;
+  Pair : TPair<String, String>;
+  StringBuilder : TStringBuilder;
+begin
+  StringBuilder := TStringBuilder.Create;
+  try
+    StringBuilder.Append('Insert (');
+    First := True;
+    for Pair in ObjectRelationalMap.ToArray do
+    begin
+      if First then
+        First := False
+      else
+        StringBuilder.Append(', ');
+      StringBuilder.Append(Pair.Value);
+    end;
+    StringBuilder.AppendLine(')');
+    StringBuilder.AppendFormat('Into %s', [TableName]);
+    StringBuilder.AppendLine;
+    StringBuilder.Append('Values (');
+    First := True;
+    for Pair in ObjectRelationalMap.ToArray do
+    begin
+      if First then
+        First := False
+      else
+        StringBuilder.Append(', ');
+      StringBuilder.AppendFormat(':%s', [Pair.Key]);
+    end;
+    StringBuilder.Append(')');
+    Result := StringBuilder.ToString;
+  finally
+    StringBuilder.Free;
+  end;
+end;
+
+function TgPersistenceManagerSQL.LoadStatement: String;
+var
+  First: Boolean;
+  StringBuilder: TStringBuilder;
+  Pair: TPair<String, String>;
+begin
+  StringBuilder := TStringBuilder.Create;
+  try
+    StringBuilder.Append('Select ');
+    First := True;
+    for Pair in ObjectRelationalMap.ToArray do
+    begin
+      if First then
+        First := False
+      else
+        StringBuilder.Append(', ');
+      StringBuilder.Append(Pair.Value);
+    end;
+    StringBuilder.AppendLine;
+    StringBuilder.AppendFormat('From %s', [TableName]);
+    StringBuilder.AppendLine;
+    StringBuilder.Append('Where ID = :ID');
+    Result := StringBuilder.ToString;
+  finally
+    StringBuilder.Free;
+  end;
+end;
+
+procedure TgPersistenceManagerSQL.SaveObject(AObject: TgIdentityObject);
+var
+  Statement: String;
+begin
+  if AObject.HasIdentity then
+    Statement := UpdateStatement(AObject)
+  else
+    Statement := InsertStatement;
+  ExecuteStatement(Statement, AObject);
+  if Not AObject.HasIdentity then
+    AObject.ID := GetIdentity;
+end;
+
+function TgPersistenceManagerSQL.TableName: String;
+begin
+  Result := ConformIdentifier(ForClass.FriendlyName);
+end;
+
+function TgPersistenceManagerSQL.UpdateStatement(AObject: TgIdentityObject): String;
+var
+  First: Boolean;
+  StringBuilder: TStringBuilder;
+  Pair: TPair<String, String>;
+begin
+  StringBuilder := TStringBuilder.Create;
+  try
+    StringBuilder.AppendFormat('Update %s', [TableName]);
+    StringBuilder.AppendLine;
+    StringBuilder.Append('Set ');
+    First := True;
+    for Pair in ObjectRelationalMap.ToArray do
+    begin
+      if AObject.IsPropertyModified(Pair.Key) then
+      Begin
+        if First then
+          First := False
+        else
+          StringBuilder.Append(', ');
+        StringBuilder.AppendFormat('%s = :%s', [Pair.Value, Pair.Key]);
+      End;
+    end;
+    if First then
+      StringBuilder.Clear
+    Else
+    Begin
+      StringBuilder.AppendLine;
+      StringBuilder.Append('Where ID = :ID');
+    End;
+    Result := StringBuilder.ToString;
+  finally
+    StringBuilder.Free;
+  end;
+end;
+
 
 Initialization
   TgSerializerJSON.Register;
@@ -5469,4 +5873,5 @@ Initialization
   TgSerializerCSV.Register;
 //  TgSerializerCSV.Register;
 end.
+
 
