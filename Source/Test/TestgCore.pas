@@ -364,6 +364,8 @@ type
     procedure DeserializeArr;
     procedure SerializeList;
     procedure DeserializeList;
+    procedure SerializeCRLF;
+    procedure DeserializeCRLF;
   end;
 
 implementation
@@ -1858,6 +1860,27 @@ begin
 
 end;
 
+procedure TestTSerializeCSV.DeserializeCRLF;
+var
+  List: TgList<TgTest>;
+  S: String;
+begin
+  S := 'Name,Price'#$D#$A'"Jim'#$D#$A'Barney",12.3'#$D#$A'"Fred'#$D#$A'Mosbie",50'#$D#$A;
+  List := TgList<TgTest>.Create;
+  FSerializer.Deserialize(List,S);
+  List.First;
+  CheckFalse(List.EOL);
+  CheckEquals('Jim',List.Current.Name);
+  CheckEquals(12.30,List.Current.Price);
+  List.Next;
+  CheckFalse(List.EOL);
+  CheckEquals('Fred',List.Current.Name);
+  CheckEquals(50,List.Current.Price);
+  List.Next;
+  CheckTrue(List.EOL);
+  FreeAndNil(List);
+end;
+
 procedure TestTSerializeCSV.DeserializeList;
 var
   List: TgList<TgTest>;
@@ -1895,6 +1918,23 @@ begin
   S := FSerializer.Serialize(Item);
   CheckEquals('Name,Price,Names.Count,Names[0].Name,Names[1].Name'#$D#$A'Judy,34.23,2,Hello,There'#$D#$A,S);
   FreeAndNil(Item);
+end;
+
+procedure TestTSerializeCSV.SerializeCRLF;
+var
+  List: TgList<TgTest>;
+  S: String;
+begin
+  List := TgList<TgTest>.Create;
+  List.Add;
+  List.Current.Name := 'Jim'#13#10'Barney';
+  List.Current.Price := 12.30;
+  List.Add;
+  List.Current.Name := 'Fred'#13#10'Mosbie';
+  List.Current.Price := 50;
+  S := FSerializer.Serialize(List);
+  CheckEquals('Name,Price'#$D#$A'"Jim'#$D#$A'Barney",12.3'#$D#$A'"Fred'#$D#$A'Mosbie",50'#$D#$A,S);
+  FreeAndNil(List);
 end;
 
 procedure TestTSerializeCSV.SerializeList;
