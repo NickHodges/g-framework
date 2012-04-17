@@ -3,6 +3,7 @@ unit gCore;
 interface
 
 Uses
+
   Generics.Collections,
   Generics.Defaults,
   System.RTTI,
@@ -1338,6 +1339,18 @@ type
     class operator implicit(AValue: Variant): TString50; overload;
     class operator Implicit(AValue: TString50): Variant; overload;
     property Value: String read GetValue write SetValue;
+  end;
+
+  TgElement = class(TgBase)
+  private
+    FTagName: String;
+    FgBase: TgBase;
+  public
+    class function CreateFromTag(Owner: TgElement; const TagName: String): TgElement;
+    procedure ProcessDocument(Source,Target: IXMLDocument);
+    procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
+    function ProcessValue(const Value: OleVariant): OleVariant; virtual;
+    property TagName: String read FTagName write FTagName;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -5866,6 +5879,89 @@ begin
   end;
 end;
 
+
+{ TgTagBase }
+
+class function TgElement.CreateFromTag(Owner: TgElement;
+  const TagName: String): TgElement;
+begin
+  Result := TgElement.Create(Owner);
+  Result.TagName := TagName;
+end;
+(*
+procedure TgElement.ProcessDocument(Source, Target: IXMLDocument);
+    procedure CopyNodes(Input, Output: IXMLNodeList);
+    var
+      i: Integer;
+    begin
+      for i := 0 to Input.Count - 1 do
+      begin
+        Output.Add(Input[i]);
+        CopyNodes(Input[i].ChildNodes, Output[i].ChildNodes);
+      end; // for
+    end; // CopyNodes
+begin
+  Target.Options := [doNodeAutoIndent];
+  Target.ChildNodes.Add(Source.DocumentElement);
+  CopyNodes(Source.DocumentElement.ChildNodes, Target.DocumentElement.ChildNodes);
+//  Target.SaveToFile(Filename);
+end; // SaveXml
+*)
+
+procedure TgElement.ProcessDocument(Source, Target: IXMLDocument);
+var
+  Index: Integer;
+begin
+  Index := Source.ChildNodes.Count -1;
+  for Index := 0 to Index do
+    ProcessNode(Source.ChildNodes[Index],Target.ChildNodes,Target);
+end;
+
+
+procedure TgElement.ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+var
+  Next: TgElement;
+  Target: IXMLNode;
+  Index: Integer;
+begin
+  Target := nil;
+  case Source.NodeType of
+    ntText
+    : begin
+        Target := Source.CloneNode(True);
+        Target.NodeValue := ProcessValue(Target.NodeValue);
+        TargetChildNodes.Add(Target);
+        exit;
+      end;
+    else begin
+      Target := TargetDocument.CreateNode(Source.NodeName);
+      TargetChildNodes.Add(Target);
+    end;
+  end;
+  if not Assigned(Target) then exit;
+  Index := Source.AttributeNodes.Count-1;
+
+  for Index := 0 to Index do begin
+    with Source.AttributeNodes[Index] do
+      if not VarIsNull(NodeValue) and not VarIsEmpty(NodeValue) then
+        Target.Attributes[NodeName] := ProcessValue(NodeValue);
+  end;
+  Index := Source.ChildNodes.Count-1;
+  for Index := 0 to Index do begin
+    Next := TgElement.CreateFromTag(Self,Source.ChildNodes[Index].NodeName);
+    try
+      Next.ProcessNode(Source.ChildNodes[Index],Target.ChildNodes,TargetDocument);
+    finally
+      Next.Free;
+    end;
+  end;
+
+end;
+
+function TgElement.ProcessValue(const Value: OleVariant): OleVariant;
+begin
+  Result := Value; // {} replacements
+end;
 
 Initialization
   TgSerializerJSON.Register;

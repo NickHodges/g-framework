@@ -12,7 +12,10 @@ unit TestgCore;
 interface
 
 uses
-  TestFramework, gCore, System.Rtti;
+  TestFramework, gCore, System.Rtti,
+  Xml.XMLDoc,
+  Xml.XMLDom,
+  Xml.XMLIntf;
 
 type
   TIDObject3 = class;
@@ -366,6 +369,12 @@ type
     procedure DeserializeList;
     procedure SerializeCRLF;
     procedure DeserializeCRLF;
+  end;
+
+  TestHTMLParser = class(TTestCase)
+  published
+    procedure Convert1;
+    procedure Convert2;
   end;
 
 implementation
@@ -1865,7 +1874,7 @@ var
   List: TgList<TgTest>;
   S: String;
 begin
-  S := 'Name,Price'#$D#$A'"Jim'#$D#$A'Barney",12.3'#$D#$A'"Fred'#$D#$A'Mosbie",50'#$D#$A;
+  S := 'Name,Price'#$D#$A'"Jim'#$A'Barney",12.3'#$D#$A'"Fred'#$A'Mosbie",50'#$D#$A;
   List := TgList<TgTest>.Create;
   FSerializer.Deserialize(List,S);
   List.First;
@@ -1927,13 +1936,13 @@ var
 begin
   List := TgList<TgTest>.Create;
   List.Add;
-  List.Current.Name := 'Jim'#13#10'Barney';
+  List.Current.Name := 'Jim'#10'Barney';
   List.Current.Price := 12.30;
   List.Add;
-  List.Current.Name := 'Fred'#13#10'Mosbie';
+  List.Current.Name := 'Fred'#10'Mosbie';
   List.Current.Price := 50;
   S := FSerializer.Serialize(List);
-  CheckEquals('Name,Price'#$D#$A'"Jim'#$D#$A'Barney",12.3'#$D#$A'"Fred'#$D#$A'Mosbie",50'#$D#$A,S);
+  CheckEquals('Name,Price'#$D#$A'"Jim'#$A'Barney",12.3'#$D#$A'"Fred'#$A'Mosbie",50'#$D#$A,S);
   FreeAndNil(List);
 end;
 
@@ -2005,6 +2014,72 @@ begin
 
 end;
 
+{ TestHTMLParser }
+
+procedure TestHTMLParser.Convert1;
+var
+  Text: String;
+  TextResult: String;
+  SourceDocument: TXMLDocument;
+  SourceDocumentInterface: IXMLDocument;
+  TargetDocument: TXMLDocument;
+  TargetDocumentInterface: IXMLDocument;
+  gElement: TgElement;
+begin
+  Text :=
+//     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10+
+//    '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>Untitled <b>Document</b>S</title></head><body></body></html>';
+    '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A+
+    '  <head xmlns="">'#$D#$A+
+    '    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A+
+    '    <title>Untitled   <b>Document</b>'#$D#$A+
+    '    S</title>'#$D#$A+
+    '  </head>'#$D#$A+
+    '  <body xmlns=""/>'#$D#$A+
+    '</html>'#$D#$A;
+  SourceDocument := TXMLDocument.Create(Nil);
+  SourceDocumentInterface := SourceDocument;
+  SourceDocument.DOMVendor := GetDOMVendor('MSXML');
+  SourceDocument.Options := [doNodeAutoIndent];
+  SourceDocument.LoadFromXML(Text);
+
+  TargetDocument := TXMLDocument.Create(Nil);
+  TargetDocumentInterface := TargetDocument;
+  TargetDocument.DOMVendor := GetDOMVendor('MSXML');
+  TargetDocument.Options := [doNodeAutoIndent,doAttrNull];
+  TargetDocument.Active := True;
+  gElement := TgElement.Create;
+  try
+    gElement.ProcessDocument(SourceDocument,TargetDocument);
+  finally
+    gElement.Free;
+  end;
+//  TargetDocumentInterface := TargetDocument;
+  TextResult := TargetDocument.XML.Text;
+//  TargetDocument.SaveToXML(TextResult);
+  CheckEquals(Text,TextResult);
+
+end;
+
+procedure TestHTMLParser.Convert2;
+var
+  Text: String;
+begin
+  Text :=
+//     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+     '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+    +'<head>'#13#10
+    +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+    +'<title>Untitled<b> Document</b>!</title>'#13#10
+    +'</head>'#13#10
+    +'  <list condition="DoList" object="Customers">'#13#10
+    +'    <a href="{WebAddress}">{Name}</a></br>'#13#10
+    +'  </list>'#13#10
+    +'<body>'#13#10
+    +'</body>'#13#10
+    +'</html>'#13#10;
+end;
+
 initialization
 
   // Register any test cases with the test runner
@@ -2018,5 +2093,6 @@ initialization
   RegisterTest(TestTIDObject2.Suite);
 //  RegisterTest(TestTgNodeCSV.Suite);
   RegisterTest(TestTSerializeCSV.Suite);
+  RegisterTest(TestHTMLParser.Suite);
 end.
 
