@@ -372,9 +372,31 @@ type
   end;
 
   TestHTMLParser = class(TTestCase)
+  public
+    type
+
+      TCustomer = class(TgObject)
+      private
+        FName: String;
+        FWebAddress: String;
+      published
+        property Name: String read FName write FName;
+        property WebAddress: String read FWebAddress write FWebAddress;
+      end;
+
+      TCustomers = TgList<TCustomer>;
+
+      TModel = class(TgBase)
+      private
+        FCustomers: TCustomers;
+      published
+        property Customers: TCustomers read FCustomers;
+      end;
+
   published
+    procedure Replace;
     procedure Convert1;
-    procedure Convert2;
+    procedure ListTag;
   end;
 
 implementation
@@ -2061,10 +2083,24 @@ begin
 
 end;
 
-procedure TestHTMLParser.Convert2;
+procedure TestHTMLParser.ListTag;
 var
   Text: String;
+  TextResult: String;
+  Model: TModel;
+  SourceDocument: TXMLDocument;
+  SourceDocumentInterface: IXMLDocument;
+  TargetDocument: TXMLDocument;
+  TargetDocumentInterface: IXMLDocument;
+  gElement: TgElement;
 begin
+  Model := TModel.Create;
+  Model.Customers.Add;
+  Model.Customers.Current.Name := 'Steve';
+  Model.Customers.Current.WebAddress := 'http://www.google.com';
+  Model.Customers.Add;
+  Model.Customers.Current.Name := 'Jim';
+  Model.Customers.Current.WebAddress := 'http://www.yahoo.com';
   Text :=
 //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
      '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
@@ -2073,11 +2109,65 @@ begin
     +'<title>Untitled<b> Document</b>!</title>'#13#10
     +'</head>'#13#10
     +'  <list condition="DoList" object="Customers">'#13#10
-    +'    <a href="{WebAddress}">{Name}</a></br>'#13#10
+    +'    <a href="{WebAddress}">{Name}</a><br />'#13#10
     +'  </list>'#13#10
     +'<body>'#13#10
     +'</body>'#13#10
     +'</html>'#13#10;
+  SourceDocument := TXMLDocument.Create(Nil);
+  SourceDocumentInterface := SourceDocument;
+  SourceDocument.DOMVendor := GetDOMVendor('MSXML');
+  SourceDocument.Options := [doNodeAutoIndent];
+  SourceDocument.LoadFromXML(Text);
+
+  TargetDocument := TXMLDocument.Create(Nil);
+  TargetDocumentInterface := TargetDocument;
+  TargetDocument.DOMVendor := GetDOMVendor('MSXML');
+  TargetDocument.Options := [doNodeAutoIndent,doAttrNull];
+  TargetDocument.Active := True;
+  gElement := TgElement.Create;
+  try
+    gElement.ProcessDocument(SourceDocument,TargetDocument,Model);
+  finally
+    gElement.Free;
+  end;
+//  TargetDocumentInterface := TargetDocument;
+  TextResult := TargetDocument.XML.Text;
+//  TargetDocument.SaveToXML(TextResult);
+  CheckEquals(Text,TextResult);
+
+end;
+
+procedure TestHTMLParser.Replace;
+var
+  Customer: TCustomer;
+  Element: TgElement;
+begin
+  Customer := TCustomer.Create;
+  Customer.Name := 'This is the Name';
+  Customer.WebAddress := 'http://www.google.com';
+  try
+    Element := TgElement.Create;
+    try
+      Element.SetModel(Customer);
+      CheckEquals('Hello',Element.ProcessValue('Hello'));
+      CheckEquals(Customer.Name,Element.ProcessValue('{Name}'));
+      CheckEquals(Customer.Name+Customer.Name,Element.ProcessValue('{Name}{Name}'));
+      CheckEquals('X'+Customer.Name+Customer.Name,Element.ProcessValue('X{Name}{Name}'));
+      CheckEquals(Customer.Name+'X'+Customer.Name,Element.ProcessValue('{Name}X{Name}'));
+      CheckEquals(Customer.Name+Customer.Name+'X',Element.ProcessValue('{Name}{Model.Name}X'));
+      CheckEquals('X'+Customer.Name+'X'+Customer.Name+'X',Element.ProcessValue('X{Name}X{Name}X'));
+      CheckEquals(Customer.Name,Element.ProcessValue('{Model.Name}'));
+      CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
+      CheckEquals(Customer.WebAddress,Element.ProcessValue('{Model.WebAddress}'));
+    finally
+      Element.Free;
+    end;
+
+  finally
+    Customer.Free;
+  end;
+
 end;
 
 initialization

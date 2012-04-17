@@ -1342,15 +1342,26 @@ type
   end;
 
   TgElement = class(TgBase)
+  public
+    type
+      E = class(Exception);
   private
     FTagName: String;
+    FPath: String;
     FgBase: TgBase;
+    function GetgBase: TgBase;
+    function GetModel: TgBase;
   public
     class function CreateFromTag(Owner: TgElement; const TagName: String): TgElement;
-    procedure ProcessDocument(Source,Target: IXMLDocument);
+    procedure SetModel(Value: TgBase);
+    procedure ProcessDocument(Source,Target: IXMLDocument; gBase: TgBase = nil);
+    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
     procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
+    function GetValue(const Value: String): String;
     function ProcessValue(const Value: OleVariant): OleVariant; virtual;
     property TagName: String read FTagName write FTagName;
+    property gBase: TgBase read GetgBase;
+    property Model: TgBase read GetModel;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -5908,19 +5919,72 @@ begin
 end; // SaveXml
 *)
 
-procedure TgElement.ProcessDocument(Source, Target: IXMLDocument);
+function TgElement.GetgBase: TgBase;
+begin
+  if Assigned(FgBase) then
+    Result := FgBase
+  else if Assigned(FOwner) and (FOwner is TgElement) then
+    Result := (FOwner as TgElement).gBase;
+end;
+
+function TgElement.GetModel: TgBase;
+begin
+  if Assigned(FOwner) and (FOwner is TgElement) then
+    Result := (FOwner as TgElement).Model
+  else
+    Result := FgBase; // Bottom level has
+end;
+
+function TgElement.GetValue(const Value: String): String;
+var
+  ABase: TgBase;
+begin
+  ABase := gBase;
+  if StartsText('Model.',Value) then begin
+    ABase := Model;
+    if not Assigned(ABase) then
+      raise E.Create('No Model Available');
+    Result := ABase[Copy(Value,Length('Model.')+1,Length(Value))]
+  end
+  else if not Assigned(ABase) then
+   raise E.Create('No Base Model Available')
+  else
+    Result := ABase[Value];
+
+
+
+end;
+
+procedure TgElement.ProcessChildNodes(SourceChildNodes,
+  TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+var
+  Next: TgElement;
+  Index: Integer;
+begin
+  Index := SourceChildNodes.Count -1;
+  Index := SourceChildNodes.Count-1;
+  for Index := 0 to Index do begin
+    Next := TgElement.CreateFromTag(Self,SourceChildNodes[Index].NodeName);
+    try
+      Next.ProcessNode(SourceChildNodes[Index],TargetChildNodes,TargetDocument);
+    finally
+      Next.Free;
+    end;
+  end;
+end;
+
+procedure TgElement.ProcessDocument(Source, Target: IXMLDocument; gBase: TgBase = nil);
 var
   Index: Integer;
 begin
-  Index := Source.ChildNodes.Count -1;
-  for Index := 0 to Index do
-    ProcessNode(Source.ChildNodes[Index],Target.ChildNodes,Target);
+  FgBase := gBase;
+  FPath := 'Model';
+  ProcessChildNodes(Source.ChildNodes,Target.ChildNodes,Target);
 end;
 
 
 procedure TgElement.ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
 var
-  Next: TgElement;
   Target: IXMLNode;
   Index: Integer;
 begin
@@ -5938,29 +6002,64 @@ begin
       TargetChildNodes.Add(Target);
     end;
   end;
-  if not Assigned(Target) then exit;
-  Index := Source.AttributeNodes.Count-1;
 
-  for Index := 0 to Index do begin
+  if not Assigned(Target) then exit;
+
+  Index := Source.AttributeNodes.Count-1;
+  for Index := 0 to Index do
     with Source.AttributeNodes[Index] do
       if not VarIsNull(NodeValue) and not VarIsEmpty(NodeValue) then
         Target.Attributes[NodeName] := ProcessValue(NodeValue);
-  end;
-  Index := Source.ChildNodes.Count-1;
-  for Index := 0 to Index do begin
-    Next := TgElement.CreateFromTag(Self,Source.ChildNodes[Index].NodeName);
-    try
-      Next.ProcessNode(Source.ChildNodes[Index],Target.ChildNodes,TargetDocument);
-    finally
-      Next.Free;
-    end;
-  end;
 
+  ProcessChildNodes(Source.ChildNodes,Target.ChildNodes,TargetDocument);
 end;
 
 function TgElement.ProcessValue(const Value: OleVariant): OleVariant;
+var
+  S: String;
+  Builder: TStringBuilder;
+  BeginingI: Integer;
+  StartI,EndI: Integer;
 begin
-  Result := Value; // {} replacements
+  if not VarIsStr(Value) or not Assigned(gBase) then
+    Result := Value // {} replacements
+  else begin
+    S := Value;
+    StartI := Pos('{',S);
+    if StartI = 0 then
+      Exit(Value) // nothing to do
+    else begin
+      Builder := TStringBuilder.Create;
+      try
+        BeginingI := 1;
+        repeat
+          EndI := PosEx('}',S,StartI);
+          if EndI = 0 then
+            Break
+          else begin
+            if StartI <> BeginingI then
+              Builder.Append(S,BeginingI-1,StartI-BeginingI);
+            Inc(StartI);
+            Builder.Append(GetValue(Copy(S,StartI,EndI-StartI)));
+            BeginingI := EndI+1;
+
+            StartI := PosEx('{',S,BeginingI);
+          end;
+        until StartI = 0;
+        EndI := Length(S)+1;
+        if BeginingI < EndI then
+          Builder.Append(S,BeginingI-1,EndI-BeginingI);
+        Result := Builder.ToString;
+      finally
+        Builder.Free;
+      end;
+    end;
+  end;
+end;
+
+procedure TgElement.SetModel(Value: TgBase);
+begin
+  FgBase := Value;
 end;
 
 Initialization
