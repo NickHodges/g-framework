@@ -1993,6 +1993,24 @@ begin
   try
     NewFirebirdObject.ID := FFirebirdObject.ID;
     CheckTrue(NewFirebirdObject.Load);
+    NewFirebirdObject.Name := 'Two';
+    NewFirebirdObject.Save;
+  finally
+    NewFirebirdObject.Free;
+  end;
+  NewFirebirdObject := TFirebirdObject.Create;
+  try
+    NewFirebirdObject.ID := FFirebirdObject.ID;
+    NewFirebirdObject.Load;
+    CheckEquals('Two', NewFirebirdObject.Name);
+    NewFirebirdObject.Delete;
+  finally
+    NewFirebirdObject.Free;
+  end;
+  NewFirebirdObject := TFirebirdObject.Create;
+  try
+    NewFirebirdObject.ID := FFirebirdObject.ID;
+    CheckFalse(NewFirebirdObject.Load);
   finally
     NewFirebirdObject.Free;
   end;

@@ -5998,7 +5998,7 @@ end;
 
 function TgPersistenceManagerSQL.DeleteStatement: String;
 begin
-  Result := Format('Delete From %s where ID = :ID', [TableName]);
+  Result := Format('Delete From %s where %sID = :ID', [TableName, TableName]);
 end;
 
 procedure TgPersistenceManagerSQL.Initialize;
@@ -6160,7 +6160,7 @@ begin
     Else
     Begin
       StringBuilder.AppendLine;
-      StringBuilder.Append('Where ID = :ID');
+      StringBuilder.AppendFormat('Where %sID = :ID', [TableName]);
     End;
     Result := StringBuilder.ToString;
   finally
