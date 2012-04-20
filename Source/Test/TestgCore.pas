@@ -366,6 +366,24 @@ type
     procedure DeserializeList;
   end;
 
+  [PersistenceManagerClassName('gCore.TgPersistenceManagerIBX')]
+  TFirebirdObject = class(TgIDObject)
+  strict private
+    FName: TString50;
+  published
+    property Name: TString50 read FName write FName;
+  end;
+
+  TestTFirebirdObject = class(TTestCase)
+  strict private
+    FFirebirdObject: TFirebirdObject;
+  protected
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Save;
+  end;
+
 implementation
 
 Uses
@@ -1965,6 +1983,35 @@ begin
 
 end;
 
+procedure TestTFirebirdObject.Save;
+var
+  NewFirebirdObject: TFirebirdObject;
+begin
+  FFirebirdObject.Name := 'One';
+  FFirebirdObject.Save;
+  NewFirebirdObject := TFirebirdObject.Create;
+  try
+    NewFirebirdObject.ID := FFirebirdObject.ID;
+    CheckTrue(NewFirebirdObject.Load);
+  finally
+    NewFirebirdObject.Free;
+  end;
+end;
+
+{ TestTFirebirdObject }
+
+procedure TestTFirebirdObject.SetUp;
+begin
+  inherited;
+  FFirebirdObject := TFirebirdObject.Create;
+end;
+
+procedure TestTFirebirdObject.TearDown;
+begin
+  FreeAndNil(FFirebirdObject);
+  inherited;
+end;
+
 initialization
 
   // Register any test cases with the test runner
@@ -1978,5 +2025,8 @@ initialization
   RegisterTest(TestTIDObject2.Suite);
 //  RegisterTest(TestTgNodeCSV.Suite);
   RegisterTest(TestTSerializeCSV.Suite);
+  RegisterTest(TestTFirebirdObject.Suite);
+  RegisterRuntimeClasses([TFirebirdObject]);
+  G.Initialize;
 end.
 

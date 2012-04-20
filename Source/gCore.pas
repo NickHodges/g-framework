@@ -18,7 +18,8 @@ Uses
   gExpressionOperators,
   gExpressionFunctions,
   Data.SQLExpr,
-  Data.DB
+  Data.DB,
+  SyncObjs
 ;
 
 type
@@ -44,6 +45,9 @@ type
   TgIdentityList = class;
 
   TgModel = class;
+  TgConnectionDescriptor = class;
+  TgServer = class;
+  TgConnection = class;
   TgPropertyAttribute = class(TCustomAttribute)
   strict private
     FRTTIProperty: TRTTIProperty;
@@ -422,6 +426,7 @@ type
     FSerializableProperties: TDictionary < TgBaseClass, TArray < TRTTIProperty >>;
     FSerializationHelpers: TDictionary<TgSerializerClass, TList<TPair<TgBaseClass, TgSerializationHelperClass>>>;
     FClassValidationAttributes: TDictionary<TgBaseClass, TArray<Validation>>;
+    FConnectionDescriptors: TDictionary<String, TgConnectionDescriptor>;
     FListProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FOwnedAttributes: TObjectList;
     FPersistenceManagers: TDictionary<TgIdentityObjectClass, TgPersistenceManager>;
@@ -429,7 +434,7 @@ type
     FVisibleProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FIdentityListProperties: TDictionary<TgBaseClass, TArray<TRTTIProperty>>;
     FReferences: TDictionary<TgIdentityObjectClass, TArray<TgIdentityObjectClassProperty>>;
-    class procedure Initialize; static;
+    FServers: TDictionary<String, TgServer>;
     class procedure InitializeAssignableProperties(ARTTIType: TRTTIType); static;
     /// <summary>G.InitializeAttributes initializes the cache of attributes for the
     /// class passed in the ARTTIType parameter.  For property attributes, it assigns
@@ -453,9 +458,11 @@ type
     class procedure InitializePropertyValidationAttributes(ARTTIType: TRTTIType); static;
   public
   class var
-    DefaultPersistenceManagerClass: TgPersistenceManagerClass;
+    DefaultPersistenceManagerClassName: String;
     class constructor Create;
     class destructor Destroy;
+    class procedure AddConnectionDescriptor(AConnectionDescriptor: TgConnectionDescriptor); static;
+    class procedure AddServer(AServer: TgServer); static;
     class function ApplicationPath: String; static;
     class function AssignableProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function AssignableProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
@@ -484,16 +491,20 @@ type
     class function SerializationHelpers(ASerializerClass: TgSerializerClass; AObject: TgBase): TgSerializationHelperClass; static;
     class function ClassValidationAttributes(AClass: TgBaseClass): TArray<Validation>; overload; static;
     class function ClassValidationAttributes(ABase: TgBase): TArray<Validation>; overload; static;
+    class function ConnectionDescriptor(const AName: String): TgConnectionDescriptor; static;
     class function DataPath: String; static;
     class function IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function IdentityListProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
+    class procedure Initialize; static;
     class function IsComposite(ARTTIProperty: TRTTIProperty): Boolean; static;
+    procedure LoadPackages(const APackageNames: TArray<String>);
     class function PersistenceManagerPath: String; static;
     class function PersistenceManager(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager; static;
-    class function PersistenceManagers: TArray<TPair<TgIdentityObjectClass, TgPersistenceManager>>; static;
+    class function PersistenceManagers: TDictionary<TgIdentityObjectClass, TgPersistenceManager>.TValueCollection; static;
     class function PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>; static;
     class function References(AIdentityObjectClass: TgIdentityObjectClass): TArray<TgIdentityObjectClassProperty>; overload; static;
     class function References(AIdentityObject: TgIdentityObject): TArray<TgIdentityObjectClassProperty>; overload; static;
+    class function Server(const AName: String): TgServer; static;
     class function VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; static;
   end;
 
@@ -814,6 +825,7 @@ type
   public
     procedure ActivateList(AIdentityList: TgIdentityList); virtual; abstract;
     procedure Commit(AObject: TgIdentityObject); virtual; abstract;
+    procedure Configure; virtual;
     function Count(AIdentityList: TgIdentityList): Integer; virtual; abstract;
     procedure CreatePersistentStorage; virtual; abstract;
     procedure DeleteObject(AObject: TgIdentityObject); virtual; abstract;
@@ -1271,12 +1283,129 @@ type
   CascadeDelete = class(TCustomAttribute)
   end;
 
-  TgWithQueryProcedure = Reference to Procedure(AQuery: TSQLQuery);
+  TgWithQueryProcedure = reference to procedure(AQuery: TObject);
+
+  TgConnection = class(TObject)
+  strict private
+    FConnectionDescriptor: TgConnectionDescriptor;
+    FLinkEstablished: TDateTime;
+    FLastUsed: TDateTime;
+    FReferenceCount: Integer;
+    FThreadID: Cardinal;
+    function GetExpired: Boolean;
+  public
+    Connection: TObject;
+    Transaction: TObject;
+    constructor Create;
+    destructor Destroy; override;
+    procedure DecReferenceCount;
+    procedure EnsureActive;
+    procedure IncReferenceCount;
+    function InUse: Boolean;
+    property ConnectionDescriptor: TgConnectionDescriptor read FConnectionDescriptor write FConnectionDescriptor;
+    property LinkEstablished: TDateTime read FLinkEstablished write FLinkEstablished;
+    property LastUsed: TDateTime read FLastUsed write FLastUsed;
+    property Expired: Boolean read GetExpired;
+    property ThreadID: Cardinal read FThreadID write FThreadID;
+  end;
+
+  TgConnectionDescriptor = class(TgBase)
+
+    type
+      E = class(Exception)
+      end;
+
+  strict private
+    FActiveConnectionList: TDictionary<Cardinal, TgConnection>;
+    FCriticalSection: TCriticalSection;
+    FInactiveConnectionList: TQueue<TgConnection>;
+    FName: String;
+    FParams: TStringList;
+    FTTL: Integer;
+    function GetParams: TStringList;
+    function GetParamString: String;
+    function GetServer: TgServer;
+    function ReuseActiveConnection(AThreadID: Cardinal): TgConnection;
+    function ReuseInactiveConnection(AThreadID: Cardinal): TgConnection;
+    procedure SetParamString(const AValue: String);
+    property Server: TgServer read GetServer;
+  strict protected
+    procedure CreateConnection(AConnection: TgConnection); virtual; abstract;
+  public
+    constructor Create(AOwner: TgBase = nil); override;
+    destructor Destroy; override;
+    function ActiveConnectionCount: Integer;
+    function EnsureActive(AConnection: TgConnection): Boolean; virtual; abstract;
+    procedure FreeConnection(AConnection: TObject); virtual; abstract;
+    function GetConnection: TgConnection;
+    function GetNewConnection(AThreadID: Cardinal): TgConnection;
+    function InactiveConnectionCount: Integer;
+    procedure ReleaseConnection;
+    procedure FreeInactive;
+    procedure Report(AStringList: TStringList);
+    property Params: TStringList read GetParams;
+  published
+    property Name: String read FName write FName;
+    property ParamString: String read GetParamString write SetParamString;
+    property TTL: Integer read FTTL write FTTL;
+  end;
+
+  TgConnectionDescriptorDBX = class(TgConnectionDescriptor)
+  strict protected
+    procedure CreateConnection(AConnection: TgConnection); override;
+    class function DriverName: String; virtual; abstract;
+    class function GetDriverFunc: String; virtual; abstract;
+    class function LibraryName: String; virtual; abstract;
+    class function VendorLib: String; virtual; abstract;
+  public
+    function EnsureActive(AConnection: TgConnection): Boolean; override;
+    procedure FreeConnection(AConnection: TObject); override;
+  end;
+
+  TgConnectionDescriptorDBXFirebird = class(TgConnectionDescriptorDBX)
+  strict protected
+    class function GetDriverFunc: string; override;
+    class function LibraryName: string; override;
+    class function VendorLib: string; override;
+    class function DriverName: string; override;
+  end;
+
+  TgServer = class(TgBase)
+
+    type
+      E = class(Exception)
+      end;
+
+  strict private
+    FHost: String;
+    FPort: Integer;
+    FMaxConnections: Integer;
+    FConnectionDescriptors: TgList<TgConnectionDescriptor>;
+    FTimeout: Integer;
+    FMaxConnectionSemaphore: Cardinal;
+    FName: String;
+    function GetMaxConnectionSemaphore: Cardinal;
+    function GetMaxConnections: Integer;
+  public
+    destructor Destroy; override;
+    function ConnectionCount: Integer;
+    procedure RemoveInactiveConnection;
+    function Report: String;
+    property MaxConnectionSemaphore: Cardinal read GetMaxConnectionSemaphore;
+  published
+    property Name: String read FName write FName;
+    property Host: String read FHost write FHost;
+    property Port: Integer read FPort write FPort;
+    property MaxConnections: Integer read GetMaxConnections write FMaxConnections;
+    property ConnectionDescriptors: TgList<TgConnectionDescriptor> read FConnectionDescriptors;
+    property Timeout: Integer read FTimeout write FTimeout;
+  end;
 
   TgPersistenceManagerSQL = class(TgPersistenceManager)
   strict private
+    FConnectionDescriptor: TgConnectionDescriptor;
+    FConnectionDescriptorName: String;
     FObjectRelationalMap: TDictionary<String, String>;
-    FParams: TStringList;
   strict protected
     class function ConformIdentifier(const AName: String): String; virtual;
     function DeleteStatement: String;
@@ -1286,20 +1415,20 @@ type
     function LoadStatement: String;
     function TableName: String; virtual;
     function UpdateStatement(AObject: TgIdentityObject): String;
+    property ConnectionDescriptor: TgConnectionDescriptor read FConnectionDescriptor;
     property ObjectRelationalMap: TDictionary<String, String> read FObjectRelationalMap;
-    property Params: TStringList read FParams;
   public
     constructor Create(AOwner: TgBase = nil); override;
     destructor Destroy; override;
     procedure DeleteObject(AObject: TgIdentityObject); override;
     procedure Initialize; override;
     procedure SaveObject(AObject: TgIdentityObject); override;
+  published
+    property ConnectionDescriptorName: String read FConnectionDescriptorName write FConnectionDescriptorName;
   end;
 
   TgPersistenceManagerDBX = class(TgPersistenceManagerSQL)
   strict private
-    function GetDatabase: String;
-    procedure SetDatabase(const AValue: String);
     procedure WithQuery(AWithQueryProcedure: TgWithQueryProcedure);
   strict protected
     procedure AssignQueryParams(AParams: TParams; ABase: TgBase);
@@ -1312,21 +1441,21 @@ type
     procedure LoadObject(AObject: TgIdentityObject); override;
     procedure RollBack(AObject: TgIdentityObject); override;
     procedure StartTransaction(AObject: TgIdentityObject;ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); override;
-  published
-    property Database: String read GetDatabase write SetDatabase;
   end;
 
   TgPersistenceManagerDBXFirebird = class(TgPersistenceManagerDBX)
-  strict private
-    function GetPassword: String;
-    function GetUserName: String;
-    procedure SetPassword(const AValue: String);
-    procedure SetUserName(const AValue: String);
   strict protected
     function DriverName: string; override;
-  published
-    property Password: String read GetPassword write SetPassword;
-    property UserName: String read GetUserName write SetUserName;
+  public
+    procedure Configure; override;
+  end;
+
+  PersistenceManagerClassName = class(TCustomAttribute)
+  strict private
+    FValue: String;
+  public
+    constructor Create(const AName: String);
+    property Value: String read FValue;
   end;
 
   TString50 = record
@@ -1338,6 +1467,41 @@ type
     class operator implicit(AValue: Variant): TString50; overload;
     class operator Implicit(AValue: TString50): Variant; overload;
     property Value: String read GetValue write SetValue;
+  end;
+
+  TgPersistenceManagerIBX = class(TgPersistenceManagerSQL)
+  strict private
+    function GeneratorName: String;
+    procedure WithQuery(AWithQueryProcedure: TgWithQueryProcedure);
+  strict protected
+    procedure AssignQueryParams(AParams: TParams; ABase: TgBase);
+    procedure ExecuteStatement(const AStatement: String; ABase: TgBase); override;
+    function GetIdentity: Variant; override;
+    class function ConformIdentifier(const AName: string): string; override;
+  public
+    procedure ActivateList(AIdentityList: TgIdentityList); override;
+    procedure Commit(AObject: TgIdentityObject); override;
+    procedure Configure; override;
+    function Count(AIdentityList: TgIdentityList): Integer; override;
+    procedure LoadObject(AObject: TgIdentityObject); override;
+    procedure RollBack(AObject: TgIdentityObject); override;
+    procedure StartTransaction(AObject: TgIdentityObject;ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); override;
+  end;
+
+  TgConnectionDescriptorIBX = class(TgConnectionDescriptor)
+  strict private
+    FDatabaseName: String;
+    FPassword: String;
+    FUserName: String;
+  strict protected
+    procedure CreateConnection(AConnection: TgConnection); override;
+  public
+    function EnsureActive(AConnection: TgConnection): Boolean; override;
+    procedure FreeConnection(AConnection: TObject); override;
+  published
+    property DatabaseName: String read FDatabaseName write FDatabaseName;
+    property Password: String read FPassword write FPassword;
+    property UserName: String read FUserName write FUserName;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -1361,7 +1525,11 @@ Uses
   XML.XMLDOM,
   Math,
   gExpressionEvaluator,
-  StrUtils
+  StrUtils,
+  Windows,
+  Data.DBXCommon,
+  ibDatabase,
+  ibQuery
 ;
 
 Const
@@ -1838,11 +2006,18 @@ End;
 { G }
 
 class procedure G.Initialize;
+const
+  sServerPath = 'Servers.xml';
 var
   BaseTypes: TList<TRTTIType>;
   RTTIType: TRTTIType;
   Comparer: TgBaseClassComparer;
-  Pair: TPair<TgIdentityObjectClass, TgPersistenceManager>;
+  FileName: string;
+  PersistenceManager : TgPersistenceManager;
+  Servers: TgList<TgServer>;
+  Server : TgServer;
+  ConnectionDescriptor : TgConnectionDescriptor;
+  ServerString: String;
 begin
   for RTTIType in FRTTIContext.GetTypes do
   begin
@@ -1861,8 +2036,24 @@ begin
     finally
       Comparer.Free;
     end;
+    //Process the persistence manager classes first
+    for RTTIType in BaseTypes do
+    if RTTIType.AsInstance.MetaclassType.InheritsFrom(TgPersistenceManager) then
+    begin
+      InitializeProperties(RTTIType);
+      InitializeAttributes(RTTIType);
+      InitializeObjectProperties(RTTIType);
+      InitializePropertyByName(RTTIType);
+      InitializeMethodByName(RTTIType);
+      InitializeRecordProperty(RTTIType);
+      InitializeAutoCreate(RTTIType);
+      InitializeCompositeProperties(RTTIType);
+      InitializeAssignableProperties(RTTIType);
+      InitializeSerializableProperties(RTTIType);
+    end;
     //Then initialize the structure caches
     for RTTIType in BaseTypes do
+    if Not RTTIType.AsInstance.MetaclassType.InheritsFrom(TgPersistenceManager) then
     begin
       InitializeProperties(RTTIType);
       InitializeAttributes(RTTIType);
@@ -1883,8 +2074,52 @@ begin
   finally
     BaseTypes.Free;
   end;
-  for Pair in G.PersistenceManagers do
-    Pair.Value.Initialize;
+  // Load saved servers (and their connection descriptors) into G structures.
+  if FileExists(G.DataPath + sServerPath) then
+  Begin
+    Servers := TgList<TgServer>.Create;
+    try
+      ServerString := FileToString(G.DataPath + sServerPath);
+      Servers.Deserialize(TgSerializerXML, ServerString);
+      Servers.First;
+      while Not Servers.EOL do
+      begin
+        Server := TgServer.Create;
+        Server.Assign(Servers.Current);
+        FServers.AddOrSetValue(Server.Name, Server);
+        for ConnectionDescriptor in Server.ConnectionDescriptors do
+          FConnectionDescriptors.AddOrSetValue(ConnectionDescriptor.Name, ConnectionDescriptor);
+        Servers.Next;  
+      end;
+    finally
+      Servers.Free;
+    end;
+  End;
+  ForceDirectories(G.PersistenceManagerPath);
+  for PersistenceManager in G.PersistenceManagers do
+  Begin
+    FileName := Format('%s%s.xml', [PersistenceManagerPath, PersistenceManager.ForClass.FriendlyName]);
+    if Not FileExists(FileName) then
+    Begin
+      PersistenceManager.Configure;
+      StringToFile(PersistenceManager.Serialize(TgSerializerXML), FileName);
+    End;
+    PersistenceManager.Initialize;
+  End;  
+  ForceDirectories(G.DataPath);
+  Servers := TgList<TgServer>.Create;
+  try
+    for Server in G.FServers.Values do
+    begin
+      Servers.ItemClass := TgBaseClass(Server.ClassType);
+      Servers.Add;
+      Servers.Current.Assign(Server);
+    end;
+    ServerString := Servers.Serialize(TgSerializerXML);
+    StringToFile(ServerString, G.DataPath + sServerPath);
+  finally
+    Servers.Free;
+  end;
 end;
 
 class procedure G.InitializeAttributes(ARTTIType: TRTTIType);
@@ -1992,6 +2227,7 @@ end;
 
 class constructor G.Create;
 begin
+  DefaultPersistenceManagerClassName := 'gCore.TgPersistenceManagerFile';
   FRTTIContext := TRTTIContext.Create();
   FProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FAttributes := TDictionary<TPair<TgBaseClass, TCustomAttributeClass>, TArray<TCustomAttribute>>.Create();
@@ -2015,15 +2251,22 @@ begin
   FAssignableProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FIdentityListProperties := TDictionary<TgBaseClass, TArray<TRTTIProperty>>.Create();
   FReferences := TDictionary<TgIdentityObjectClass, TArray<TgIdentityObjectClassProperty>>.Create();
-  Initialize;
+  FServers := TDictionary<String, TgServer>.Create();
+  FConnectionDescriptors := TDictionary<String, TgConnectionDescriptor>.Create();
 end;
 
 class destructor G.Destroy;
 var
   PersistenceManager : TgPersistenceManager;
+  Server : TgServer;
 begin
+  FreeAndNil(FConnectionDescriptors);
   for PersistenceManager in FPersistenceManagers.Values do
     PersistenceManager.Free;
+  FreeAndNil(FPersistenceManagers);  
+  for Server in FServers.Values do
+    Server.Free;
+  FreeAndNil(FServers);
   FreeAndNil(FReferences);
   FreeAndNil(FIdentityListProperties);
   FreeAndNil(FAssignableProperties);
@@ -2047,6 +2290,16 @@ begin
   FreeAndNil(FAttributes);
   FreeAndNil(FProperties);
   FRTTIContext.Free;
+end;
+
+class procedure G.AddConnectionDescriptor(AConnectionDescriptor: TgConnectionDescriptor);
+begin
+  FConnectionDescriptors.AddOrSetValue(AConnectionDescriptor.Name, AConnectionDescriptor);
+end;
+
+class procedure G.AddServer(AServer: TgServer);
+begin
+  FServers.AddOrSetValue(AServer.Name, AServer);
 end;
 
 class function G.ApplicationPath: String;
@@ -2426,6 +2679,13 @@ begin
   Result := ClassValidationAttributes(TgBase(ABase.ClassType));
 end;
 
+class function G.ConnectionDescriptor(const AName: String): TgConnectionDescriptor;
+
+    var
+      ConnectionDescriptor: TObject;begin
+  FConnectionDescriptors.TryGetValue(AName, Result);;
+end;
+
 class function G.DataPath: String;
 begin
   Result := IncludeTrailingPathDelimiter(ApplicationPath + 'Data');
@@ -2515,6 +2775,10 @@ var
   FileName: string;
   IdentityObjectClass: TgIdentityObjectClass;
   PersistenceManager: TgPersistenceManager;
+  PersistenceManagerAliasAttribute: PersistenceManagerClassName;
+  PersistenceManagerAliasAttributes: TArray<TCustomAttribute>;
+  PersistenceManagerClass: TgBaseClass;
+  PMClassName: string;
 begin
   IdentityObjectClass := TgIdentityObjectClass(ARTTIType.AsInstance.MetaclassType);
   if (IdentityObjectClass <> TgIdentityObject) And IdentityObjectClass.InheritsFrom(TgIdentityObject) then
@@ -2528,11 +2792,21 @@ begin
     End
     Else
     Begin
-      ForceDirectories(G.PersistenceManagerPath);
-      PersistenceManager := TgPersistenceManagerFile.Create;
+      PersistenceManagerAliasAttributes := Attributes(IdentityObjectClass, PersistenceManagerClassName);
+      if Length(PersistenceManagerAliasAttributes) > 0 then
+      Begin
+        PersistenceManagerAliasAttribute := PersistenceManagerClassName(PersistenceManagerAliasAttributes[0]);
+        PMClassName := PersistenceManagerAliasAttribute.Value;
+      End
+      Else
+        PMClassName := DefaultPersistenceManagerClassName;
+      PersistenceManagerClass := ClassByName(PMClassName);
+
+      PersistenceManager := TgPersistenceManagerClass(PersistenceManagerClass).Create;
       PersistenceManager.ForClass := IdentityObjectClass;
       FPersistenceManagers.AddOrSetValue(IdentityObjectClass, PersistenceManager);
-      StringToFile(PersistenceManager.Serialize(TgSerializerXML), FileName);
+//      PersistenceManager.Configure;
+//      StringToFile(PersistenceManager.Serialize(TgSerializerXML), FileName);
     End;
   End;
 end;
@@ -2592,6 +2866,14 @@ begin
   Result := (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) Or (Not ARTTIProperty.IsWritable And Not (BaseClass.InheritsFrom(TgIdentityObject) or BaseClass.InheritsFrom(TgIdentityList)) And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(ARTTIProperty, NotComposite))) = 0));
 end;
 
+procedure G.LoadPackages(const APackageNames: TArray<String>);
+var
+  PackageName: String;
+begin
+  for PackageName in APackageNames do
+    LoadPackage(PackageName);
+end;
+
 class function G.PersistenceManagerPath: String;
 begin
   Result := IncludeTrailingPathDelimiter(ApplicationPath + 'PersistenceManagers');
@@ -2602,9 +2884,9 @@ begin
   FPersistenceManagers.TryGetValue(AIdentityObjectClass, Result);
 end;
 
-class function G.PersistenceManagers: TArray<TPair<TgIdentityObjectClass, TgPersistenceManager>>;
+class function G.PersistenceManagers: TDictionary<TgIdentityObjectClass, TgPersistenceManager>.TValueCollection;
 begin
-  Result := FPersistenceManagers.ToArray;
+  Result := FPersistenceManagers.Values;
 end;
 
 class function G.PropertyAttributes(APropertyAttributeClassKey: TgPropertyAttributeClassKey): TArray<TCustomAttribute>;
@@ -2620,6 +2902,13 @@ end;
 class function G.References(AIdentityObject: TgIdentityObject): TArray<TgIdentityObjectClassProperty>;
 begin
   Result := References(TgIdentityObjectClass(AIdentityObject.ClassType));;
+end;
+
+class function G.Server(const AName: String): TgServer;
+
+    var
+      Server: TObject;begin
+  FServers.TryGetValue(AName, Result);
 end;
 
 class function G.VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
@@ -2860,6 +3149,8 @@ class procedure TgSerializerXML.THelperList.DeserializeUnpublishedProperty(
 var
   Counter: Integer;
   HelperClass: TgSerializationHelperClass;
+  ItemClassName: String;
+  ListItemNode: IXMLNode;
   ListNode: IXMLNode;
 begin
   if SameText(PropertyName, 'List') then
@@ -2867,10 +3158,12 @@ begin
     ListNode := ASerializer.CurrentNode;
     for Counter := 0 to ListNode.ChildNodes.Count - 1 do
     Begin
+      ListItemNode := ListNode.ChildNodes[Counter];
+      ItemClassName := ListItemNode.Attributes['classname'];
+      AObject.ItemClass := G.ClassByName(ItemClassName);
       AObject.Add;
-{ TODO : Shouldn't we use the classname to create this object? ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName; }
       HelperClass := G.SerializationHelpers(TgSerializerXML, AObject.Current);
-      ASerializer.TemporaryCurrentNode(ListNode.ChildNodes[Counter],procedure
+      ASerializer.TemporaryCurrentNode(ListItemNode,procedure
         begin
           HelperClass.Deserialize(AObject.Current, ASerializer);
         end);
@@ -4226,11 +4519,14 @@ begin
 end;
 
 function TgIdentityObject.HasIdentity: Boolean;
+var
+  VarTypeWord: Word;
 begin
-  case VarType(ID) of
+  VarTypeWord := VarType(ID);
+  case VarTypeWord of
     varEmpty, varNull: Result := False;
     varSmallint, varInteger, varSingle, varDouble, varCurrency, varDate, varShortInt, varByte, varWord, varLongWord, varInt64: Result := ID > 0;
-    varString: Result := ID > '';
+    varString, varUString: Result := ID > '';
   else
     Result := False;
   end;
@@ -5562,8 +5858,18 @@ begin
 end;
 
 procedure TgPersistenceManagerDBX.Commit(AObject: TgIdentityObject);
+var
+  Connection: TSQLConnection;
+  GConnection: TgConnection;
 begin
-
+  GConnection := ConnectionDescriptor.GetConnection;
+  Try
+    GConnection.DecReferenceCount;
+    Connection := TSQLConnection(GConnection.Connection);
+    Connection.CommitFreeAndNil(TDBXTransaction(GConnection.Transaction));
+  Finally
+    ConnectionDescriptor.ReleaseConnection;
+  End;  
 end;
 
 function TgPersistenceManagerDBX.Count(AIdentityList: TgIdentityList): Integer;
@@ -5574,71 +5880,93 @@ end;
 procedure TgPersistenceManagerDBX.ExecuteStatement(const AStatement: String; ABase: TgBase);
 begin
   WithQuery(
-    Procedure(AQuery: TSQLQuery)
+    Procedure(AQuery: TObject)
+    var
+      Query : TSQLQuery;
     Begin
-      AQuery.SQL.Text := AStatement;
-      AssignQueryParams(AQuery.Params, ABase);
-      AQuery.ExecSQL;
+      Query := TSQLQuery(AQuery);
+      Query.SQL.Text := AStatement;
+      AssignQueryParams(Query.Params, ABase);
+      Query.ExecSQL;
     End
   );
-end;
-
-function TgPersistenceManagerDBX.GetDatabase: String;
-begin
-  Result := Params.Values['Database'];
 end;
 
 procedure TgPersistenceManagerDBX.LoadObject(AObject: TgIdentityObject);
 begin
   WithQuery(
-    Procedure(AQuery: TSQLQuery)
+    Procedure(AQuery: TObject)
     var
+      Query: TSQLQuery;
       Pair: TPair<String, String>;
     Begin
-      AQuery.SQL.Text := LoadStatement;
-      AssignQueryParams(AQuery.Params, AObject);
-      AQuery.Open;
+      Query := TSQLQuery(AQuery);
+      Query.SQL.Text := LoadStatement;
+      AssignQueryParams(Query.Params, AObject);
+      Query.Open;
       for Pair in ObjectRelationalMap do
-        AObject[Pair.Key] := AQuery.FieldValues[Pair.Value];
+        AObject[Pair.Key] := Query.FieldValues[Pair.Value];
     End
   );
 end;
 
 procedure TgPersistenceManagerDBX.WithQuery(AWithQueryProcedure: TgWithQueryProcedure);
 var
-  Connection: TSQLConnection;
+  SQLConnection: TSQLConnection;
   Query : TSQLQuery;
 begin
-  Connection := TSQLConnection.Create(Nil);
+  SQLConnection := TSQLConnection(ConnectionDescriptor.GetConnection.Connection);
   try
-    Connection.DriverName := DriverName;
-    Connection.Params.Assign(Params);
-    Connection.Open;
+    SQLConnection.DriverName := DriverName;
+    SQLConnection.Open;
     Query := TSQLQuery.Create(Nil);
     try
-      Query.SQLConnection := Connection;
+      Query.SQLConnection := SQLConnection;
       AWithQueryProcedure(Query);
     finally
       Query.Free;
     end;
   finally
-    Connection.Free;
+    ConnectionDescriptor.ReleaseConnection;
   end;
 end;
 
 procedure TgPersistenceManagerDBX.RollBack(AObject: TgIdentityObject);
+var
+  Connection: TSQLConnection;
+  GConnection: TgConnection;
 begin
-
-end;
-
-procedure TgPersistenceManagerDBX.SetDatabase(const AValue: String);
-begin
-  Params.Values['Database'] := AValue;
+  GConnection := ConnectionDescriptor.GetConnection;
+  Try
+    GConnection.DecReferenceCount;
+    Connection := TSQLConnection(GConnection.Connection);
+    Connection.RollbackFreeAndNil(TDBXTransaction(GConnection.Transaction));
+  Finally
+    ConnectionDescriptor.ReleaseConnection;
+  End;  
 end;
 
 procedure TgPersistenceManagerDBX.StartTransaction(AObject: TgIdentityObject;ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
+var
+  Connection: TSQLConnection;
+  GConnection: TgConnection;
+  IsolationLevel: Integer;
 begin
+  case ATransactionIsolationLevel of
+    ilReadCommitted: IsolationLevel := TDBXIsolations.ReadCommitted;
+    ilSnapshot: IsolationLevel := TDBXIsolations.SnapShot;
+    ilSerializable: IsolationLevel := TDBXIsolations.Serializable;
+  else
+    IsolationLevel := TDBXIsolations.ReadCommitted;  
+  end;
+  GConnection := ConnectionDescriptor.GetConnection;
+  Connection := TSQLConnection(GConnection.Connection);
+  GConnection.Transaction := Connection.BeginTransaction(IsolationLevel);
+end;
 
+procedure TgPersistenceManager.Configure;
+begin
+  
 end;
 
 procedure TgPersistenceManager.Initialize;
@@ -5646,41 +5974,14 @@ begin
 
 end;
 
-function TgPersistenceManagerDBXFirebird.DriverName: string;
-begin
-  Result := 'Firebird';
-end;
-
-function TgPersistenceManagerDBXFirebird.GetPassword: String;
-begin
-  Result := Params.Values['Password'];
-end;
-
-function TgPersistenceManagerDBXFirebird.GetUserName: String;
-begin
-  Result := Params.Values['User_Name'];
-end;
-
-procedure TgPersistenceManagerDBXFirebird.SetPassword(const AValue: String);
-begin
-  Params.Values['Password'] := AValue;
-end;
-
-procedure TgPersistenceManagerDBXFirebird.SetUserName(const AValue: String);
-begin
-  Params.Values['User_Name'];
-end;
-
 constructor TgPersistenceManagerSQL.Create(AOwner: TgBase = nil);
 begin
   inherited Create(AOwner);
   FObjectRelationalMap := TDictionary<String, String>.Create();
-  FParams := TStringList.Create();
 end;
 
 destructor TgPersistenceManagerSQL.Destroy;
 begin
-  FreeAndNil(FParams);
   FreeAndNil(FObjectRelationalMap);
   inherited Destroy;
 end;
@@ -5728,6 +6029,7 @@ var
   end;
 
 begin
+  FConnectionDescriptor := G.ConnectionDescriptor(ConnectionDescriptorName);
   FObjectRelationalMap := TDictionary<String, String>.Create;
   for RTTIProperty in G.PersistableProperties(ForClass) do
   begin
@@ -5754,7 +6056,9 @@ var
 begin
   StringBuilder := TStringBuilder.Create;
   try
-    StringBuilder.Append('Insert (');
+    StringBuilder.AppendFormat('Insert Into %s', [TableName]);
+    StringBuilder.AppendLine;
+    StringBuilder.Append('(');
     First := True;
     for Pair in ObjectRelationalMap.ToArray do
     begin
@@ -5765,8 +6069,6 @@ begin
       StringBuilder.Append(Pair.Value);
     end;
     StringBuilder.AppendLine(')');
-    StringBuilder.AppendFormat('Into %s', [TableName]);
-    StringBuilder.AppendLine;
     StringBuilder.Append('Values (');
     First := True;
     for Pair in ObjectRelationalMap.ToArray do
@@ -5775,7 +6077,7 @@ begin
         First := False
       else
         StringBuilder.Append(', ');
-      StringBuilder.AppendFormat(':%s', [Pair.Key]);
+      StringBuilder.AppendFormat(':"%s"', [Pair.Key]);
     end;
     StringBuilder.Append(')');
     Result := StringBuilder.ToString;
@@ -5805,7 +6107,7 @@ begin
     StringBuilder.AppendLine;
     StringBuilder.AppendFormat('From %s', [TableName]);
     StringBuilder.AppendLine;
-    StringBuilder.Append('Where ID = :ID');
+    StringBuilder.AppendFormat('Where %sID = :ID', [TableName]);
     Result := StringBuilder.ToString;
   finally
     StringBuilder.Free;
@@ -5866,12 +6168,621 @@ begin
   end;
 end;
 
+constructor PersistenceManagerClassName.Create(const AName: String);
+begin
+  inherited Create;
+  FValue := AName;
+end;
+
+destructor TgServer.Destroy;
+begin
+  If FMaxConnectionSemaphore > 0 Then
+    CloseHandle(FMaxConnectionSemaphore);
+  inherited Destroy;
+end;
+
+procedure TgServer.RemoveInactiveConnection;
+var
+  ConnectionDescriptor: TgConnectionDescriptor;
+begin
+  // This function must be called from within the critical section.
+  for ConnectionDescriptor in ConnectionDescriptors do
+  if ConnectionDescriptor.InactiveConnectionCount > 0 then
+  begin
+    ConnectionDescriptor.FreeInactive;
+    Break;
+  End;
+end;
+
+function TgServer.GetMaxConnectionSemaphore: Cardinal;
+var
+  MaximumCount: Integer;
+begin
+  // Need Name before Semaphore can be created.
+  If ( FMaxConnectionSemaphore = 0 ) And ( Name > '' ) Then
+  Begin
+    If MaxConnections = 0 Then
+      MaximumCount := MaxInt
+    Else
+      MaximumCount := MaxConnections;
+    FMaxConnectionSemaphore := CreateSemaphore( nil, MaximumCount, MaximumCount, Nil );
+  End;
+  Result := FMaxConnectionSemaphore;
+end;
+
+function TgServer.Report: String;
+var
+  StringList: TStringList;
+  ConnectionDescriptor: TgConnectionDescriptor;
+begin
+  StringList := TStringList.Create;
+  try
+    StringList.Add(Format('Name: %s'#9'Host: %s', [Name, Host]));
+    for ConnectionDescriptor in ConnectionDescriptors do
+      ConnectionDescriptor.Report(StringList);
+    Result := StringList.Text;
+  finally
+    StringList.Free;
+  end;
+end;
+
+function TgServer.ConnectionCount: Integer;
+var
+  ConnectionDescriptor: TgConnectionDescriptor;
+begin
+  Result := 0;
+  for ConnectionDescriptor in ConnectionDescriptors do
+    Result := Result + ConnectionDescriptor.ActiveConnectionCount + ConnectionDescriptor.InactiveConnectionCount;
+end;
+
+function TgServer.GetMaxConnections: Integer;
+begin
+  If FMaxConnections = 0 Then
+    FMaxConnections := 5;
+  Result := FMaxConnections;
+end;
+
+destructor TgConnection.Destroy;
+begin
+  ConnectionDescriptor.FreeConnection( Connection );
+  inherited;
+end;
+
+constructor TgConnection.Create;
+begin
+  inherited;
+  LinkEstablished := Now;
+end;
+
+procedure TgConnection.DecReferenceCount;
+begin
+  Dec(FReferenceCount);
+end;
+
+procedure TgConnection.EnsureActive;
+begin
+
+end;
+
+function TgConnection.GetExpired: Boolean;
+begin
+  Result := (ConnectionDescriptor.TTL > 0) And (((Now - LastUsed) * 24 * 60 * 60) > ConnectionDescriptor.TTL);
+end;
+
+procedure TgConnection.IncReferenceCount;
+begin
+  Inc(FReferenceCount);
+end;
+
+function TgConnection.InUse: Boolean;
+begin
+  Result := FReferenceCount > 0;
+end;
+
+procedure TgConnectionDescriptorDBX.CreateConnection(AConnection: TgConnection);
+var
+  SQLConnection: TSQLConnection;
+begin
+  SQLConnection := TSQLConnection.Create(Nil);
+  SQLConnection.LoadParamsOnConnect := False;
+  SQLConnection.LoginPrompt := False;
+  SQLConnection.DriverName := DriverName;
+  SQLConnection.LibraryName := LibraryName;
+  SQLConnection.VendorLib := VendorLib;
+  SQLConnection.GetDriverFunc := GetDriverFunc;
+  SQLConnection.Params.Assign(Params);
+  SQLConnection.Open;
+  AConnection.Connection := SQLConnection;
+end;
+
+function TgConnectionDescriptorDBX.EnsureActive(AConnection: TgConnection): Boolean;
+begin
+  Result := False;
+end;
+
+procedure TgConnectionDescriptorDBX.FreeConnection(AConnection: TObject);
+begin
+  AConnection.Free;
+end;
+
+constructor TgConnectionDescriptor.Create(AOwner: TgBase = nil);
+begin
+  inherited Create(AOwner);
+  FCriticalSection := TCriticalSection.Create();
+  FActiveConnectionList := TDictionary<Cardinal, TgConnection>.Create();
+  FInactiveConnectionList := TQueue<TgConnection>.Create();
+end;
+
+destructor TgConnectionDescriptor.Destroy;
+begin
+  FreeAndNil(FInactiveConnectionList);
+  FreeAndNil(FActiveConnectionList);
+  FreeAndNil(FCriticalSection);
+  inherited Destroy;
+end;
+
+function TgConnectionDescriptor.ActiveConnectionCount: Integer;
+begin
+  Result := FActiveConnectionList.Count;
+end;
+
+function TgConnectionDescriptor.GetConnection: TgConnection;
+var
+  ThreadID: Cardinal;
+begin
+  ThreadID := GetCurrentThreadId;
+
+  FCriticalSection.Enter;
+  try
+    // Try to find an active connection using the current thread.
+    Result := ReuseActiveConnection(ThreadID);
+  finally
+    FCriticalSection.Leave;
+  end;
+
+  // If no active connection is found
+  If Not Assigned( Result ) Then
+  Begin
+    If WaitForSingleObject(Server.MaxConnectionSemaphore, Server.Timeout) <> WAIT_OBJECT_0 Then
+      Raise E.Create('A timeout occurred waiting for a connection to go inactive.');
+
+    // An inactive connection became available
+    FCriticalSection.Enter;
+    try
+
+      // See if one is available in the inactive pool
+      Result := ReuseInactiveConnection(ThreadID);
+
+      // If no active or inactive connection is found, try to create a new one.
+      If Not Assigned(Result) Then
+        Result := GetNewConnection(ThreadID);
+        
+      // If not, remove an inactive connection from another connection descriptor's pool
+      // and create a new connection.
+      If Not Assigned( Result ) Then
+      Begin
+        Server.RemoveInactiveConnection;
+        Result := GetNewConnection(ThreadID);
+      End;
+    finally
+      FCriticalSection.Leave;
+    end;
+  End;
+
+  //If no connection was returned, raise an exception
+  If Assigned(Result) Then
+    Result.LastUsed := Now;
+  If Not Assigned( Result ) Then
+    Raise E.Create( 'Could not create connection' );
+end;
+
+function TgConnectionDescriptor.GetNewConnection(AThreadID: Cardinal): TgConnection;
+begin
+  // This function must be called from within the critical section.
+  Result := nil;
+  If ( Server.MaxConnections = 0 ) Or ( Server.ConnectionCount < Server.MaxConnections ) Then
+  Begin
+    Result := TgConnection.Create;
+    try
+      Result.ThreadID := AThreadID;
+      Result.ConnectionDescriptor := Self;
+      CreateConnection(Result);
+      FActiveConnectionList.AddOrSetValue(AThreadID, Result );
+      Result.IncReferenceCount;
+    except
+      FreeAndNil( Result );
+      Raise
+    end;
+  End;
+end;
+
+function TgConnectionDescriptor.InactiveConnectionCount: Integer;
+begin
+  Result := FInactiveConnectionList.Count;
+end;
+
+procedure TgConnectionDescriptor.ReleaseConnection;
+var
+  Connection: TgConnection;
+  ThreadID: Cardinal;
+begin
+  FCriticalSection.Enter;
+  Try
+    ThreadID := GetCurrentThreadID;
+    FActiveConnectionList.TryGetValue(ThreadID, Connection);
+    If Not Assigned( Connection ) Then
+      Raise E.CreateFmt( 'Cannot release connection for ''%s''.', [Name] );
+    Connection.DecReferenceCount;
+    If Not Connection.InUse Then
+    Begin
+      // Remove from active
+      FActiveConnectionList.Remove(ThreadID);
+      FInactiveConnectionList.Enqueue( Connection );
+      ReleaseSemaphore(Server.MaxConnectionSemaphore, 1, nil);
+    End;
+  Finally
+    FCriticalSection.Leave;
+  End;
+end;
+
+procedure TgConnectionDescriptor.FreeInactive;
+var
+  Connection: TgConnection;
+begin
+  FCriticalSection.Enter;
+  Try
+    Connection := FInactiveConnectionList.Dequeue;
+    Connection.Free;
+  Finally
+    FCriticalSection.Leave;
+  End
+end;
+
+function TgConnectionDescriptor.GetParams: TStringList;
+begin
+  if Not Assigned(FParams) then
+    FParams := TStringList.Create;
+  Result := FParams;
+end;
+
+function TgConnectionDescriptor.GetParamString: String;
+begin
+  Result := Params.Text;
+end;
+
+function TgConnectionDescriptor.GetServer: TgServer;
+begin
+  Result := TgServer(OwnerByClass(TgServer));
+end;
+
+procedure TgConnectionDescriptor.Report(AStringList: TStringList);
+var
+  Connection: TgConnection;
+begin
+  FCriticalSection.Enter;
+  Try
+    AStringList.Add(Format('  %s:', [Name]));
+    AStringList.Add('');
+    AStringList.Add('    Active Connections');
+    for Connection in FActiveConnectionList.Values do
+      AStringList.Add(Format('      ThreadID: %d', [Connection.ThreadID]));
+    AStringList.Add('');
+    AStringList.Add('    Inactive Connections');
+    for Connection in FInactiveConnectionList do
+      AStringList.Add(Format('      Created: %s'#9'Last Used: %s', [FormatDateTime('dd/mm/yy hh:nn:ss', Connection.LinkEstablished), FormatDateTime('dd/mm/yy hh:nn:ss', Connection.LastUsed)]));
+    AStringList.Add('');
+  Finally
+    FCriticalSection.Leave;
+  End;
+end;
+
+function TgConnectionDescriptor.ReuseActiveConnection(AThreadID: Cardinal): TgConnection;
+begin
+  // This function must be called from within the critical section.
+  FActiveConnectionList.TryGetValue(AThreadID, Result);
+  If Assigned(Result) Then
+    Result.IncReferenceCount;
+end;
+
+function TgConnectionDescriptor.ReuseInactiveConnection(AThreadID: Cardinal): TgConnection;
+begin
+  // This function must be called from within the critical section.
+  Result := nil;
+  If FInactiveConnectionList.Count >= 1 Then
+  Begin
+    Result := FInactiveConnectionList.Dequeue;
+    Result.ThreadID := AThreadID;
+    Try
+      Result.EnsureActive;
+      Result.IncReferenceCount;
+      FActiveConnectionList.AddOrSetValue(AThreadID, Result );
+    Except
+      FreeAndNil(Result);
+      Raise;
+    End;
+  End;
+end;
+
+procedure TgConnectionDescriptor.SetParamString(const AValue: String);
+begin
+  Params.Text := AValue;
+end;
+
+procedure TgPersistenceManagerDBXFirebird.Configure;
+var
+  Server: TgServer;
+  ConnectionDescriptor: TgConnectionDescriptorDBXFirebird;
+  DatabaseName: string;
+begin
+  Server := G.Server(DriverName);
+  if Not Assigned(Server) then
+  Begin
+    Server := TgServer.Create;
+    Server.Name := DriverName;
+    Server.Host := 'localhost';
+    Server.Port := 3050;
+    Server.TimeOut := 10000;
+    G.AddServer(Server);
+  End;
+  ConnectionDescriptor := TgConnectionDescriptorDBXFirebird(G.ConnectionDescriptor(Format('%s:%s', [DriverName, ForClass.UnitName])));
+  if Not Assigned(ConnectionDescriptor) then
+  Begin
+    Server.ConnectionDescriptors.ItemClass := TgConnectionDescriptorDBXFirebird;
+    Server.ConnectionDescriptors.Add;
+    ConnectionDescriptor := TgConnectionDescriptorDBXFirebird(Server.ConnectionDescriptors.Current);
+    ConnectionDescriptor.Name := Format('%s:%s', [DriverName, ForClass.UnitName]);
+    DatabaseName := ExpandFileName(Format('%s%s.fdb', [G.DataPath, ForClass.UnitName]));
+    ConnectionDescriptor.Params.Values['Database'] := Format('%s:%s', [Server.Host, DatabaseName]);
+    ConnectionDescriptor.Params.Values['User'] := 'SYSDBA';
+    ConnectionDescriptor.Params.Values['Password'] := 'masterkey';
+    G.AddConnectionDescriptor(ConnectionDescriptor);
+  end;
+  ConnectionDescriptorName := ConnectionDescriptor.Name;
+end;
+
+function TgPersistenceManagerDBXFirebird.DriverName: string;
+begin
+  Result := 'FirebirdConnection';
+end;
+
+class function TgConnectionDescriptorDBXFirebird.DriverName: string;
+begin
+  Result := 'FirebirdConnection';
+end;
+
+class function TgConnectionDescriptorDBXFirebird.GetDriverFunc: string;
+begin
+  Result := 'getSQLDriverFIREBIRD';
+end;
+
+class function TgConnectionDescriptorDBXFirebird.LibraryName: string;
+begin
+  Result := 'dbx4fb.dll';
+end;
+
+class function TgConnectionDescriptorDBXFirebird.VendorLib: string;
+begin
+  Result := 'fbclient.DLL';
+end;
+
+procedure TgPersistenceManagerIBX.ActivateList(AIdentityList: TgIdentityList);
+begin
+
+end;
+
+procedure TgPersistenceManagerIBX.AssignQueryParams(AParams: TParams; ABase: TgBase);
+Var
+  CollectionItem : TCollectionItem;
+  Param : TParam;
+begin
+  For CollectionItem In AParams Do
+  Begin
+    Param := TParam(CollectionItem);
+    Param.Value := ABase[Param.Name];
+  End;
+end;
+
+procedure TgPersistenceManagerIBX.Commit(AObject: TgIdentityObject);
+var
+  GConnection: TgConnection;
+begin
+  GConnection := ConnectionDescriptor.GetConnection;
+  Try
+    GConnection.DecReferenceCount;
+    TIBTransaction(GConnection.Transaction).Commit;
+  Finally
+    ConnectionDescriptor.ReleaseConnection;
+  End;
+end;
+
+procedure TgPersistenceManagerIBX.Configure;
+const
+  sServerName = 'Firebird';
+var
+  Server: TgServer;
+  ConnectionDescriptor: TgConnectionDescriptorIBX;
+  DatabaseName: string;
+begin
+  Server := G.Server(sServerName);
+  if Not Assigned(Server) then
+  Begin
+    Server := TgServer.Create;
+    Server.Name := sServerName;
+    Server.Host := 'localhost';
+    Server.Port := 3050;
+    Server.TimeOut := 10000;
+    G.AddServer(Server);
+  End;
+  ConnectionDescriptor := TgConnectionDescriptorIBX(G.ConnectionDescriptor(Format('%s:%s', [sServerName, ForClass.UnitName])));
+  if Not Assigned(ConnectionDescriptor) then
+  Begin
+    Server.ConnectionDescriptors.ItemClass := TgConnectionDescriptorIBX;
+    Server.ConnectionDescriptors.Add;
+    ConnectionDescriptor := TgConnectionDescriptorIBX(Server.ConnectionDescriptors.Current);
+    ConnectionDescriptor.Name := Format('%s:%s', [sServerName, ForClass.UnitName]);
+    DatabaseName := ExpandFileName(Format('%s%s.fdb', [G.DataPath, ForClass.UnitName]));
+    ConnectionDescriptor.DatabaseName := Format('%s:%s', [Server.Host, DatabaseName]);
+    ConnectionDescriptor.UserName := 'SYSDBA';
+    ConnectionDescriptor.Password := 'masterkey';
+    G.AddConnectionDescriptor(ConnectionDescriptor);
+  end;
+  ConnectionDescriptorName := ConnectionDescriptor.Name;
+end;
+
+class function TgPersistenceManagerIBX.ConformIdentifier(const AName: string): string;
+begin
+  Result := Uppercase(inherited ConformIdentifier(AName));
+end;
+
+function TgPersistenceManagerIBX.Count(AIdentityList: TgIdentityList): Integer;
+begin
+  Result := 0;
+end;
+
+procedure TgPersistenceManagerIBX.ExecuteStatement(const AStatement: String; ABase: TgBase);
+begin
+  WithQuery(
+    Procedure(AQuery: TObject)
+    var
+      Query: TIBQuery;
+    Begin
+      Query := TIBQuery(AQuery);
+      Query.SQL.Text := AStatement;
+      AssignQueryParams(Query.Params, ABase);
+      Query.ExecSQL;
+    End
+  );
+end;
+
+function TgPersistenceManagerIBX.GeneratorName: String;
+begin
+  Result := Format('%s_GEN', [TableName]);
+end;
+
+function TgPersistenceManagerIBX.GetIdentity: Variant;
+var
+  Identity: Integer;
+begin
+  WithQuery(
+    Procedure(AQuery: TObject)
+    var
+      Query: TIBQuery;
+    Begin
+      Query := TIBQuery(AQuery);
+      Query.SQL.Text := Format('Select gen_id("%s", 0) from rdb$database', [GeneratorName]);
+      Query.Open;
+      Identity := Query.Fields[0].AsInteger;
+    End
+  );
+  Result := Identity;
+end;
+
+procedure TgPersistenceManagerIBX.LoadObject(AObject: TgIdentityObject);
+begin
+  WithQuery(
+    Procedure(AQuery: TObject)
+    var
+      Query: TIBQuery;
+      Pair: TPair<String, String>;
+    Begin
+      Query := TIBQuery(AQuery);
+      Query.SQL.Text := LoadStatement;
+      AssignQueryParams(Query.Params, AObject);
+      Query.Open;
+      if Not Query.Eof then
+      Begin
+        for Pair in ObjectRelationalMap do
+          AObject[Pair.Key] := Query.FieldValues[Pair.Value];
+        AObject.IsLoaded := True;
+      End
+      Else
+        AObject.IsLoaded := False;
+    End
+  );
+end;
+
+procedure TgPersistenceManagerIBX.WithQuery(AWithQueryProcedure: TgWithQueryProcedure);
+var
+  Connection: TgConnection;
+  IBConnection: TIBDatabase;
+  Query : TIBQuery;
+begin
+  Connection := ConnectionDescriptor.GetConnection;
+  IBConnection := TIBDatabase(Connection.Connection);
+  try
+    Query := TIBQuery.Create(Nil);
+    try
+      Query.Database := IBConnection;
+      Query.Transaction := TIBTransaction(Connection.Transaction);
+      Query.Transaction.StartTransaction;
+      Try
+        AWithQueryProcedure(Query);
+        Query.Transaction.Commit;
+      Except
+        Query.Transaction.Rollback;
+        Raise;
+      End
+    finally
+      Query.Free;
+    end;
+  finally
+    ConnectionDescriptor.ReleaseConnection;
+  end;
+end;
+
+procedure TgPersistenceManagerIBX.RollBack(AObject: TgIdentityObject);
+var
+  GConnection: TgConnection;
+begin
+  GConnection := ConnectionDescriptor.GetConnection;
+  Try
+    GConnection.DecReferenceCount;
+    TIBTransaction(GConnection.Transaction).Rollback;
+  Finally
+    ConnectionDescriptor.ReleaseConnection;
+  End;
+end;
+
+procedure TgPersistenceManagerIBX.StartTransaction(AObject: TgIdentityObject;ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
+var
+  GConnection: TgConnection;
+begin
+  GConnection := ConnectionDescriptor.GetConnection;
+  TIBTransaction(GConnection.Transaction).StartTransaction;
+end;
+
+procedure TgConnectionDescriptorIBX.CreateConnection(AConnection: TgConnection);
+var
+  Connection: TIBDatabase;
+  Transaction : TIBTransaction;
+begin
+  Connection := TIBDatabase.Create(Nil);
+  Transaction := TIBTransaction.Create(Nil);
+  Transaction.DefaultDatabase := Connection;
+  Connection.LoginPrompt := False;
+  Connection.DatabaseName := DatabaseName;
+  Connection.Params.Values['User_Name'] := UserName;
+  Connection.Params.Values['Password'] := Password;
+  Connection.Open;
+  AConnection.Connection := Connection;
+  AConnection.Transaction := Transaction;
+end;
+
+function TgConnectionDescriptorIBX.EnsureActive(AConnection: TgConnection): Boolean;
+begin
+  Result := False;
+end;
+
+procedure TgConnectionDescriptorIBX.FreeConnection(AConnection: TObject);
+begin
+  AConnection.Free;
+end;
 
 Initialization
   TgSerializerJSON.Register;
   TgSerializerXML.Register;
   TgSerializerCSV.Register;
-//  TgSerializerCSV.Register;
+  RegisterRuntimeClasses([TgPersistenceManagerFile, TgPersistenceManagerDBXFirebird, TgPersistenceManagerIBX, TgConnectionDescriptorIBX, TgConnectionDescriptorDBXFirebird]);
 end.
 
 
