@@ -288,10 +288,12 @@ type
     /// </summary>
     procedure AutoCreate; virtual;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
+    function DoGetObjects(const APath: String; out AValue: TgBase): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetIsInspecting: Boolean; virtual;
     function GetPathName: String; virtual;
     function GetValues(Const APath : String): Variant; virtual;
+    function GetObjects(Const APath : String): TgBase; virtual;
     /// <summary>TgBase.OwnerByClass walks up the Owner path looking for an owner whose
     /// class type matches the AClass parameter. This method gets used by the
     /// AutoCreate method to determine if an object property should get created, or
@@ -349,6 +351,16 @@ type
     ///	  <see cref="TgBase" /> class decendant
     ///	</param>
     property Values[Const APath : String]: Variant read GetValues write SetValues; default;
+    ///	<summary>
+    ///	  This property is used to get and set Objects for any published
+    ///	  property on this structure or any <see cref="TgBase" /> structure
+    ///	  owned by a published class property
+    ///	</summary>
+    ///	<param name="APath">
+    ///	  Local properties are just their name, but when using this on a
+    ///	  <see cref="TgBase" /> class decendant
+    ///	</param>
+    property Objects[Const APath : String]: TgBase read GetObjects;
   published
     [NotSerializable] [NotVisible]
     property FriendlyClassName: String read GetFriendlyClassName;
@@ -1805,6 +1817,30 @@ Begin
   end;
 End;
 
+function TgBase.DoGetObjects(const APath: String; out AValue: TgBase): Boolean;
+Var
+  Head : String;
+  RTTIProperty : TRttiProperty;
+  Tail : String;
+Begin
+  Result := False;
+  SplitPath(APath, Head, Tail);
+  RTTIProperty := G.PropertyByName(Self, Head);
+  if Assigned(RTTIProperty) then
+  begin
+    if Not RTTIProperty.IsReadable then
+      raise EgValue.CreateFmt('%s.%s is not a readable property.', [ClassName, RTTIProperty.Name]);
+    if RTTIProperty.PropertyType.IsInstance then
+    begin
+      AValue := TgBase(RTTIProperty.GetValue(Self).AsObject);
+      if Tail > '' then
+        Result := AValue.DoGetObjects(Tail, AValue);
+    end
+    Else
+      raise EgValue.CreateFmt('Can''t return %s.%s, because %s is not an object property', [RTTIProperty.Name, Tail, RTTIProperty.Name]);
+  end;
+End;
+
 function TgBase.DoSetValues(Const APath : String; AValue : Variant): Boolean;
 Var
   Head: String;
@@ -1942,6 +1978,12 @@ end;
 function TgBase.GetValues(Const APath : String): Variant;
 Begin
   If Not DoGetValues(APath, Result) Then
+    Raise EgValue.CreateFmt('Path ''%s'' not found.', [APath]);
+End;
+
+function TgBase.GetObjects(Const APath : String): TgBase;
+Begin
+  If Not DoGetObjects(APath, Result) Then
     Raise EgValue.CreateFmt('Path ''%s'' not found.', [APath]);
 End;
 
@@ -2680,9 +2722,7 @@ begin
 end;
 
 class function G.ConnectionDescriptor(const AName: String): TgConnectionDescriptor;
-
-    var
-      ConnectionDescriptor: TObject;begin
+begin
   FConnectionDescriptors.TryGetValue(AName, Result);;
 end;
 
@@ -2905,9 +2945,7 @@ begin
 end;
 
 class function G.Server(const AName: String): TgServer;
-
-    var
-      Server: TObject;begin
+begin
   FServers.TryGetValue(AName, Result);
 end;
 
