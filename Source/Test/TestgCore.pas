@@ -377,16 +377,18 @@ type
 
       TCustomer = class(TgObject)
       private
-        FName: String;
+        FFirstName: String;
+        FLastName: String;
         FWebAddress: String;
       published
-        property Name: String read FName write FName;
+        property FirstName: String read FFirstName write FFirstName;
+        property LastName: String read FLastName write FLastName;
         property WebAddress: String read FWebAddress write FWebAddress;
       end;
 
       TCustomers = TgList<TCustomer>;
 
-      TModel = class(TgBase)
+      TModel = class(TgModel)
       private
         FCustomers: TCustomers;
       published
@@ -2096,10 +2098,12 @@ var
 begin
   Model := TModel.Create;
   Model.Customers.Add;
-  Model.Customers.Current.Name := 'Steve';
+  Model.Customers.Current.FirstName := 'Steve<>';
+  Model.Customers.Current.LastName:= 'Joe & Jerry';
   Model.Customers.Current.WebAddress := 'http://www.google.com';
   Model.Customers.Add;
-  Model.Customers.Current.Name := 'Jim';
+  Model.Customers.Current.FirstName := 'Jim';
+  Model.Customers.Current.LastName := '<Bush>';
   Model.Customers.Current.WebAddress := 'http://www.yahoo.com';
   Text :=
 //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
@@ -2108,10 +2112,11 @@ begin
     +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
     +'<title>Untitled<b> Document</b>!</title>'#13#10
     +'</head>'#13#10
-    +'  <list condition="DoList" object="Customers">'#13#10
-    +'    <a href="{WebAddress}">{Name}</a><br />'#13#10
-    +'  </list>'#13#10
     +'<body>'#13#10
+    +'  <list condition="Customers.Count > 1" object="Customers">'#13#10 //DoList
+    +'    <a href="{WebAddress}">{if(Name &lt;&gt; '',Name)}</a><br />'#13#10
+//    <div conditionself="ValidationErrors.Name" class="Error">Name</div>
+    +'  </list>'#13#10
     +'</body>'#13#10
     +'</html>'#13#10;
   SourceDocument := TXMLDocument.Create(Nil);
@@ -2144,22 +2149,27 @@ var
   Element: TgElement;
 begin
   Customer := TCustomer.Create;
-  Customer.Name := 'This is the Name';
+  Customer.FirstName := 'Steve';
+  Customer.LastName := 'Nooner';
   Customer.WebAddress := 'http://www.google.com';
   try
     Element := TgElement.Create;
     try
-      Element.SetModel(Customer);
+      Element.gBase := Customer;
       CheckEquals('Hello',Element.ProcessValue('Hello'));
-      CheckEquals(Customer.Name,Element.ProcessValue('{Name}'));
-      CheckEquals(Customer.Name+Customer.Name,Element.ProcessValue('{Name}{Name}'));
-      CheckEquals('X'+Customer.Name+Customer.Name,Element.ProcessValue('X{Name}{Name}'));
-      CheckEquals(Customer.Name+'X'+Customer.Name,Element.ProcessValue('{Name}X{Name}'));
-      CheckEquals(Customer.Name+Customer.Name+'X',Element.ProcessValue('{Name}{Model.Name}X'));
-      CheckEquals('X'+Customer.Name+'X'+Customer.Name+'X',Element.ProcessValue('X{Name}X{Name}X'));
-      CheckEquals(Customer.Name,Element.ProcessValue('{Model.Name}'));
+      CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
+      CheckEquals(Customer.FirstName+Customer.LastName,Element.ProcessValue('{FirstName}{LastName}'));
+      CheckEquals('X'+Customer.FirstName+Customer.LastName,Element.ProcessValue('X{FirstName}{LastName}'));
+      CheckEquals(Customer.FirstName+'X'+Customer.LastName,Element.ProcessValue('{FirstName}X{LastName}'));
+      CheckEquals(Customer.FirstName+Customer.FirstName+'X',Element.ProcessValue('{FirstName}{FirstName}X'));
+      CheckEquals('X'+Customer.FirstName+'X'+Customer.LastName+'X',Element.ProcessValue('X{FirstName}X{LastName}X'));
+      CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
       CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
-      CheckEquals(Customer.WebAddress,Element.ProcessValue('{Model.WebAddress}'));
+      CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
+      CheckEquals('<p>Hi, '+Customer.FirstName+'</p>',Element.ProcessValue('<p>Hi, {FirstName}</p>'));
+      CheckEquals('<p>Hi, '+Customer.FirstName+' '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {FirstName} {LastName}</p>'));
+      CheckEquals('<p>Hi, Mr. '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {''Mr. '' + LastName}</p>'));
+      //Evaluate('<p>Hello {Name}</p>', Customer)
     finally
       Element.Free;
     end;

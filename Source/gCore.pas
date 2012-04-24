@@ -60,6 +60,7 @@ type
     Constructor Create(AValue : Integer); Overload;
     Constructor Create(AValue : Double); Overload;
     Constructor Create(AValue : TDateTime); Overload;
+    Constructor Create(AValue : Boolean); Overload;
     procedure Execute(ABase: TgBase);
     Property Value : Variant Read FValue;
   End;
@@ -346,7 +347,7 @@ type
     ///	  <see cref="TgBase" /> class decendant
     ///	</param>
     property Values[Const APath : String]: Variant read GetValues write SetValues; default;
-  published
+   published
     [NotSerializable] [NotVisible]
     property FriendlyClassName: String read GetFriendlyClassName;
     [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible] [NotAssignable]
@@ -1345,23 +1346,42 @@ type
   public
     type
       E = class(Exception);
+      TClassOf = class of TgElement;
+  { TODO : Handle Conditions }
+  { TODO : ConditionSelf says don't do the outer tag, but do the inner tags }
   private
     FTagName: String;
-    FPath: String;
     FgBase: TgBase;
+    FCondition: Boolean;
+    FConditionSelf: Boolean;
     function GetgBase: TgBase;
     function GetModel: TgBase;
+    class var _Tags: TDictionary<String, TClassOf>;
   public
-    class function CreateFromTag(Owner: TgElement; const TagName: String): TgElement;
-    procedure SetModel(Value: TgBase);
-    procedure ProcessDocument(Source,Target: IXMLDocument; gBase: TgBase = nil);
+    class constructor Create;
+    class destructor Destroy;
+    class function CreateFromTag(Owner: TgElement; Node: IXMLNode; AgBase: TgBase): TgElement;
+    class procedure Register(const TagName: String; AClass: TClassOf);
+    constructor Create(Owner: TgBase = nil); override;
+    procedure ProcessDocument(SourceDocument,TargetDocument: IXMLDocument; AgBase: TgBase = nil);
     procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
     procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
-    function GetValue(const Value: String): String;
+    function GetValue(const Value: String): Variant;
     function ProcessValue(const Value: OleVariant): OleVariant; virtual;
     property TagName: String read FTagName write FTagName;
-    property gBase: TgBase read GetgBase;
-    property Model: TgBase read GetModel;
+    property gBase: TgBase read GetgBase write FgBase;
+  published
+    property Condition: Boolean read FCondition write FCondition default True;
+    property ConditionSelf: Boolean read FConditionSelf write FConditionSelf default True;
+  end;
+
+  TgElementList = class(TgElement)
+  private
+    FObject: TgList;
+  public
+    procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
+  published
+    property Object_: TgList read FObject write FObject;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -2676,6 +2696,11 @@ End;
 procedure DefaultValue.Execute(ABase: TgBase);
 begin
   ABase[RTTIProperty.Name] := Value;
+end;
+
+constructor DefaultValue.Create(AValue: Boolean);
+begin
+  FValue := AValue;
 end;
 
 { TgSerializer }
@@ -5893,12 +5918,53 @@ end;
 
 { TgTagBase }
 
-class function TgElement.CreateFromTag(Owner: TgElement;
-  const TagName: String): TgElement;
+class constructor TgElement.Create;
 begin
-  Result := TgElement.Create(Owner);
-  Result.TagName := TagName;
+  inherited;
+  _Tags := TDictionary<String, TClassOf>.Create;
+  Register('list',TgElementList);
 end;
+
+constructor TgElement.Create(Owner: TgBase);
+begin
+  inherited;
+  FCondition := True;
+  FConditionSelf := True;
+end;
+
+class function TgElement.CreateFromTag(Owner: TgElement;
+  Node: IXMLNode; AgBase: TgBase): TgElement;
+var
+  AClass: TClassOf;
+  TagName: String;
+  NodeName: String;
+  Index: Integer;
+  RTTIProperty: TRTTIProperty;
+begin
+  NodeName := Node.NodeName;
+  if not _Tags.TryGetValue(NodeName, AClass) then
+    AClass := TgElement;
+  Result := AClass.Create(Owner);
+  Result.TagName := Node.NodeName;
+  Index := Node.AttributeNodes.Count-1;
+  for Index := 0 to Index do begin
+    NodeName := Node.AttributeNodes[Index].NodeName;
+    if NodeName = 'object' then
+      NodeName := NodeName + '_';
+    RTTIProperty := G.PropertyByName(Result,NodeName);
+    if Assigned(RTTIProperty) and RTTIProperty.IsWritable then
+      if not RTTIProperty.PropertyType.IsInstance then
+        Result[NodeName] := Eval(Node.AttributeNodes[Index].NodeValue,AgBase)
+      else
+        Result.Objects[NodeName] := AgBase.Objects[Node.AttributeNodes[Index].NodeValue]
+  end;
+end;
+class destructor TgElement.Destroy;
+begin
+  FreeAndNil(_Tags);
+  inherited;
+end;
+
 (*
 procedure TgElement.ProcessDocument(Source, Target: IXMLDocument);
     procedure CopyNodes(Input, Output: IXMLNodeList);
@@ -5924,7 +5990,9 @@ begin
   if Assigned(FgBase) then
     Result := FgBase
   else if Assigned(FOwner) and (FOwner is TgElement) then
-    Result := (FOwner as TgElement).gBase;
+    Result := (FOwner as TgElement).gBase
+  else
+    Result := nil;
 end;
 
 function TgElement.GetModel: TgBase;
@@ -5935,24 +6003,9 @@ begin
     Result := FgBase; // Bottom level has
 end;
 
-function TgElement.GetValue(const Value: String): String;
-var
-  ABase: TgBase;
+function TgElement.GetValue(const Value: String): Variant;
 begin
-  ABase := gBase;
-  if StartsText('Model.',Value) then begin
-    ABase := Model;
-    if not Assigned(ABase) then
-      raise E.Create('No Model Available');
-    Result := ABase[Copy(Value,Length('Model.')+1,Length(Value))]
-  end
-  else if not Assigned(ABase) then
-   raise E.Create('No Base Model Available')
-  else
-    Result := ABase[Value];
-
-
-
+  Result := Eval(Value,gBase);
 end;
 
 procedure TgElement.ProcessChildNodes(SourceChildNodes,
@@ -5961,25 +6014,25 @@ var
   Next: TgElement;
   Index: Integer;
 begin
-  Index := SourceChildNodes.Count -1;
   Index := SourceChildNodes.Count-1;
   for Index := 0 to Index do begin
-    Next := TgElement.CreateFromTag(Self,SourceChildNodes[Index].NodeName);
+    Next := TgElement.CreateFromTag(Self,SourceChildNodes[Index],gBase);
     try
-      Next.ProcessNode(SourceChildNodes[Index],TargetChildNodes,TargetDocument);
+      if Next.Condition then
+        Next.ProcessNode(SourceChildNodes[Index],TargetChildNodes,TargetDocument);
     finally
       Next.Free;
     end;
   end;
 end;
 
-procedure TgElement.ProcessDocument(Source, Target: IXMLDocument; gBase: TgBase = nil);
+procedure TgElement.ProcessDocument(SourceDocument, TargetDocument: IXMLDocument; AgBase: TgBase = nil);
 var
   Index: Integer;
 begin
-  FgBase := gBase;
-  FPath := 'Model';
-  ProcessChildNodes(Source.ChildNodes,Target.ChildNodes,Target);
+  if Assigned(AgBase) then
+    gBase := AgBase;
+  ProcessChildNodes(SourceDocument.ChildNodes,TargetDocument.ChildNodes,TargetDocument);
 end;
 
 
@@ -6009,6 +6062,7 @@ begin
   for Index := 0 to Index do
     with Source.AttributeNodes[Index] do
       if not VarIsNull(NodeValue) and not VarIsEmpty(NodeValue) then
+{ TODO : Should I drop any specific attributes }
         Target.Attributes[NodeName] := ProcessValue(NodeValue);
 
   ProcessChildNodes(Source.ChildNodes,Target.ChildNodes,TargetDocument);
@@ -6025,6 +6079,8 @@ begin
     Result := Value // {} replacements
   else begin
     S := Value;
+    // {}'s represent a expression to be evaulated
+{ TODO : Handle Quotes Expression Evaulator}
     StartI := Pos('{',S);
     if StartI = 0 then
       Exit(Value) // nothing to do
@@ -6040,7 +6096,7 @@ begin
             if StartI <> BeginingI then
               Builder.Append(S,BeginingI-1,StartI-BeginingI);
             Inc(StartI);
-            Builder.Append(GetValue(Copy(S,StartI,EndI-StartI)));
+            Builder.Append(String(GetValue(Copy(S,StartI,EndI-StartI))));
             BeginingI := EndI+1;
 
             StartI := PosEx('{',S,BeginingI);
@@ -6057,9 +6113,22 @@ begin
   end;
 end;
 
-procedure TgElement.SetModel(Value: TgBase);
+class procedure TgElement.Register(const TagName: String; AClass: TClassOf);
 begin
-  FgBase := Value;
+  _Tags.Add(TagName,AClass);
+end;
+
+{ TgElementList }
+
+procedure TgElementList.ProcessNode(Source: IXMLNode;
+  TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+begin
+  Object_.First;
+  while not Object_.EOL do begin
+    gBase := Object_.Current;
+    ProcessChildNodes(Source.CHildNodes,TargetChildNodes,TargetDocument);
+    Object_.Next;
+  end;
 end;
 
 Initialization
