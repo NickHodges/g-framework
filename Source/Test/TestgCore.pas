@@ -401,6 +401,24 @@ type
     procedure ListTag;
   end;
 
+  [PersistenceManagerClassName('gCore.TgPersistenceManagerIBX')]
+  TFirebirdObject = class(TgIDObject)
+  strict private
+    FName: TString50;
+  published
+    property Name: TString50 read FName write FName;
+  end;
+
+  TestTFirebirdObject = class(TTestCase)
+  strict private
+    FFirebirdObject: TFirebirdObject;
+  protected
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Save;
+  end;
+
 implementation
 
 Uses
@@ -2085,6 +2103,53 @@ begin
 
 end;
 
+procedure TestTFirebirdObject.Save;
+var
+  NewFirebirdObject: TFirebirdObject;
+begin
+  FFirebirdObject.Name := 'One';
+  FFirebirdObject.Save;
+  NewFirebirdObject := TFirebirdObject.Create;
+  try
+    NewFirebirdObject.ID := FFirebirdObject.ID;
+    CheckTrue(NewFirebirdObject.Load);
+    NewFirebirdObject.Name := 'Two';
+    NewFirebirdObject.Save;
+  finally
+    NewFirebirdObject.Free;
+  end;
+  NewFirebirdObject := TFirebirdObject.Create;
+  try
+    NewFirebirdObject.ID := FFirebirdObject.ID;
+    NewFirebirdObject.Load;
+    CheckEquals('Two', NewFirebirdObject.Name);
+    NewFirebirdObject.Delete;
+  finally
+    NewFirebirdObject.Free;
+  end;
+  NewFirebirdObject := TFirebirdObject.Create;
+  try
+    NewFirebirdObject.ID := FFirebirdObject.ID;
+    CheckFalse(NewFirebirdObject.Load);
+  finally
+    NewFirebirdObject.Free;
+  end;
+end;
+
+{ TestTFirebirdObject }
+
+procedure TestTFirebirdObject.SetUp;
+begin
+  inherited;
+  FFirebirdObject := TFirebirdObject.Create;
+end;
+
+procedure TestTFirebirdObject.TearDown;
+begin
+  FreeAndNil(FFirebirdObject);
+  inherited;
+end;
+
 procedure TestHTMLParser.ListTag;
 var
   Text: String;
@@ -2105,6 +2170,7 @@ begin
   Model.Customers.Current.FirstName := 'Jim';
   Model.Customers.Current.LastName := '<Bush>';
   Model.Customers.Current.WebAddress := 'http://www.yahoo.com';
+
   Text :=
 //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
      '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
@@ -2113,8 +2179,10 @@ begin
     +'<title>Untitled<b> Document</b>!</title>'#13#10
     +'</head>'#13#10
     +'<body>'#13#10
+    +'  <b conditionSelf="Customers.Count = 1" >Count</b>'
     +'  <list condition="Customers.Count > 1" object="Customers">'#13#10 //DoList
-    +'    <a href="{WebAddress}">{if(Name &lt;&gt; '',Name)}</a><br />'#13#10
+//    +'    <a href="{WebAddress}">{if(FirstName &lt;&gt; '',FirstName)}</a><br />'#13#10
+    +'    <a href="{WebAddress}">{FirstName} {LastName}</a><br />'#13#10
 //    <div conditionself="ValidationErrors.Name" class="Error">Name</div>
     +'  </list>'#13#10
     +'</body>'#13#10
@@ -2194,5 +2262,8 @@ initialization
 //  RegisterTest(TestTgNodeCSV.Suite);
   RegisterTest(TestTSerializeCSV.Suite);
   RegisterTest(TestHTMLParser.Suite);
+  RegisterTest(TestTFirebirdObject.Suite);
+  RegisterRuntimeClasses([TFirebirdObject]);
+  G.Initialize;
 end.
 
