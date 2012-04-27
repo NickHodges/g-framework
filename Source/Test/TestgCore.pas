@@ -12,7 +12,10 @@ unit TestgCore;
 interface
 
 uses
-  TestFramework, gCore, System.Rtti;
+  TestFramework, gCore, System.Rtti,
+  Xml.XMLDoc,
+  Xml.XMLDom,
+  Xml.XMLIntf;
 
 type
   TIDObject3 = class;
@@ -364,6 +367,38 @@ type
     procedure DeserializeArr;
     procedure SerializeList;
     procedure DeserializeList;
+    procedure SerializeCRLF;
+    procedure DeserializeCRLF;
+  end;
+
+  TestHTMLParser = class(TTestCase)
+  public
+    type
+
+      TCustomer = class(TgObject)
+      private
+        FFirstName: String;
+        FLastName: String;
+        FWebAddress: String;
+      published
+        property FirstName: String read FFirstName write FFirstName;
+        property LastName: String read FLastName write FLastName;
+        property WebAddress: String read FWebAddress write FWebAddress;
+      end;
+
+      TCustomers = TgList<TCustomer>;
+
+      TModel = class(TgModel)
+      private
+        FCustomers: TCustomers;
+      published
+        property Customers: TCustomers read FCustomers;
+      end;
+
+  published
+    procedure Replace;
+    procedure Convert1;
+    procedure ListTag;
   end;
 
   [PersistenceManagerClassName('gCore.TgPersistenceManagerIBX')]
@@ -1876,6 +1911,27 @@ begin
 
 end;
 
+procedure TestTSerializeCSV.DeserializeCRLF;
+var
+  List: TgList<TgTest>;
+  S: String;
+begin
+  S := 'Name,Price'#$D#$A'"Jim'#$A'Barney",12.3'#$D#$A'"Fred'#$A'Mosbie",50'#$D#$A;
+  List := TgList<TgTest>.Create;
+  FSerializer.Deserialize(List,S);
+  List.First;
+  CheckFalse(List.EOL);
+  CheckEquals('Jim',List.Current.Name);
+  CheckEquals(12.30,List.Current.Price);
+  List.Next;
+  CheckFalse(List.EOL);
+  CheckEquals('Fred',List.Current.Name);
+  CheckEquals(50,List.Current.Price);
+  List.Next;
+  CheckTrue(List.EOL);
+  FreeAndNil(List);
+end;
+
 procedure TestTSerializeCSV.DeserializeList;
 var
   List: TgList<TgTest>;
@@ -1913,6 +1969,23 @@ begin
   S := FSerializer.Serialize(Item);
   CheckEquals('Name,Price,Names.Count,Names[0].Name,Names[1].Name'#$D#$A'Judy,34.23,2,Hello,There'#$D#$A,S);
   FreeAndNil(Item);
+end;
+
+procedure TestTSerializeCSV.SerializeCRLF;
+var
+  List: TgList<TgTest>;
+  S: String;
+begin
+  List := TgList<TgTest>.Create;
+  List.Add;
+  List.Current.Name := 'Jim'#10'Barney';
+  List.Current.Price := 12.30;
+  List.Add;
+  List.Current.Name := 'Fred'#10'Mosbie';
+  List.Current.Price := 50;
+  S := FSerializer.Serialize(List);
+  CheckEquals('Name,Price'#$D#$A'"Jim'#$A'Barney",12.3'#$D#$A'"Fred'#$A'Mosbie",50'#$D#$A,S);
+  FreeAndNil(List);
 end;
 
 procedure TestTSerializeCSV.SerializeList;
@@ -1983,6 +2056,53 @@ begin
 
 end;
 
+{ TestHTMLParser }
+
+procedure TestHTMLParser.Convert1;
+var
+  Text: String;
+  TextResult: String;
+  SourceDocument: TXMLDocument;
+  SourceDocumentInterface: IXMLDocument;
+  TargetDocument: TXMLDocument;
+  TargetDocumentInterface: IXMLDocument;
+  gElement: TgElement;
+begin
+  Text :=
+//     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10+
+//    '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>Untitled <b>Document</b>S</title></head><body></body></html>';
+    '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A+
+    '  <head xmlns="">'#$D#$A+
+    '    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A+
+    '    <title>Untitled   <b>Document</b>'#$D#$A+
+    '    S</title>'#$D#$A+
+    '  </head>'#$D#$A+
+    '  <body xmlns=""/>'#$D#$A+
+    '</html>'#$D#$A;
+  SourceDocument := TXMLDocument.Create(Nil);
+  SourceDocumentInterface := SourceDocument;
+  SourceDocument.DOMVendor := GetDOMVendor('MSXML');
+  SourceDocument.Options := [doNodeAutoIndent];
+  SourceDocument.LoadFromXML(Text);
+
+  TargetDocument := TXMLDocument.Create(Nil);
+  TargetDocumentInterface := TargetDocument;
+  TargetDocument.DOMVendor := GetDOMVendor('MSXML');
+  TargetDocument.Options := [doNodeAutoIndent,doAttrNull];
+  TargetDocument.Active := True;
+  gElement := TgElement.Create;
+  try
+    gElement.ProcessDocument(SourceDocument,TargetDocument);
+  finally
+    gElement.Free;
+  end;
+//  TargetDocumentInterface := TargetDocument;
+  TextResult := TargetDocument.XML.Text;
+//  TargetDocument.SaveToXML(TextResult);
+  CheckEquals(Text,TextResult);
+
+end;
+
 procedure TestTFirebirdObject.Save;
 var
   NewFirebirdObject: TFirebirdObject;
@@ -2030,6 +2150,104 @@ begin
   inherited;
 end;
 
+procedure TestHTMLParser.ListTag;
+var
+  Text: String;
+  TextResult: String;
+  Model: TModel;
+  SourceDocument: TXMLDocument;
+  SourceDocumentInterface: IXMLDocument;
+  TargetDocument: TXMLDocument;
+  TargetDocumentInterface: IXMLDocument;
+  gElement: TgElement;
+begin
+  Model := TModel.Create;
+  Model.Customers.Add;
+  Model.Customers.Current.FirstName := 'Steve<>';
+  Model.Customers.Current.LastName:= 'Joe & Jerry';
+  Model.Customers.Current.WebAddress := 'http://www.google.com';
+  Model.Customers.Add;
+  Model.Customers.Current.FirstName := 'Jim';
+  Model.Customers.Current.LastName := '<Bush>';
+  Model.Customers.Current.WebAddress := 'http://www.yahoo.com';
+
+  Text :=
+//     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+     '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+    +'<head>'#13#10
+    +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+    +'<title>Untitled<b> Document</b>!</title>'#13#10
+    +'</head>'#13#10
+    +'<body>'#13#10
+    +'  <b conditionSelf="Customers.Count = 1" >Count</b>'
+    +'  <list condition="Customers.Count > 1" object="Customers">'#13#10 //DoList
+//    +'    <a href="{WebAddress}">{if(FirstName &lt;&gt; '',FirstName)}</a><br />'#13#10
+    +'    <a href="{WebAddress}">{FirstName} {LastName}</a><br />'#13#10
+//    <div conditionself="ValidationErrors.Name" class="Error">Name</div>
+    +'  </list>'#13#10
+    +'</body>'#13#10
+    +'</html>'#13#10;
+  SourceDocument := TXMLDocument.Create(Nil);
+  SourceDocumentInterface := SourceDocument;
+  SourceDocument.DOMVendor := GetDOMVendor('MSXML');
+  SourceDocument.Options := [doNodeAutoIndent];
+  SourceDocument.LoadFromXML(Text);
+
+  TargetDocument := TXMLDocument.Create(Nil);
+  TargetDocumentInterface := TargetDocument;
+  TargetDocument.DOMVendor := GetDOMVendor('MSXML');
+  TargetDocument.Options := [doNodeAutoIndent,doAttrNull];
+  TargetDocument.Active := True;
+  gElement := TgElement.Create;
+  try
+    gElement.ProcessDocument(SourceDocument,TargetDocument,Model);
+  finally
+    gElement.Free;
+  end;
+//  TargetDocumentInterface := TargetDocument;
+  TextResult := TargetDocument.XML.Text;
+//  TargetDocument.SaveToXML(TextResult);
+  CheckEquals(Text,TextResult);
+
+end;
+
+procedure TestHTMLParser.Replace;
+var
+  Customer: TCustomer;
+  Element: TgElement;
+begin
+  Customer := TCustomer.Create;
+  Customer.FirstName := 'Steve';
+  Customer.LastName := 'Nooner';
+  Customer.WebAddress := 'http://www.google.com';
+  try
+    Element := TgElement.Create;
+    try
+      Element.gBase := Customer;
+      CheckEquals('Hello',Element.ProcessValue('Hello'));
+      CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
+      CheckEquals(Customer.FirstName+Customer.LastName,Element.ProcessValue('{FirstName}{LastName}'));
+      CheckEquals('X'+Customer.FirstName+Customer.LastName,Element.ProcessValue('X{FirstName}{LastName}'));
+      CheckEquals(Customer.FirstName+'X'+Customer.LastName,Element.ProcessValue('{FirstName}X{LastName}'));
+      CheckEquals(Customer.FirstName+Customer.FirstName+'X',Element.ProcessValue('{FirstName}{FirstName}X'));
+      CheckEquals('X'+Customer.FirstName+'X'+Customer.LastName+'X',Element.ProcessValue('X{FirstName}X{LastName}X'));
+      CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
+      CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
+      CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
+      CheckEquals('<p>Hi, '+Customer.FirstName+'</p>',Element.ProcessValue('<p>Hi, {FirstName}</p>'));
+      CheckEquals('<p>Hi, '+Customer.FirstName+' '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {FirstName} {LastName}</p>'));
+      CheckEquals('<p>Hi, Mr. '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {''Mr. '' + LastName}</p>'));
+      //Evaluate('<p>Hello {Name}</p>', Customer)
+    finally
+      Element.Free;
+    end;
+
+  finally
+    Customer.Free;
+  end;
+
+end;
+
 initialization
 
   // Register any test cases with the test runner
@@ -2043,6 +2261,7 @@ initialization
   RegisterTest(TestTIDObject2.Suite);
 //  RegisterTest(TestTgNodeCSV.Suite);
   RegisterTest(TestTSerializeCSV.Suite);
+  RegisterTest(TestHTMLParser.Suite);
   RegisterTest(TestTFirebirdObject.Suite);
   RegisterRuntimeClasses([TFirebirdObject]);
   G.Initialize;

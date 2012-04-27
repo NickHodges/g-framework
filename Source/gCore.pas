@@ -3,6 +3,7 @@ unit gCore;
 interface
 
 Uses
+
   Generics.Collections,
   Generics.Defaults,
   System.RTTI,
@@ -64,6 +65,7 @@ type
     Constructor Create(AValue : Integer); Overload;
     Constructor Create(AValue : Double); Overload;
     Constructor Create(AValue : TDateTime); Overload;
+    Constructor Create(AValue : Boolean); Overload;
     procedure Execute(ABase: TgBase);
     Property Value : Variant Read FValue;
   End;
@@ -1494,6 +1496,50 @@ type
     property Value: String read GetValue write SetValue;
   end;
 
+  TgElement = class(TgBase)
+  public
+    type
+      E = class(Exception);
+      TClassOf = class of TgElement;
+  { TODO : Handle Conditions }
+  { TODO : ConditionSelf says don't do the outer tag, but do the inner tags }
+  private
+    FTagName: String;
+    FgBase: TgBase;
+    FCondition: Boolean;
+    FConditionSelf: Boolean;
+    function GetgBase: TgBase;
+    function GetModel: TgBase;
+    class var _Tags: TDictionary<String, TClassOf>;
+  public
+    class constructor Create;
+    class destructor Destroy;
+    class function CreateFromTag(Owner: TgElement; Node: IXMLNode; AgBase: TgBase): TgElement;
+    function GetPropertyByName(const Name: String): TRTTIProperty;
+    class procedure Register(const TagName: String; AClass: TClassOf);
+    constructor Create(Owner: TgBase = nil); override;
+    procedure ProcessDocument(SourceDocument,TargetDocument: IXMLDocument; AgBase: TgBase = nil);
+    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
+    procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
+    function GetValue(const Value: String): Variant;
+    function ProcessValue(const Value: OleVariant): OleVariant; virtual;
+    property TagName: String read FTagName write FTagName;
+    property gBase: TgBase read GetgBase write FgBase;
+  published
+    property Condition: Boolean read FCondition write FCondition default True;
+    property ConditionSelf: Boolean read FConditionSelf write FConditionSelf default True;
+  end;
+
+  TgElementList = class(TgElement)
+  private
+    FObject: TgList;
+  public
+    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
+    procedure ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); override;
+  published
+    property Object_: TgList read FObject write FObject;
+  end;
+
   TgPersistenceManagerIBX = class(TgPersistenceManagerSQL)
   strict private
     function GeneratorName: String;
@@ -1868,7 +1914,9 @@ Begin
     begin
       AValue := TgBase(RTTIProperty.GetValue(Self).AsObject);
       if Tail > '' then
-        Result := AValue.DoGetObjects(Tail, AValue);
+        Result := AValue.DoGetObjects(Tail, AValue)
+      else
+        Result := True;
     end
     Else
       raise EgValue.CreateFmt('Can''t return %s.%s, because %s is not an object property', [RTTIProperty.Name, Tail, RTTIProperty.Name]);
@@ -3043,6 +3091,11 @@ End;
 procedure DefaultValue.Execute(ABase: TgBase);
 begin
   ABase[RTTIProperty.Name] := Value;
+end;
+
+constructor DefaultValue.Create(AValue: Boolean);
+begin
+  FValue := AValue;
 end;
 
 { TgSerializer }
@@ -6276,6 +6329,218 @@ begin
   FValue := AName;
 end;
 
+{ TgTagBase }
+
+class constructor TgElement.Create;
+begin
+  inherited;
+  _Tags := TDictionary<String, TClassOf>.Create;
+  Register('list',TgElementList);
+end;
+
+constructor TgElement.Create(Owner: TgBase);
+begin
+  inherited;
+  FCondition := True;
+  FConditionSelf := True;
+end;
+
+class function TgElement.CreateFromTag(Owner: TgElement;
+  Node: IXMLNode; AgBase: TgBase): TgElement;
+var
+  AClass: TClassOf;
+  TagName: String;
+  NodeName: String;
+  Index: Integer;
+  RTTIProperty: TRTTIProperty;
+begin
+  NodeName := Node.NodeName;
+  if not _Tags.TryGetValue(NodeName, AClass) then
+    AClass := TgElement;
+  Result := AClass.Create(Owner);
+  Result.TagName := Node.NodeName;
+  Index := Node.AttributeNodes.Count-1;
+  for Index := 0 to Index do begin
+    NodeName := Node.AttributeNodes[Index].NodeName;
+    RTTIProperty :=  Result.GetPropertyByName(NodeName);
+    if Assigned(RTTIProperty) and RTTIProperty.IsWritable then
+      if not RTTIProperty.PropertyType.IsInstance then
+        Result[NodeName] := Eval(Node.AttributeNodes[Index].NodeValue,AgBase)
+      else
+        RTTIProperty.SetValue(Result,AgBase.Objects[Node.AttributeNodes[Index].NodeValue]);
+  end;
+end;
+class destructor TgElement.Destroy;
+begin
+  FreeAndNil(_Tags);
+  inherited;
+end;
+
+(*
+procedure TgElement.ProcessDocument(Source, Target: IXMLDocument);
+    procedure CopyNodes(Input, Output: IXMLNodeList);
+    var
+      i: Integer;
+    begin
+      for i := 0 to Input.Count - 1 do
+      begin
+        Output.Add(Input[i]);
+        CopyNodes(Input[i].ChildNodes, Output[i].ChildNodes);
+      end; // for
+    end; // CopyNodes
+begin
+  Target.Options := [doNodeAutoIndent];
+  Target.ChildNodes.Add(Source.DocumentElement);
+  CopyNodes(Source.DocumentElement.ChildNodes, Target.DocumentElement.ChildNodes);
+//  Target.SaveToFile(Filename);
+end; // SaveXml
+*)
+
+function TgElement.GetgBase: TgBase;
+begin
+  if Assigned(FgBase) then
+    Result := FgBase
+  else if Assigned(FOwner) and (FOwner is TgElement) then
+    Result := (FOwner as TgElement).gBase
+  else
+    Result := nil;
+end;
+
+function TgElement.GetModel: TgBase;
+begin
+  if Assigned(FOwner) and (FOwner is TgElement) then
+    Result := (FOwner as TgElement).Model
+  else
+    Result := FgBase; // Bottom level has
+end;
+
+function TgElement.GetPropertyByName(const Name: String): TRTTIProperty;
+begin
+  Result := G.PropertyByName(Self,Name);
+  if not Assigned(Result) then
+    Result := G.PropertyByName(Self,Name + '_');
+end;
+
+function TgElement.GetValue(const Value: String): Variant;
+begin
+  Result := Eval(Value,gBase);
+end;
+
+procedure TgElement.ProcessChildNodes(SourceChildNodes,
+  TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+var
+  Next: TgElement;
+  Index: Integer;
+begin
+  Index := SourceChildNodes.Count-1;
+  for Index := 0 to Index do begin
+    Next := TgElement.CreateFromTag(Self,SourceChildNodes[Index],gBase);
+    try
+      if Next.Condition then
+        Next.ProcessNode(SourceChildNodes[Index],TargetChildNodes,TargetDocument);
+    finally
+      Next.Free;
+    end;
+  end;
+end;
+
+procedure TgElement.ProcessDocument(SourceDocument, TargetDocument: IXMLDocument; AgBase: TgBase = nil);
+var
+  Index: Integer;
+begin
+  if Assigned(AgBase) then
+    gBase := AgBase;
+  ProcessChildNodes(SourceDocument.ChildNodes,TargetDocument.ChildNodes,TargetDocument);
+end;
+
+
+procedure TgElement.ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+var
+  Target: IXMLNode;
+  Index: Integer;
+begin
+  if ConditionSelf then begin
+    Target := nil;
+    case Source.NodeType of
+      ntText
+      : begin
+          Target := Source.CloneNode(True);
+          Target.NodeValue := ProcessValue(Target.NodeValue);
+          TargetChildNodes.Add(Target);
+          exit;
+        end;
+      else begin
+        Target := TargetDocument.CreateNode(Source.NodeName);
+        TargetChildNodes.Add(Target);
+      end;
+    end;
+
+    if not Assigned(Target) then exit;
+
+    Index := Source.AttributeNodes.Count-1;
+    for Index := 0 to Index do
+      with Source.AttributeNodes[Index] do
+        if not VarIsNull(NodeValue) and not VarIsEmpty(NodeValue) then
+          if GetPropertyByName(NodeName) = nil then
+  { TODO : Should I drop any specific attributes }
+            Target.Attributes[NodeName] := ProcessValue(NodeValue);
+    ProcessChildNodes(Source.ChildNodes,Target.ChildNodes,TargetDocument);
+  end
+  else
+    ProcessChildNodes(Source.ChildNodes,TargetChildNodes,TargetDocument);
+end;
+
+function TgElement.ProcessValue(const Value: OleVariant): OleVariant;
+var
+  S: String;
+  Builder: TStringBuilder;
+  BeginingI: Integer;
+  StartI,EndI: Integer;
+begin
+  if not VarIsStr(Value) or not Assigned(gBase) then
+    Result := Value // {} replacements
+  else begin
+    S := Value;
+    // {}'s represent a expression to be evaulated
+{ TODO : Handle Quotes Expression Evaulator}
+    StartI := Pos('{',S);
+    if StartI = 0 then
+      Exit(Value) // nothing to do
+    else begin
+      Builder := TStringBuilder.Create;
+      try
+        BeginingI := 1;
+        repeat
+          EndI := PosEx('}',S,StartI);
+          if EndI = 0 then
+            Break
+          else begin
+            if StartI <> BeginingI then
+              Builder.Append(S,BeginingI-1,StartI-BeginingI);
+            Inc(StartI);
+            Builder.Append(String(GetValue(Copy(S,StartI,EndI-StartI))));
+            BeginingI := EndI+1;
+
+            StartI := PosEx('{',S,BeginingI);
+          end;
+        until StartI = 0;
+        EndI := Length(S)+1;
+        if BeginingI < EndI then
+          Builder.Append(S,BeginingI-1,EndI-BeginingI);
+        Result := Builder.ToString;
+      finally
+        Builder.Free;
+      end;
+    end;
+  end;
+end;
+
+class procedure TgElement.Register(const TagName: String; AClass: TClassOf);
+begin
+  _Tags.Add(TagName,AClass);
+end;
+
+
 destructor TgServer.Destroy;
 begin
   If FMaxConnectionSemaphore > 0 Then
@@ -6878,6 +7143,27 @@ end;
 procedure TgConnectionDescriptorIBX.FreeConnection(AConnection: TObject);
 begin
   AConnection.Free;
+end;
+
+{ TgElementList }
+
+procedure TgElementList.ProcessChildNodes(SourceChildNodes,
+  TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+var
+  Next: TgElement;
+begin
+  Object_.First;
+  while not Object_.EOL do begin
+    gBase := Object_.Current;
+    inherited ProcessChildNodes(SourceChildNodes,TargetChildNodes,TargetDocument);
+    Object_.Next;
+  end;
+end;
+
+procedure TgElementList.ProcessNode(Source: IXMLNode;
+  TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+begin
+  ProcessChildNodes(Source.ChildNodes,TargetChildNodes,TargetDocument);
 end;
 
 Function TgHTMLExpressionEvaluator.GetValue(Const AVariableName : String) : Variant;
