@@ -24,6 +24,7 @@ Uses
 
 type
 
+  TgHTMLString = Type String;
   TSystemCustomAttribute = System.TCustomAttribute; // Gets around Class complete not supporting the . in some generics
   TCustomAttributeClass = class of TCustomAttribute;
   TgBaseClass = class of TgBase;
@@ -289,11 +290,13 @@ type
     procedure AutoCreate; virtual;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
     function DoGetObjects(const APath: String; out AValue: TgBase): Boolean; virtual;
+    function DoGetProperties(const APath: String; ARTTIProperty: TRTTIProperty): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetIsInspecting: Boolean; virtual;
     function GetPathName: String; virtual;
     function GetValues(Const APath : String): Variant; virtual;
     function GetObjects(Const APath : String): TgBase; virtual;
+    function GetProperties(Const APath : String): TRTTIProperty; virtual;
     /// <summary>TgBase.OwnerByClass walks up the Owner path looking for an owner whose
     /// class type matches the AClass parameter. This method gets used by the
     /// AutoCreate method to determine if an object property should get created, or
@@ -361,6 +364,16 @@ type
     ///	  <see cref="TgBase" /> class decendant
     ///	</param>
     property Objects[Const APath : String]: TgBase read GetObjects;
+    ///	<summary>
+    ///	  This property is used to get and set Properties for any published
+    ///	  property on this structure or any <see cref="TgBase" /> structure
+    ///	  owned by a published class property
+    ///	</summary>
+    ///	<param name="APath">
+    ///	  Local properties are just their name, but when using this on a
+    ///	  <see cref="TgBase" /> class decendant
+    ///	</param>
+    property Properties[Const APath : String]: TRTTIProperty read GetProperties;
   published
     [NotSerializable] [NotVisible]
     property FriendlyClassName: String read GetFriendlyClassName;
@@ -1554,12 +1567,20 @@ Const
 
 type
   TgBaseExpressionEvaluator = Class(TgExpressionEvaluator)
-  Strict Private
-    FModel : TgBase;
   Strict Protected
+    FModel : TgBase;
     Function GetValue(Const AVariableName : String) : Variant; Override;
   Public
     Constructor Create(AModel : TgBase); Reintroduce; Virtual;
+  End;
+
+  TgHTMLExpressionEvaluator = class(TgBaseExpressionEvaluator)
+  strict private
+    FIsHTML: Boolean;
+  Strict Protected
+    Function GetValue(Const AVariableName : String) : Variant; Override;
+  public
+    property IsHTML: Boolean read FIsHTML;
   End;
 
 Function Eval(Const AExpression : String; ABase : TgBase) : Variant;
@@ -1569,6 +1590,19 @@ Begin
   ExpressionEvaluator := TgBaseExpressionEvaluator.Create(ABase);
   Try
     Result := ExpressionEvaluator.Evaluate(AExpression);
+  Finally
+    ExpressionEvaluator.Free;
+  End;
+End;
+
+function EvalHTML(const AExpression: String; ABase: TgBase; out AIsHTML: Boolean): Variant;
+Var
+  ExpressionEvaluator : TgHTMLExpressionEvaluator;
+Begin
+  ExpressionEvaluator := TgHTMLExpressionEvaluator.Create(ABase);
+  Try
+    Result := ExpressionEvaluator.Evaluate(AExpression);
+    AIsHTML := ExpressionEvaluator.IsHTML;
   Finally
     ExpressionEvaluator.Free;
   End;
@@ -1841,6 +1875,30 @@ Begin
   end;
 End;
 
+function TgBase.DoGetProperties(const APath: String; ARTTIProperty: TRTTIProperty): Boolean;
+Var
+  Head : String;
+  ObjectProperty: TgBase;
+  Tail : String;
+Begin
+  Result := False;
+  SplitPath(APath, Head, Tail);
+  ARTTIProperty := G.PropertyByName(Self, Head);
+  if Assigned(ARTTIProperty) Then
+  begin
+    if ARTTIProperty.PropertyType.IsInstance then
+    begin
+      if Tail > '' then
+      Begin
+        ObjectProperty := TgBase(ARTTIProperty.GetValue(Self).AsObject);
+        Result := ObjectProperty.DoGetProperties(Tail, ARTTIProperty);
+      End
+    end
+    Else
+      Result := True;
+  end;
+End;
+
 function TgBase.DoSetValues(Const APath : String; AValue : Variant): Boolean;
 Var
   Head: String;
@@ -1984,6 +2042,12 @@ End;
 function TgBase.GetObjects(Const APath : String): TgBase;
 Begin
   If Not DoGetObjects(APath, Result) Then
+    Raise EgValue.CreateFmt('Path ''%s'' not found.', [APath]);
+End;
+
+function TgBase.GetProperties(Const APath : String): TRTTIProperty;
+Begin
+  If Not DoGetProperties(APath, Result) Then
     Raise EgValue.CreateFmt('Path ''%s'' not found.', [APath]);
 End;
 
@@ -2131,7 +2195,7 @@ begin
         FServers.AddOrSetValue(Server.Name, Server);
         for ConnectionDescriptor in Server.ConnectionDescriptors do
           FConnectionDescriptors.AddOrSetValue(ConnectionDescriptor.Name, ConnectionDescriptor);
-        Servers.Next;  
+        Servers.Next;
       end;
     finally
       Servers.Free;
@@ -2147,7 +2211,7 @@ begin
       StringToFile(PersistenceManager.Serialize(TgSerializerXML), FileName);
     End;
     PersistenceManager.Initialize;
-  End;  
+  End;
   ForceDirectories(G.DataPath);
   Servers := TgList<TgServer>.Create;
   try
@@ -2305,7 +2369,7 @@ begin
   FreeAndNil(FConnectionDescriptors);
   for PersistenceManager in FPersistenceManagers.Values do
     PersistenceManager.Free;
-  FreeAndNil(FPersistenceManagers);  
+  FreeAndNil(FPersistenceManagers);
   for Server in FServers.Values do
     Server.Free;
   FreeAndNil(FServers);
@@ -5907,7 +5971,7 @@ begin
     Connection.CommitFreeAndNil(TDBXTransaction(GConnection.Transaction));
   Finally
     ConnectionDescriptor.ReleaseConnection;
-  End;  
+  End;
 end;
 
 function TgPersistenceManagerDBX.Count(AIdentityList: TgIdentityList): Integer;
@@ -5981,7 +6045,7 @@ begin
     Connection.RollbackFreeAndNil(TDBXTransaction(GConnection.Transaction));
   Finally
     ConnectionDescriptor.ReleaseConnection;
-  End;  
+  End;
 end;
 
 procedure TgPersistenceManagerDBX.StartTransaction(AObject: TgIdentityObject;ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
@@ -5995,7 +6059,7 @@ begin
     ilSnapshot: IsolationLevel := TDBXIsolations.SnapShot;
     ilSerializable: IsolationLevel := TDBXIsolations.Serializable;
   else
-    IsolationLevel := TDBXIsolations.ReadCommitted;  
+    IsolationLevel := TDBXIsolations.ReadCommitted;
   end;
   GConnection := ConnectionDescriptor.GetConnection;
   Connection := TSQLConnection(GConnection.Connection);
@@ -6004,7 +6068,7 @@ end;
 
 procedure TgPersistenceManager.Configure;
 begin
-  
+
 end;
 
 procedure TgPersistenceManager.Initialize;
@@ -6394,7 +6458,7 @@ begin
       // If no active or inactive connection is found, try to create a new one.
       If Not Assigned(Result) Then
         Result := GetNewConnection(ThreadID);
-        
+
       // If not, remove an inactive connection from another connection descriptor's pool
       // and create a new connection.
       If Not Assigned( Result ) Then
@@ -6816,11 +6880,22 @@ begin
   AConnection.Free;
 end;
 
+Function TgHTMLExpressionEvaluator.GetValue(Const AVariableName : String) : Variant;
+var
+  RTTIProperty: TRTTIProperty;
+Begin
+  RTTIProperty := FModel.Properties[AVariableName];
+  if Assigned(RTTIProperty) And (RTTIProperty.PropertyType.Handle =  TypeInfo(TgHTMLString)) then
+    FIsHTML := True;
+  Result := FModel[AVariableName];
+End;
+
 Initialization
   TgSerializerJSON.Register;
   TgSerializerXML.Register;
   TgSerializerCSV.Register;
   RegisterRuntimeClasses([TgPersistenceManagerFile, TgPersistenceManagerDBXFirebird, TgPersistenceManagerIBX, TgConnectionDescriptorIBX, TgConnectionDescriptorDBXFirebird]);
 end.
+
 
 
