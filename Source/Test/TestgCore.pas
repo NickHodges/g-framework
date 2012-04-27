@@ -419,6 +419,25 @@ type
     procedure Save;
   end;
 
+  TestEvalHTML = class(TTestCase)
+    type
+      TTest = class(TgBase)
+      strict private
+        FHTMLString: TgHTMLString;
+        FNonHTMLString: String;
+      Published
+        property HTMLString: TgHTMLString read FHTMLString write FHTMLString;
+        property NonHTMLString: String read FNonHTMLString write FNonHTMLString;
+      end;
+  strict private
+    TestObject: TTest;
+  protected
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Eval;
+  end;
+
 implementation
 
 Uses
@@ -2248,6 +2267,26 @@ begin
 
 end;
 
+procedure TestEvalHTML.Eval;
+var
+  IsHTML: Boolean;
+begin
+  EvalHTML('HTMLString', TestObject, IsHTML);
+  CheckTrue(IsHTML);
+  EvalHTML('NonHTMLString', TestObject, IsHTML);
+  CheckFalse(IsHTML);
+end;
+
+procedure TestEvalHTML.SetUp;
+begin
+  TestObject := TTest.Create;
+end;
+
+procedure TestEvalHTML.TearDown;
+begin
+  TestObject.Free;
+end;
+
 initialization
 
   // Register any test cases with the test runner
@@ -2263,6 +2302,7 @@ initialization
   RegisterTest(TestTSerializeCSV.Suite);
   RegisterTest(TestHTMLParser.Suite);
   RegisterTest(TestTFirebirdObject.Suite);
+  RegisterTest(TestEvalHTML.Suite);
   RegisterRuntimeClasses([TFirebirdObject]);
   G.Initialize;
 end.

@@ -292,7 +292,7 @@ type
     procedure AutoCreate; virtual;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
     function DoGetObjects(const APath: String; out AValue: TgBase): Boolean; virtual;
-    function DoGetProperties(const APath: String; ARTTIProperty: TRTTIProperty): Boolean; virtual;
+    function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetIsInspecting: Boolean; virtual;
     function GetPathName: String; virtual;
@@ -1588,6 +1588,10 @@ Procedure StringToFile(const AString, AFileName : String);
 // by the compiler.
 procedure RegisterRuntimeClasses(const AClasses: Array of TClass);
 
+function EvalHTML(const AExpression: String; ABase: TgBase; out AIsHTML: Boolean): Variant;
+
+function Eval(Const AExpression : String; ABase : TgBase): Variant;
+
 implementation
 
 Uses
@@ -1629,7 +1633,7 @@ type
     property IsHTML: Boolean read FIsHTML;
   End;
 
-Function Eval(Const AExpression : String; ABase : TgBase) : Variant;
+function Eval(Const AExpression : String; ABase : TgBase): Variant;
 Var
   ExpressionEvaluator : TgBaseExpressionEvaluator;
 Begin
@@ -1923,7 +1927,7 @@ Begin
   end;
 End;
 
-function TgBase.DoGetProperties(const APath: String; ARTTIProperty: TRTTIProperty): Boolean;
+function TgBase.DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean;
 Var
   Head : String;
   ObjectProperty: TgBase;
