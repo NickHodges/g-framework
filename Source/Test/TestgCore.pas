@@ -12,7 +12,7 @@ unit TestgCore;
 interface
 
 uses
-  TestFramework, gCore, System.Rtti,
+  TestFramework, Classes,gCore, System.Rtti,
   Xml.XMLDoc,
   Xml.XMLDom,
   Xml.XMLIntf;
@@ -382,10 +382,14 @@ type
         FWebAddress: String;
         FGoodCustomer: Boolean;
         FOtherCustomer: TCustomer;
+        FWebContent: TgHTMLString;
+        FNotes: String;
       published
         property FirstName: String read FFirstName write FFirstName;
         property LastName: String read FLastName write FLastName;
         property WebAddress: String read FWebAddress write FWebAddress;
+        property Notes: String read FNotes write FNotes;
+        property WebContent: TgHTMLString read FWebContent write FWebContent;
         property GoodCustomer: Boolean read FGoodCustomer write FGoodCustomer;
         property OtherCustomer: TCustomer read FOtherCustomer write FOtherCustomer;
       end;
@@ -398,7 +402,6 @@ type
       published
         property Customers: TCustomers read FCustomers;
       end;
-
   published
     procedure Replace;
     procedure Convert1;
@@ -407,6 +410,7 @@ type
     procedure AssignTag;
     procedure WithTag;
     procedure ifTag;
+    procedure HTMLField;
   end;
 
   [PersistenceManagerClassName('gCore.TgPersistenceManagerIBX')]
@@ -2107,10 +2111,10 @@ begin
       '  </body>'#$D#$A+
       '</html>'#$D#$A;
     gCustomer.GoodCustomer := False;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'    <title>Untitled     <b>Document</b>'#$D#$A'    '#$D#$A'    S</title>'#$D#$A'  </head>'#$D#$A'  <body xmlns=""/>'#$D#$A'</html>'#$D#$A,TgElement._ProcessText(Text,gCustomer));
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'    <title>Untitled     <b>Document</b>'#$D#$A'    '#$D#$A'    S</title>'#$D#$A'  </head>'#$D#$A'  <body xmlns=""/>'#$D#$A'</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
     CheckEquals('',gCustomer.FirstName);
     gCustomer.GoodCustomer := True;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'    <title>Untitled     <b>Document</b>'#$D#$A'    '#$D#$A'    S</title>'#$D#$A'  </head>'#$D#$A'  <body xmlns=""/>'#$D#$A'</html>'#$D#$A,TgElement._ProcessText(Text,gCustomer));
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'    <title>Untitled     <b>Document</b>'#$D#$A'    '#$D#$A'    S</title>'#$D#$A'  </head>'#$D#$A'  <body xmlns=""/>'#$D#$A'</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
     CheckEquals('DeadMeat',gCustomer.FirstName);
   finally
     gCustomer.Free;
@@ -2134,7 +2138,34 @@ begin
     '  <body xmlns=""/>'#$D#$A+
     '</html>'#$D#$A;
 
-  CheckEquals('',TgElement._ProcessText(Text));
+  CheckEquals(
+    '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+   +'  <head xmlns="">'#$D#$A
+   +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+   +'    <title>Untitled     <b>Document</b>'#$D#$A
+   +'    '#$D#$A
+   +'    S</title>'#$D#$A
+   +'  </head>'#$D#$A
+   +'  <body xmlns=""/>'#$D#$A
+   +'</html>'#$D#$A
+  ,TgDocument._ProcessText(Text));
+end;
+
+procedure TestHTMLParser.HTMLField;
+var
+  Customer: TCustomer;
+  Text: String;
+begin
+  Customer := TCustomer.Create;
+  try
+    Customer.FirstName := 'David';
+    Customer.Webcontent := '<b>{FirstName}</b><br />{LastName}';
+    Customer.Notes := '<b>{FirstName}'#13#10'{LastName}</b>';
+    Text := '<html><div>{WebContent}</div><div>{Notes}</div></html>';
+    CheckEquals('',TgDocument._ProcessText(Text,Customer));
+  finally
+    FreeAndNil(Customer);
+  end;
 end;
 
 procedure TestTFirebirdObject.Save;
@@ -2196,14 +2227,27 @@ begin
     Text :=
        '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
       +'<if condition="GoodCustomer">'#13#10
+        +'Hello'#13#10
         +'<then>{FirstName}, You are awesome!</then>'#13#10
         +'<else>{LastName}, Try to do better :(</else>'#13#10
       +'</if>'#13#10
       +'</html>';
     gCustomer.GoodCustomer := True;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">Steve, You are awesome!</html>'#$D#$A,TgElement._ProcessText(Text,gCustomer));
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">Steve, You are awesome!</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
     gCustomer.GoodCustomer := False;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">Nooner, Try to do better :(</html>'#$D#$A,TgElement._ProcessText(Text,gCustomer));
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">Nooner, Try to do better :(</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+
+    Text :=
+       '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+      +'<if condition="GoodCustomer">'#13#10
+        +'{FirstName}, You are awesome!'#13#10
+      +'</if>'#13#10
+      +'</html>';
+    gCustomer.GoodCustomer := True;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">Steve, You are awesome!</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+    gCustomer.GoodCustomer := False;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml"></html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+
   finally
     gCustomer.Free;
   end;
@@ -2213,19 +2257,56 @@ procedure TestHTMLParser.IncludeTag;
 var
   Text: String;
 begin
-  Text :=
+  with TStringList.Create do try
+    Add('<b>{2 + 2}</b>');
+    SaveToFile('YYY.hti');
 
-//     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
-     '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
-    +'<head>'#13#10
-    +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
-    +'<title>Untitled<b> Document</b>!</title>'#13#10
-    +'</head>'#13#10
-    +'<body>'#13#10
-    +'<include />'#13#10
-    +'</body>'#13#10
-    +'</html>'#13#10;
-  CheckEquals('',TgElement._ProcessText(Text));
+    Text :=
+  //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+         '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+        +'<head>'#13#10
+        +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+        +'<title>Untitled<b> Document</b>!</title>'#13#10
+        +'</head>'#13#10
+        +'<body>'#13#10
+        +'<include FileName="YYY.hti" SearchPath=""/>'#13#10
+        +'</body>'#13#10
+        +'</html>'#13#10;
+    CheckEquals(
+         '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+        +'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+        +'    <title>Untitled  <b> Document</b>'#$D#$A
+        +'    !</title>'#$D#$A'  </head>'#$D#$A
+        +'  <body xmlns="">'#$D#$A
+        +'    <b>{2 + 2}</b>'#$D#$A
+        +'  </body>'#$D#$A
+        +'</html>'#$D#$A
+      ,TgDocument._ProcessText(Text));
+
+  finally
+    DeleteFile('YYY.hti');
+    Free;
+  end;
+
+  with TStringList.Create do try
+    Add('<html>{2 + 2}</html>');
+    SaveToFile('YYY.hti');
+    Text :=
+  //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+       '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+      +'<head>'#13#10
+      +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+      +'<title>Untitled<b> Document</b>!</title>'#13#10
+      +'</head>'#13#10
+      +'<body>'#13#10
+      +'<include FileName="YYY.hti" SearchPath=""/>'#13#10
+      +'</body>'#13#10
+      +'</html>'#13#10;
+  CheckEquals('',TgDocument._ProcessText(Text));
+  finally
+    DeleteFile('YYY.hti');
+    Free;
+  end;
 
 end;
 
@@ -2273,7 +2354,7 @@ begin
       +'    <br/>'#$D#$A
       +'  </body>'#$D#$A
       +'</html>'#$D#$A
-    ,TgElement._ProcessText(Text,Model));
+    ,TgDocument._ProcessText(Text,Model));
   //  TargetDocument.SaveToXML(TextResult);
   finally
     Model.Free;
@@ -2340,14 +2421,16 @@ begin
     +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
     +'</head>'#13#10
     +'<body>'#13#10
+    +'{FirstName}'#13#10
     +'<with object="OtherCustomer">'#13#10
     +'{FirstName} {LastName}'#13#10
     +'</with>'#13#10
+    +'{LastName}'#13#10
     +'</body>'#13#10
     +'</html>'#13#10;
     gCustomer.GoodCustomer := True;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'  </head>'#$D#$A'  <body xmlns="">'#$D#$A'Linda Evans'#$D#$A'</body>'#$D#$A'</html>'#$D#$A
-      ,TgElement._ProcessText(Text,gCustomer));
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'  </head>'#$D#$A'  <body xmlns="">'#$D#$A'Steve'#$D#$A#$D#$A'Linda Evans'#$D#$A#$D#$A'Nooner'#$D#$A'</body>'#$D#$A'</html>'#$D#$A
+      ,TgDocument._ProcessText(Text,gCustomer));
 (*
     gCustomer.GoodCustomer := False;
     CheckEquals('',TgElement._ProcessText(Text,gCustomer));
