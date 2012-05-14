@@ -2366,10 +2366,13 @@ procedure TestHTMLParser.Replace;
 var
   Customer: TCustomer;
   Element: TgElement;
+  AIsHTML: Boolean;
+
 begin
   Customer := TCustomer.Create;
   Customer.FirstName := 'Steve';
   Customer.LastName := 'Nooner';
+  Customer.WebContent := 'Hello';
   Customer.WebAddress := 'http://www.google.com';
   try
     Element := TgElement.Create;
@@ -2388,6 +2391,11 @@ begin
       CheckEquals('<p>Hi, '+Customer.FirstName+'</p>',Element.ProcessValue('<p>Hi, {FirstName}</p>'));
       CheckEquals('<p>Hi, '+Customer.FirstName+' '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {FirstName} {LastName}</p>'));
       CheckEquals('<p>Hi, Mr. '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {''Mr. '' + LastName}</p>'));
+      CheckEquals(Customer.WebAddress,EvalHTML('WebAddress',Customer,AIsHTML));
+      CheckFalse(AIsHTML);
+      CheckEquals(Customer.WebContent,EvalHTML('WebContent',Customer,AIsHTML));
+      CheckTrue(AIsHTML);
+
       //Evaluate('<p>Hello {Name}</p>', Customer)
     finally
       Element.Free;
