@@ -1504,6 +1504,8 @@ type
     type
       E = class(Exception);
       TClassOf = class of TgElement;
+      TProcessText = reference to procedure(const Text: String);
+
   { TODO : Handle Conditions }
   { TODO : ConditionSelf says don't do the outer tag, but do the inner tags }
   private
@@ -1526,6 +1528,8 @@ type
     procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList); virtual;
     function GetValue(const Value: String): Variant;
     function ProcessValue(const Value: OleVariant): OleVariant; virtual;
+    procedure ProcessText(SourceNode: IXMLNode; TargetChildNodes: IXMLNodeList); overload;
+    procedure ProcessText(const Source: String; ProcessText: TProcessTExt; ProcessHTML: TProcessText); overload;
     function GetgDocument(out Value: TgDocument): Boolean; overload; virtual;
     function Skip: Boolean; virtual;
     property TagName: String read FTagName write FTagName;
@@ -6556,9 +6560,7 @@ begin
     case Source.NodeType of
       ntText
       : begin
-          Target := Source.CloneNode(True);
-          Target.NodeValue := ProcessValue(Target.NodeValue);
-          TargetChildNodes.Add(Target);
+          ProcessText(Source,TargetChildNodes);
           exit;
         end;
       else begin
@@ -6585,10 +6587,92 @@ begin
     ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
 end;
 
-function TgElement.ProcessValue(const Value: OleVariant): OleVariant;
+procedure TgElement.ProcessText(const Source: String; ProcessText,
+  ProcessHTML: TProcessText);
+var
+  BeginingI: Integer;
+  StartI,EndI: Integer;
+  NewValue: String;
+  AIsHTML: Boolean;
+  AgBase: TgBase;
+begin
+  AgBase := gBase;
+  if (Source = '') then
+  else if not Assigned(AgBase) then
+    ProcessText(Source)
+
+  else begin
+    // {}'s represent a expression to be evaulated
+{ TODO : Handle Quotes Expression Evaulator}
+{ TODO : Allow Nested  when searching the end;}
+    StartI := Pos('{',Source);
+
+    if StartI = 0 then
+      ProcessText(Source) // nothing to do
+    else begin
+      BeginingI := 1;
+      repeat
+        EndI := PosEx('}',Source,StartI);
+        if EndI = 0 then
+          Break
+        else begin
+          if StartI <> BeginingI then
+            ProcessText(Copy(Source,BeginingI,StartI-BeginingI));
+          Inc(StartI);
+          NewValue := Copy(Source,StartI,EndI-StartI);
+          NewValue := EvalHTML(NewValue,AgBase,AIsHTML);
+          if AIsHTML then
+            ProcessHTML(NewValue)
+          else
+            ProcessText(NewValue);
+          BeginingI := EndI+1;
+
+          StartI := PosEx('{',Source,BeginingI);
+        end;
+      until StartI = 0;
+      EndI := Length(Source)+1;
+      if BeginingI < EndI then
+        ProcessText(Copy(Source,BeginingI,EndI-BeginingI));
+    end;
+  end;
+end;
+
+procedure TgElement.ProcessText(SourceNode: IXMLNode;
+  TargetChildNodes: IXMLNodeList);
 var
   S: String;
+  BeginingI: Integer;
+  StartI,EndI: Integer;
+  AgDocument: TgDocument;
+begin
+//    Result := Value // {} replacements
+  AgDocument := gDocument;
+  if not Assigned(AgDocument) then begin
+    TargetChildNodes.Add(SourceNode.CloneNode(False));
+    Exit;
+  end;
+  S := SourceNode.NodeValue;
+  if Pos('{',S) = 0 then begin
+    // Just return the value;
+    TargetChildNodes.Add(AgDocument.Target.CreateNode(SourceNode.NodeValue,ntText));
+    exit;
+  end;
+  ProcessText(S,
+    procedure(const Text: String)
+    begin
+      TargetChildNodes.Add(AgDocument.Target.CreateNode(Text,ntText));
+    end
+   ,procedure(const HTML: String)
+    begin
+      AgDocument.ProcessText(HTML,TargetChildNodes,gBase);
+    end
+    );
+end;
+
+function TgElement.ProcessValue(const Value: OleVariant): OleVariant;
+var
   Builder: TStringBuilder;
+  S: String;
   BeginingI: Integer;
   StartI,EndI: Integer;
 begin
@@ -6596,38 +6680,23 @@ begin
     Result := Value // {} replacements
   else begin
     S := Value;
-    // {}'s represent a expression to be evaulated
-{ TODO : Handle Quotes Expression Evaulator}
-{ TODO : Allow Nested  when searching the end;}
-    StartI := Pos('{',S);
+    if Pos('{',S) = 0 then
+      Exit(Value);
 
-    if StartI = 0 then
-      Exit(Value) // nothing to do
-    else begin
-      Builder := TStringBuilder.Create;
-      try
-        BeginingI := 1;
-        repeat
-          EndI := PosEx('}',S,StartI);
-          if EndI = 0 then
-            Break
-          else begin
-            if StartI <> BeginingI then
-              Builder.Append(S,BeginingI-1,StartI-BeginingI);
-            Inc(StartI);
-            Builder.Append(String(GetValue(Copy(S,StartI,EndI-StartI))));
-            BeginingI := EndI+1;
-
-            StartI := PosEx('{',S,BeginingI);
-          end;
-        until StartI = 0;
-        EndI := Length(S)+1;
-        if BeginingI < EndI then
-          Builder.Append(S,BeginingI-1,EndI-BeginingI);
-        Result := Builder.ToString;
-      finally
-        Builder.Free;
-      end;
+    Builder := TStringBuilder.Create;
+    try
+      ProcessText(S,
+        procedure(const Text: String)
+          begin
+            Builder.Append(Text);
+          end
+       ,procedure(const HTML: String)
+          begin
+            Builder.Append(String(ProcessValue(HTML)));
+          end);
+      Result := Builder.ToString;
+    finally
+      Builder.Free;
     end;
   end;
 end;

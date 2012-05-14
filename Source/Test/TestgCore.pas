@@ -2256,7 +2256,47 @@ end;
 procedure TestHTMLParser.IncludeTag;
 var
   Text: String;
+  gCustomer: TCustomer;
 begin
+  gCustomer := TCustomer.Create;
+  with TStringList.Create do try
+    gCustomer := TCustomer.Create;
+    gCustomer.FirstName := 'Steve';
+    gCustomer.LastName := '<b>Nooner</b>';
+    gCustomer.WebContent := '<b>Hello</b>';
+
+    Add('<html>{WebContent}{LastName}</html>');
+    SaveToFile('YYY.hti');
+
+    Text :=
+  //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+       '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+      +'<head>'#13#10
+      +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+      +'<title>Untitled<b> Document</b>!</title>'#13#10
+      +'</head>'#13#10
+      +'<body>'#13#10
+      +'<include FileName="YYY.hti" SearchPath=""/>'#13#10
+      +'</body>'#13#10
+      +'</html>'#13#10;
+  CheckEquals(
+    '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+   +'  <head xmlns="">'#$D#$A
+   +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+   +'    <title>Untitled  <b> Document</b>'#$D#$A
+   +'    !</title>'#$D#$A
+   +'  </head>'#$D#$A
+   +'  <body xmlns="">'#$D#$A
+   +'    <b>Hello</b>'#$D#$A
+   +'  &lt;b&gt;Nooner&lt;/b&gt;</body>'#$D#$A
+   +'</html>'#$D#$A
+      ,TgDocument._ProcessText(Text,gCustomer));
+  finally
+    DeleteFile('YYY.hti');
+    Free;
+    gCustomer.Free;
+  end;
+
   with TStringList.Create do try
     Add('<b>{2 + 2}</b>');
     SaveToFile('YYY.hti');
@@ -2281,28 +2321,9 @@ begin
         +'    <b>{2 + 2}</b>'#$D#$A
         +'  </body>'#$D#$A
         +'</html>'#$D#$A
-      ,TgDocument._ProcessText(Text));
+{ TODO : What should this do with no gBase? }
+    ,TgDocument._ProcessText(Text));
 
-  finally
-    DeleteFile('YYY.hti');
-    Free;
-  end;
-
-  with TStringList.Create do try
-    Add('<html>{2 + 2}</html>');
-    SaveToFile('YYY.hti');
-    Text :=
-  //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
-       '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
-      +'<head>'#13#10
-      +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
-      +'<title>Untitled<b> Document</b>!</title>'#13#10
-      +'</head>'#13#10
-      +'<body>'#13#10
-      +'<include FileName="YYY.hti" SearchPath=""/>'#13#10
-      +'</body>'#13#10
-      +'</html>'#13#10;
-  CheckEquals('',TgDocument._ProcessText(Text));
   finally
     DeleteFile('YYY.hti');
     Free;
@@ -2379,11 +2400,11 @@ begin
     try
       Element.gBase := Customer;
       CheckEquals('Hello',Element.ProcessValue('Hello'));
+      CheckEquals(Customer.FirstName+Customer.FirstName+'X',Element.ProcessValue('{FirstName}{FirstName}X'));
+      CheckEquals(Customer.FirstName+'X'+Customer.LastName,Element.ProcessValue('{FirstName}X{LastName}'));
       CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
       CheckEquals(Customer.FirstName+Customer.LastName,Element.ProcessValue('{FirstName}{LastName}'));
       CheckEquals('X'+Customer.FirstName+Customer.LastName,Element.ProcessValue('X{FirstName}{LastName}'));
-      CheckEquals(Customer.FirstName+'X'+Customer.LastName,Element.ProcessValue('{FirstName}X{LastName}'));
-      CheckEquals(Customer.FirstName+Customer.FirstName+'X',Element.ProcessValue('{FirstName}{FirstName}X'));
       CheckEquals('X'+Customer.FirstName+'X'+Customer.LastName+'X',Element.ProcessValue('X{FirstName}X{LastName}X'));
       CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
       CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
