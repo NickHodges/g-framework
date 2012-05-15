@@ -2159,10 +2159,20 @@ begin
   Customer := TCustomer.Create;
   try
     Customer.FirstName := 'David';
+    Customer.LastName := 'Harper';
     Customer.Webcontent := '<b>{FirstName}</b><br />{LastName}';
     Customer.Notes := '<b>{FirstName}'#13#10'{LastName}</b>';
+
     Text := '<html><div>{WebContent}</div><div>{Notes}</div></html>';
-    CheckEquals('',TgDocument._ProcessText(Text,Customer));
+    CheckEquals('<html>'#$D#$A
+    +'  <div>'#$D#$A
+    +'    <b>David</b>'#$D#$A
+    +'    <br/>'#$D#$A
+    +'  Harper</div>'#$D#$A
+    +'  <div>&lt;b&gt;{FirstName}'#$D#$A
+    +'{LastName}&lt;/b&gt;</div>'#$D#$A
+    +'</html>'#$D#$A
+    ,TgDocument._ProcessText(Text,Customer));
   finally
     FreeAndNil(Customer);
   end;
@@ -2244,9 +2254,13 @@ begin
       +'</if>'#13#10
       +'</html>';
     gCustomer.GoodCustomer := True;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">Steve, You are awesome!</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+      +'Steve, You are awesome!'#$D#$A
+      +'</html>'#$D#$A
+      ,TgDocument._ProcessText(Text,gCustomer));
     gCustomer.GoodCustomer := False;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml"></html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml"/>'#$D#$A
+    ,TgDocument._ProcessText(Text,gCustomer));
 
   finally
     gCustomer.Free;

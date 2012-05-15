@@ -6663,8 +6663,13 @@ begin
       TargetChildNodes.Add(AgDocument.Target.CreateNode(Text,ntText));
     end
    ,procedure(const HTML: String)
+    var
+      Text: String;
     begin
-      AgDocument.ProcessText(HTML,TargetChildNodes,gBase);
+      Text := Trim(HTML);
+      if not StartsText('<html>',Text) then
+        Text:= '<html>'+Text+'</html>';
+      AgDocument.ProcessText(Text,TargetChildNodes,gBase);
     end
     );
 end;
@@ -7473,16 +7478,23 @@ End;
 
 procedure TgElementIf.ProcessNode(Source: IXMLNode;
   TargetChildNodes: IXMLNodeList);
+var
+  Index: Integer;
 begin
   if Condition then begin
-    Source := Source.ChildNodes['then'];
+    Index := Source.ChildNodes.IndexOf('then');
+    if Index >= 0 then
+      Source := Source.ChildNodes['then'];
     if Assigned(Source) then
       ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
   end
   else begin
-    Source := Source.ChildNodes['else'];
-    if Assigned(Source) then
-      ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
+    Index := Source.ChildNodes.IndexOf('else');
+    if Index >= 0 then begin
+      Source := Source.ChildNodes['else'];
+      if Assigned(Source) then
+        ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
+    end;
   end;
 end;
 
