@@ -1952,11 +1952,11 @@ begin
   FSerializer.Deserialize(List,S);
   List.First;
   CheckFalse(List.EOL);
-  CheckEquals('Jim',List.Current.Name);
+  CheckEquals('Jim'#$A'Barney',List.Current.Name);
   CheckEquals(12.30,List.Current.Price);
   List.Next;
   CheckFalse(List.EOL);
-  CheckEquals('Fred',List.Current.Name);
+  CheckEquals('Fred'#$A'Mosbie',List.Current.Name);
   CheckEquals(50,List.Current.Price);
   List.Next;
   CheckTrue(List.EOL);
@@ -2269,7 +2269,6 @@ end;
 
 procedure TestHTMLParser.IncludeTag;
 var
-  Text: String;
   gCustomer: TCustomer;
 begin
   gCustomer := TCustomer.Create;

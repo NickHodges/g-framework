@@ -1276,7 +1276,6 @@ type
     FAppendPath: TStack<String>;
     FDocument: TStringList;
     FBaseClass: TStack<TgBaseClass>;
-    FDelimiter: Char;
     procedure Load(const AString: String);
     function GetAppendName: String;
     const _classname = '_classname';
@@ -1577,7 +1576,7 @@ type
   private
     FObject: TgList;
   public
-    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList); virtual;
+    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList); override;
     procedure ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList); override;
   published
     [ImpliedExpressionEvaulator]
@@ -5492,7 +5491,6 @@ end;
 
 function TgSerializer.THelper.TComparer.Compare(const Left,
   Right: TPair<TgBaseClass, THelperClass>): Integer;
-var L,R: Integer;
 begin
   Result := 0;
   if Left.Key <> Right.Key then
@@ -5730,7 +5728,6 @@ class procedure TgSerializerCSV.THelperList.Deserialize(AObject: TgList;
   ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil);
 var
   HelperClass: TgSerializationHelperClass;
-  PathName: String;
   Count: Integer;
 begin
   if Assigned(ASerializer.CurrentRow) then begin
@@ -6019,11 +6016,26 @@ begin
 end;
 
 procedure TgSerializerCSV.Load(const AString: String);
+var
+  BeginI,EndI: Integer;
 begin
   FHeadings.Clear;
   FObjectNames.Clear;
   FDocument.Clear;
-  FDocument.Text := AString;
+//  FDocument.StrictDelimiter := True;
+  BeginI := 1;
+  EndI := PosEx(#13#10,AString,BeginI);
+  if EndI > 0 then repeat
+    FDocument.Add(Copy(AString,BeginI,EndI-BeginI));
+    BeginI := EndI + 2;
+    EndI := PosEx(#13#10,AString,BeginI);
+  until EndI = 0;
+  EndI := Length(AString);
+  if EndI > BeginI then
+    FDocument.Add(Copy(AString,BeginI,EndI-BeginI));
+
+//  FDocument.LineBreak := #13;
+//  FDocument.DelimitedText := AString;
 end;
 
 class procedure TgSerializerCSV.Register;
@@ -6037,10 +6049,8 @@ end;
 function TgSerializerCSV.Serialize(AObject: TgBase): string;
 var
   HelperBaseClass: TgSerializationHelperClass;
-  ResultText: String;
   Node: TgNodeCSV;
   Row: TStringList;
-  Index: integer;
 begin
   FHeadings.Clear;
   FDocument.Clear;
@@ -6445,7 +6455,6 @@ class function TgElement.CreateFromTag(Owner: TgElement;
   Node: IXMLNode; AgBase: TgBase): TgElement;
 var
   AClass: TClassOf;
-  TagName: String;
   NodeName: String;
   NodeValue: OleVariant;
   Index: Integer;
@@ -6553,7 +6562,6 @@ var
   Target: IXMLNode;
   Index: Integer;
   AgDocument: TgDocument;
-  SaveOptions:TXMLDocOptions;
 begin
   if ConditionSelf then begin
     Target := nil;
@@ -6641,8 +6649,6 @@ procedure TgElement.ProcessText(SourceNode: IXMLNode;
   TargetChildNodes: IXMLNodeList);
 var
   S: String;
-  BeginingI: Integer;
-  StartI,EndI: Integer;
   AgDocument: TgDocument;
 begin
 //    Result := Value // {} replacements
@@ -6678,8 +6684,6 @@ function TgElement.ProcessValue(const Value: OleVariant): OleVariant;
 var
   Builder: TStringBuilder;
   S: String;
-  BeginingI: Integer;
-  StartI,EndI: Integer;
 begin
   if not VarIsStr(Value) or not Assigned(gBase) then
     Result := Value // {} replacements
@@ -6751,8 +6755,6 @@ end;
 
 function TgDocument.ProcessDocument(SourceDocument: IXMLDocument;
   TargetChildNodes: IXMLNodeList; AgBase: TgBase): Boolean;
-var
-  Index: Integer;
 begin
   Result := True;
   if Assigned(AgBase) then
@@ -6784,13 +6786,11 @@ begin
 //    SourceDocument.Options := [doNodeAutoIndent];
     SourceDocument.LoadFromFile(FileName);
     Result := ProcessDocument(SourceDocument,TargetChildNodes,AgBase);
-
   finally
     SourceDocumentInterface := nil;
     SourceDocument := nil;
 //      SourceDocument.Free;
   end;
-  Result := True;
 end;
 
 function TgDocument.ProcessText(const Source: String; var Target: String;
@@ -6818,10 +6818,9 @@ begin
 
   finally
     SourceDocumentInterface := nil;
-      SourceDocument := nil;
+    SourceDocument := nil;
 //      SourceDocument.Free;
   end;
-  Result := True;
 end;
 
 class function TgDocument._ProcessText(const Source: String; var Target: String; AgBase: TgBase = nil): Boolean;
@@ -7447,8 +7446,6 @@ end;
 
 procedure TgElementList.ProcessChildNodes(SourceChildNodes,
   TargetChildNodes: IXMLNodeList);
-var
-  Next: TgElement;
 begin
   Object_.First;
   while not Object_.EOL do begin
