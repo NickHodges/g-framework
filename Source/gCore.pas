@@ -1028,6 +1028,7 @@ type
 
   strict private
     FCurrentKey: String;
+    FBuffered: Boolean;
     procedure EnsureActive;
     function GetIsActivating: Boolean;
     procedure SetIsActivating(const AValue: Boolean);
@@ -1041,6 +1042,7 @@ type
     function GetCurrentKey: String; virtual;
     function GetItemClass: TgIdentityObjectClass; reintroduce; virtual;
     function GetItems(AIndex : Integer): TgIdentityObject; reintroduce; virtual;
+    function IndexOf(const AKey: String): Integer;
     procedure SetCurrentKey(const AValue: String); virtual;
     procedure SetItemClass(const Value: TgIdentityObjectClass); reintroduce; virtual;
     procedure SetItems(AIndex : Integer; const AValue: TgIdentityObject); reintroduce; virtual;
@@ -1067,6 +1069,7 @@ type
     property Current: TgIdentityObject read GetCurrent;
     [NotSerializable] [NotAssignable]
     property CurrentKey: String read GetCurrentKey write SetCurrentKey;
+    property Buffered: Boolean read FBuffered write FBuffered;
   end;
 
   TgIdentityList<T: TgIdentityObject> = class(TgIdentityList)
@@ -1276,7 +1279,6 @@ type
     FAppendPath: TStack<String>;
     FDocument: TStringList;
     FBaseClass: TStack<TgBaseClass>;
-    FDelimiter: Char;
     procedure Load(const AString: String);
     function GetAppendName: String;
     const _classname = '_classname';
@@ -1502,12 +1504,17 @@ type
     class operator Implicit(AValue: TString50): Variant; overload;
     property Value: String read GetValue write SetValue;
   end;
+  ImpliedExpressionEvaulator = class(TCustomAttribute);
+
+  TgDocument = class;
 
   TgElement = class(TgBase)
   public
     type
       E = class(Exception);
       TClassOf = class of TgElement;
+      TProcessText = reference to procedure(const Text: String);
+
   { TODO : Handle Conditions }
   { TODO : ConditionSelf says don't do the outer tag, but do the inner tags }
   private
@@ -1518,6 +1525,7 @@ type
     function GetgBase: TgBase;
     function GetModel: TgBase;
     class var _Tags: TDictionary<String, TClassOf>;
+    function GetgDocument: TgDocument; overload;
   public
     class constructor Create;
     class destructor Destroy;
@@ -1525,26 +1533,105 @@ type
     function GetPropertyByName(const Name: String): TRTTIProperty;
     class procedure Register(const TagName: String; AClass: TClassOf);
     constructor Create(Owner: TgBase = nil); override;
-    procedure ProcessDocument(SourceDocument,TargetDocument: IXMLDocument; AgBase: TgBase = nil);
-    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
-    procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
+    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList); virtual;
+    procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList); virtual;
     function GetValue(const Value: String): Variant;
     function ProcessValue(const Value: OleVariant): OleVariant; virtual;
+    procedure ProcessText(SourceNode: IXMLNode; TargetChildNodes: IXMLNodeList); overload;
+    procedure ProcessText(const Source: String; ProcessText: TProcessTExt; ProcessHTML: TProcessText); overload;
+    function GetgDocument(out Value: TgDocument): Boolean; overload; virtual;
+    function Skip: Boolean; virtual;
     property TagName: String read FTagName write FTagName;
     property gBase: TgBase read GetgBase write FgBase;
+    property gDocument: TgDocument read GetgDocument;
   published
+    [ImpliedExpressionEvaulator]
     property Condition: Boolean read FCondition write FCondition default True;
+    [ImpliedExpressionEvaulator]
     property ConditionSelf: Boolean read FConditionSelf write FConditionSelf default True;
   end;
 
+  TgDocument = class(TgElement)
+  private
+    FIsMobile: Boolean;
+    FIsSecure: Boolean;
+    FSearchPath: String;
+    FAliasPath: String;
+    FTargetDocument: TXMLDocument;
+    FTargetDocumentInterface: IXMLDocument;
+  public
+    constructor Create(Owner: TgBase = nil); override;
+    destructor Destroy; override;
+  class function _ProcessText(const Source: String; AgBase: TgBase = nil): String; overload;
+    class function _ProcessText(const Source: String; var Target: String; AgBase: TgBase = nil): Boolean; overload;
+    function ProcessFile(const AFileName: String; ASearchPath: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean; overload;
+    function ProcessFile(const FileName: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean; overload;
+    function ProcessText(const Source: String; var Target: String; AgBase: TgBase = nil): Boolean; overload;
+    function ProcessText(const Source: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean; overload;
+    function ProcessDocument(SourceDocument: IXMLDocument; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean;
+    function GetgDocument(out Value: TgDocument): Boolean; override;
+    property Target: TXMLDocument read FTargetDocument;
+  published
+    property SearchPath: String read FSearchPath write FSearchPath;
+    property AliasPath: String read FAliasPath write FAliasPath;
+    property IsSecure: Boolean read FIsSecure write FIsSecure;
+    property IsMobile: Boolean read FIsMobile write FIsMobile;
+  end;
+
+  TgElementHTML = class(TgElement)
+  public
+    constructor Create(Owner: TgBase = nil); override;
+  end;
   TgElementList = class(TgElement)
   private
     FObject: TgList;
   public
-    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); virtual;
-    procedure ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument); override;
+    procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList); override;
+    procedure ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList); override;
   published
+    [ImpliedExpressionEvaulator]
     property Object_: TgList read FObject write FObject;
+  end;
+
+  TgElementAssign = class(TgElement)
+  private
+    FName: String;
+    FValue: Variant;
+  public
+    procedure ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList); override;
+  published
+    property Name: String read FName write FName;
+    property Value: Variant read FValue write FValue;
+  end;
+
+  TgElementIf = class(TgElement)
+  public
+    const _then = 'then';
+    const _else = 'else';
+  public
+    function Skip: Boolean; override;
+    procedure ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList); override;
+  end;
+
+  TgElementWith = class(TgElement)
+  private
+    FObject: TgBase;
+  public
+    procedure ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList); override;
+  published
+    [ImpliedExpressionEvaulator]
+    property Object_: TgBase read FObject write FObject;
+  end;
+
+  TgElementInclude = class(TgElement)
+  private
+    FFileName: String;
+    FSearchPath: String;
+  public
+    procedure ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList); override;
+  published
+    property FileName: String read FFileName write FFileName;
+    property SearchPath: String read FSearchPath write FSearchPath;
   end;
 
   TgPersistenceManagerIBX = class(TgPersistenceManagerSQL)
@@ -2028,6 +2115,8 @@ Begin
               Value := TValue.FromVariant(VarAsType(AValue, VarDouble));
             end;
           End;
+          TkVariant :
+            Value := TValue.FromVariant(AValue);
           TkUString :
             Value := TValue.FromVariant(VarAsType(AValue, VarUString));
         Else
@@ -5181,6 +5270,16 @@ Begin
   Result := TgIdentityObject(Inherited GetItems(AIndex));
 End;
 
+function TgIdentityList.IndexOf(const AKey: String): Integer;
+begin
+  For Result := 0 To Count - 1 do
+  Begin
+    If TgIdentityObject(Items[Result]).ID = AKey Then
+      Exit;
+  End;
+  Result := -1;
+end;
+
 procedure TgIdentityList.Last;
 begin
   EnsureActive;
@@ -5236,7 +5335,13 @@ end;
 
 procedure TgIdentityList.SetCurrentKey(const AValue: String);
 begin
-  If ( AValue = '' ) Or  ( FCurrentKey <> AValue ) Then
+  If Buffered Then
+  Begin
+    If Not Active Then
+      Active := True;
+    CurrentIndex := IndexOf(AValue);
+  End
+  Else If ( AValue = '' ) Or  ( FCurrentKey <> AValue ) Then
   Begin
     Active := False;
     FCurrentKey := AValue;
@@ -5428,7 +5533,6 @@ end;
 
 function TgSerializer.THelper.TComparer.Compare(const Left,
   Right: TPair<TgBaseClass, THelperClass>): Integer;
-var L,R: Integer;
 begin
   Result := 0;
   if Left.Key <> Right.Key then
@@ -5666,7 +5770,6 @@ class procedure TgSerializerCSV.THelperList.Deserialize(AObject: TgList;
   ASerializer: TgSerializerCSV; ARTTIProperty: TRTTIProperty = Nil);
 var
   HelperClass: TgSerializationHelperClass;
-  PathName: String;
   Count: Integer;
 begin
   if Assigned(ASerializer.CurrentRow) then begin
@@ -5955,11 +6058,26 @@ begin
 end;
 
 procedure TgSerializerCSV.Load(const AString: String);
+var
+  BeginI,EndI: Integer;
 begin
   FHeadings.Clear;
   FObjectNames.Clear;
   FDocument.Clear;
-  FDocument.Text := AString;
+//  FDocument.StrictDelimiter := True;
+  BeginI := 1;
+  EndI := PosEx(#13#10,AString,BeginI);
+  if EndI > 0 then repeat
+    FDocument.Add(Copy(AString,BeginI,EndI-BeginI));
+    BeginI := EndI + 2;
+    EndI := PosEx(#13#10,AString,BeginI);
+  until EndI = 0;
+  EndI := Length(AString);
+  if EndI > BeginI then
+    FDocument.Add(Copy(AString,BeginI,EndI-BeginI));
+
+//  FDocument.LineBreak := #13;
+//  FDocument.DelimitedText := AString;
 end;
 
 class procedure TgSerializerCSV.Register;
@@ -5973,10 +6091,8 @@ end;
 function TgSerializerCSV.Serialize(AObject: TgBase): string;
 var
   HelperBaseClass: TgSerializationHelperClass;
-  ResultText: String;
   Node: TgNodeCSV;
   Row: TStringList;
-  Index: integer;
 begin
   FHeadings.Clear;
   FDocument.Clear;
@@ -6363,6 +6479,11 @@ begin
   inherited;
   _Tags := TDictionary<String, TClassOf>.Create;
   Register('list',TgElementList);
+  Register('assign',TgElementAssign);
+  Register('if',TgElementIf);
+  Register('with',TgElementWith);
+  Register('include',TgElementInclude);
+  Register('html',TgElementHTML);
 end;
 
 constructor TgElement.Create(Owner: TgBase);
@@ -6376,9 +6497,11 @@ class function TgElement.CreateFromTag(Owner: TgElement;
   Node: IXMLNode; AgBase: TgBase): TgElement;
 var
   AClass: TClassOf;
-  TagName: String;
   NodeName: String;
+  NodeValue: OleVariant;
   Index: Integer;
+  Handled: Boolean;
+  A: TCustomAttribute;
   RTTIProperty: TRTTIProperty;
 begin
   NodeName := Node.NodeName;
@@ -6390,11 +6513,24 @@ begin
   for Index := 0 to Index do begin
     NodeName := Node.AttributeNodes[Index].NodeName;
     RTTIProperty :=  Result.GetPropertyByName(NodeName);
+    NodeValue := Node.AttributeNodes[Index].NodeValue;
+    if varIsNull(NodeValue) then
+      NodeValue := '';
     if Assigned(RTTIProperty) and RTTIProperty.IsWritable then
-      if not RTTIProperty.PropertyType.IsInstance then
-        Result[NodeName] := Eval(Node.AttributeNodes[Index].NodeValue,AgBase)
-      else
-        RTTIProperty.SetValue(Result,AgBase.Objects[Node.AttributeNodes[Index].NodeValue]);
+      if RTTIProperty.PropertyType.IsInstance then
+        RTTIProperty.SetValue(Result,AgBase.Objects[NodeValue])
+      else begin
+        Handled := False;
+        for A in RTTIProperty.GetAttributes do
+          if A is ImpliedExpressionEvaulator then begin
+            if not Handled then
+              Result[NodeName] := Eval(NodeValue,AgBase);
+            Handled := True;
+            Break;
+          end;
+        if not Handled then
+          Result[NodeName] := NodeValue;
+      end;
   end;
 end;
 class destructor TgElement.Destroy;
@@ -6403,26 +6539,6 @@ begin
   inherited;
 end;
 
-(*
-procedure TgElement.ProcessDocument(Source, Target: IXMLDocument);
-    procedure CopyNodes(Input, Output: IXMLNodeList);
-    var
-      i: Integer;
-    begin
-      for i := 0 to Input.Count - 1 do
-      begin
-        Output.Add(Input[i]);
-        CopyNodes(Input[i].ChildNodes, Output[i].ChildNodes);
-      end; // for
-    end; // CopyNodes
-begin
-  Target.Options := [doNodeAutoIndent];
-  Target.ChildNodes.Add(Source.DocumentElement);
-  CopyNodes(Source.DocumentElement.ChildNodes, Target.DocumentElement.ChildNodes);
-//  Target.SaveToFile(Filename);
-end; // SaveXml
-*)
-
 function TgElement.GetgBase: TgBase;
 begin
   if Assigned(FgBase) then
@@ -6430,6 +6546,18 @@ begin
   else if Assigned(FOwner) and (FOwner is TgElement) then
     Result := (FOwner as TgElement).gBase
   else
+    Result := nil;
+end;
+
+function TgElement.GetgDocument(out Value: TgDocument): Boolean;
+begin
+  Result := Assigned(FOwner) and (FOwner as TgElement).GetgDocument(Value);
+
+end;
+
+function TgElement.GetgDocument: TgDocument;
+begin
+  if not GetgDocument(Result) then
     Result := nil;
 end;
 
@@ -6454,7 +6582,7 @@ begin
 end;
 
 procedure TgElement.ProcessChildNodes(SourceChildNodes,
-  TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+  TargetChildNodes: IXMLNodeList);
 var
   Next: TgElement;
   Index: Integer;
@@ -6463,41 +6591,33 @@ begin
   for Index := 0 to Index do begin
     Next := TgElement.CreateFromTag(Self,SourceChildNodes[Index],gBase);
     try
-      if Next.Condition then
-        Next.ProcessNode(SourceChildNodes[Index],TargetChildNodes,TargetDocument);
+      if not Next.Skip then
+        Next.ProcessNode(SourceChildNodes[Index],TargetChildNodes);
     finally
       Next.Free;
     end;
   end;
 end;
 
-procedure TgElement.ProcessDocument(SourceDocument, TargetDocument: IXMLDocument; AgBase: TgBase = nil);
-var
-  Index: Integer;
-begin
-  if Assigned(AgBase) then
-    gBase := AgBase;
-  ProcessChildNodes(SourceDocument.ChildNodes,TargetDocument.ChildNodes,TargetDocument);
-end;
-
-
-procedure TgElement.ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+procedure TgElement.ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList);
 var
   Target: IXMLNode;
   Index: Integer;
+  AgDocument: TgDocument;
 begin
   if ConditionSelf then begin
     Target := nil;
     case Source.NodeType of
       ntText
       : begin
-          Target := Source.CloneNode(True);
-          Target.NodeValue := ProcessValue(Target.NodeValue);
-          TargetChildNodes.Add(Target);
+          ProcessText(Source,TargetChildNodes);
           exit;
         end;
       else begin
-        Target := TargetDocument.CreateNode(Source.NodeName);
+        if not GetgDocument(AgDocument) then
+          raise E.Create('No document');
+        Target := AgDocument.Target.CreateNode(Source.NodeName);
+
         TargetChildNodes.Add(Target);
       end;
     end;
@@ -6511,53 +6631,123 @@ begin
           if GetPropertyByName(NodeName) = nil then
   { TODO : Should I drop any specific attributes }
             Target.Attributes[NodeName] := ProcessValue(NodeValue);
-    ProcessChildNodes(Source.ChildNodes,Target.ChildNodes,TargetDocument);
+    ProcessChildNodes(Source.ChildNodes,Target.ChildNodes);
   end
   else
-    ProcessChildNodes(Source.ChildNodes,TargetChildNodes,TargetDocument);
+    ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
+end;
+
+procedure TgElement.ProcessText(const Source: String; ProcessText,
+  ProcessHTML: TProcessText);
+var
+  BeginingI: Integer;
+  StartI,EndI: Integer;
+  NewValue: String;
+  AIsHTML: Boolean;
+  AgBase: TgBase;
+begin
+  AgBase := gBase;
+  if (Source = '') then
+  else if not Assigned(AgBase) then
+    ProcessText(Source)
+
+  else begin
+    // {}'s represent a expression to be evaulated
+{ TODO : Handle Quotes Expression Evaulator}
+{ TODO : Allow Nested  when searching the end;}
+    StartI := Pos('{',Source);
+
+    if StartI = 0 then
+      ProcessText(Source) // nothing to do
+    else begin
+      BeginingI := 1;
+      repeat
+        EndI := PosEx('}',Source,StartI);
+        if EndI = 0 then
+          Break
+        else begin
+          if StartI <> BeginingI then
+            ProcessText(Copy(Source,BeginingI,StartI-BeginingI));
+          Inc(StartI);
+          NewValue := Copy(Source,StartI,EndI-StartI);
+          NewValue := EvalHTML(NewValue,AgBase,AIsHTML);
+          if AIsHTML then
+            ProcessHTML(NewValue)
+          else
+            ProcessText(NewValue);
+          BeginingI := EndI+1;
+
+          StartI := PosEx('{',Source,BeginingI);
+        end;
+      until StartI = 0;
+      EndI := Length(Source)+1;
+      if BeginingI < EndI then
+        ProcessText(Copy(Source,BeginingI,EndI-BeginingI));
+    end;
+  end;
+end;
+
+procedure TgElement.ProcessText(SourceNode: IXMLNode;
+  TargetChildNodes: IXMLNodeList);
+var
+  S: String;
+  AgDocument: TgDocument;
+begin
+//    Result := Value // {} replacements
+  AgDocument := gDocument;
+  if not Assigned(AgDocument) then begin
+    TargetChildNodes.Add(SourceNode.CloneNode(False));
+    Exit;
+  end;
+  S := SourceNode.NodeValue;
+  if Pos('{',S) = 0 then begin
+    // Just return the value;
+    TargetChildNodes.Add(AgDocument.Target.CreateNode(SourceNode.NodeValue,ntText));
+    exit;
+  end;
+  ProcessText(S,
+    procedure(const Text: String)
+    begin
+      TargetChildNodes.Add(AgDocument.Target.CreateNode(Text,ntText));
+    end
+   ,procedure(const HTML: String)
+    var
+      Text: String;
+    begin
+      Text := Trim(HTML);
+      if not StartsText('<html>',Text) then
+        Text:= '<html>'+Text+'</html>';
+      AgDocument.ProcessText(Text,TargetChildNodes,gBase);
+    end
+    );
 end;
 
 function TgElement.ProcessValue(const Value: OleVariant): OleVariant;
 var
-  S: String;
   Builder: TStringBuilder;
-  BeginingI: Integer;
-  StartI,EndI: Integer;
+  S: String;
 begin
   if not VarIsStr(Value) or not Assigned(gBase) then
     Result := Value // {} replacements
   else begin
     S := Value;
-    // {}'s represent a expression to be evaulated
-{ TODO : Handle Quotes Expression Evaulator}
-    StartI := Pos('{',S);
-    if StartI = 0 then
-      Exit(Value) // nothing to do
-    else begin
-      Builder := TStringBuilder.Create;
-      try
-        BeginingI := 1;
-        repeat
-          EndI := PosEx('}',S,StartI);
-          if EndI = 0 then
-            Break
-          else begin
-            if StartI <> BeginingI then
-              Builder.Append(S,BeginingI-1,StartI-BeginingI);
-            Inc(StartI);
-            Builder.Append(String(GetValue(Copy(S,StartI,EndI-StartI))));
-            BeginingI := EndI+1;
+    if Pos('{',S) = 0 then
+      Exit(Value);
 
-            StartI := PosEx('{',S,BeginingI);
-          end;
-        until StartI = 0;
-        EndI := Length(S)+1;
-        if BeginingI < EndI then
-          Builder.Append(S,BeginingI-1,EndI-BeginingI);
-        Result := Builder.ToString;
-      finally
-        Builder.Free;
-      end;
+    Builder := TStringBuilder.Create;
+    try
+      ProcessText(S,
+        procedure(const Text: String)
+          begin
+            Builder.Append(Text);
+          end
+       ,procedure(const HTML: String)
+          begin
+            Builder.Append(String(ProcessValue(HTML)));
+          end);
+      Result := Builder.ToString;
+    finally
+      Builder.Free;
     end;
   end;
 end;
@@ -6567,6 +6757,128 @@ begin
   _Tags.Add(TagName,AClass);
 end;
 
+
+function TgElement.Skip: Boolean;
+begin
+  Result := not Condition;
+end;
+
+{ TgDocument }
+
+class function TgDocument._ProcessText(const Source: String;
+  AgBase: TgBase): String;
+begin
+  if not _ProcessText(Source,Result,AgBase) then
+    Result := '';
+end;
+
+constructor TgDocument.Create(Owner: TgBase);
+begin
+  inherited;
+  FTargetDocument := TXMLDocument.Create(Nil);
+  FTargetDocumentInterface := FTargetDocument;
+  FTargetDocument.DOMVendor := GetDOMVendor('MSXML');
+  FTargetDocument.Options := [doNodeAutoIndent,doAttrNull];
+  FTargetDocument.Active := True;
+end;
+
+destructor TgDocument.Destroy;
+begin
+  FTargetDocumentInterface := nil;
+  FTargetDocument := nil;
+  inherited;
+end;
+
+function TgDocument.GetgDocument(out Value: TgDocument): Boolean;
+begin
+  Result := True;
+  Value := Self;
+end;
+
+function TgDocument.ProcessDocument(SourceDocument: IXMLDocument;
+  TargetChildNodes: IXMLNodeList; AgBase: TgBase): Boolean;
+begin
+  Result := True;
+  if Assigned(AgBase) then
+    gBase := AgBase;
+  ProcessChildNodes(SourceDocument.ChildNodes,TargetChildNodes);
+end;
+
+
+function TgDocument.ProcessFile(const AFileName: String; ASearchPath: String;
+  TargetChildNodes: IXMLNodeList; AgBase: TgBase): Boolean;
+begin
+  if ASearchPath = '' then
+    ASearchPath := SearchPath;
+  Result := ProcessFile(FileSearch(AFileName,ASearchPath),TargetChildNodes,AgBase);
+end;
+
+function TgDocument.ProcessFile(const FileName: String;
+  TargetChildNodes: IXMLNodeList; AgBase: TgBase): Boolean;
+var
+  SourceDocument: TXMLDocument;
+  SourceDocumentInterface: IXMLDocument;
+begin
+  if (FileName = '') or not FileExists(FileName) then Exit(False);
+
+  SourceDocument := TXMLDocument.Create(Nil);
+  try
+    SourceDocumentInterface := SourceDocument;
+    SourceDocument.DOMVendor := GetDOMVendor('MSXML');
+//    SourceDocument.Options := [doNodeAutoIndent];
+    SourceDocument.LoadFromFile(FileName);
+    Result := ProcessDocument(SourceDocument,TargetChildNodes,AgBase);
+  finally
+    SourceDocumentInterface := nil;
+    SourceDocument := nil;
+//      SourceDocument.Free;
+  end;
+end;
+
+function TgDocument.ProcessText(const Source: String; var Target: String;
+  AgBase: TgBase): Boolean;
+begin
+  Result := ProcessText(Source,FTargetDocument.ChildNodes,AgBase);
+  if Result then
+    Target := FTargetDocument.XML.Text;
+
+end;
+
+function TgDocument.ProcessText(const Source: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase): Boolean;
+var
+  SourceDocument: TXMLDocument;
+  SourceDocumentInterface: IXMLDocument;
+begin
+  SourceDocument := TXMLDocument.Create(Nil);
+  try
+    SourceDocumentInterface := SourceDocument;
+    SourceDocument.DOMVendor := GetDOMVendor('MSXML');
+    SourceDocument.Options := [doNodeAutoIndent];
+    SourceDocument.LoadFromXML(Source);
+
+    Result := ProcessDocument(SourceDocument,TargetChildNodes,AgBase);
+
+  finally
+    SourceDocumentInterface := nil;
+    SourceDocument := nil;
+//      SourceDocument.Free;
+  end;
+end;
+
+class function TgDocument._ProcessText(const Source: String; var Target: String; AgBase: TgBase = nil): Boolean;
+var
+  gDocument: TgDocument;
+begin
+  gDocument := TgDocument.Create;
+  try
+    Result := gDocument.ProcessText(Source,Target,AgBase);
+  finally
+    gDocument.Free;
+  end;
+
+end;
+
+{ TgServer }
 
 destructor TgServer.Destroy;
 begin
@@ -7175,22 +7487,20 @@ end;
 { TgElementList }
 
 procedure TgElementList.ProcessChildNodes(SourceChildNodes,
-  TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
-var
-  Next: TgElement;
+  TargetChildNodes: IXMLNodeList);
 begin
   Object_.First;
   while not Object_.EOL do begin
     gBase := Object_.Current;
-    inherited ProcessChildNodes(SourceChildNodes,TargetChildNodes,TargetDocument);
+    inherited ProcessChildNodes(SourceChildNodes,TargetChildNodes);
     Object_.Next;
   end;
 end;
 
 procedure TgElementList.ProcessNode(Source: IXMLNode;
-  TargetChildNodes: IXMLNodeList; TargetDocument: IXMLDocument);
+  TargetChildNodes: IXMLNodeList);
 begin
-  ProcessChildNodes(Source.ChildNodes,TargetChildNodes,TargetDocument);
+  ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
 end;
 
 Function TgHTMLExpressionEvaluator.GetValue(Const AVariableName : String) : Variant;
@@ -7230,6 +7540,75 @@ begin
     FDictionary.AddOrSetValue(APath, AValue);
     Result := True;
   End
+End;
+  { TgElementIf }
+
+procedure TgElementIf.ProcessNode(Source: IXMLNode;
+  TargetChildNodes: IXMLNodeList);
+var
+  Index: Integer;
+begin
+  if Condition then begin
+    Index := Source.ChildNodes.IndexOf('then');
+    if Index >= 0 then
+      Source := Source.ChildNodes['then'];
+    if Assigned(Source) then
+      ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
+  end
+  else begin
+    Index := Source.ChildNodes.IndexOf('else');
+    if Index >= 0 then begin
+      Source := Source.ChildNodes['else'];
+      if Assigned(Source) then
+        ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
+    end;
+  end;
+end;
+
+function TgElementIf.Skip: Boolean;
+begin
+  Result := False;
+end;
+
+{ TgElementWith }
+
+procedure TgElementWith.ProcessNode(Source: IXMLNode;
+  TargetChildNodes: IXMLNodeList);
+begin
+  gBase := Object_;
+  ProcessChildNodes(Source.ChildNodes,TargetChildNodes);
+end;
+
+{ TgElementAssign }
+
+procedure TgElementAssign.ProcessNode(Source: IXMLNode;
+  TargetChildNodes: IXMLNodeList);
+begin
+  gBase[Name] := ProcessValue(Value);
+end;
+
+{ TgElementInclude }
+
+procedure TgElementInclude.ProcessNode(Source: IXMLNode;
+  TargetChildNodes: IXMLNodeList);
+var
+  AgDocument: TgDocument;
+begin
+  if GetgDocument(AgDocument) then
+    AgDocument.ProcessFile(FileName, SearchPath, TargetChildNodes);
+end;
+
+
+{ TgElementHTML }
+
+constructor TgElementHTML.Create(Owner: TgBase);
+var
+  AgDocument: TgDocument;
+begin
+  inherited;
+  // This is ment to handle nest html tags
+  if GetgDocument(AgDocument)  then
+    ConditionSelf := AgDocument.Target.ChildNodes.Count = 0;
 end;
 
 Initialization

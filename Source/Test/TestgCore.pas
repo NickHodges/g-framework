@@ -12,7 +12,7 @@ unit TestgCore;
 interface
 
 uses
-  TestFramework, gCore, System.Rtti,
+  TestFramework, Classes,gCore, System.Rtti,
   Xml.XMLDoc,
   Xml.XMLDom,
   Xml.XMLIntf;
@@ -380,11 +380,19 @@ type
         FFirstName: String;
         FLastName: String;
         FWebAddress: String;
+        FGoodCustomer: Boolean;
+        FOtherCustomer: TCustomer;
+        FWebContent: TgHTMLString;
+        FNotes: String;
       published
         property FirstName: String read FFirstName write FFirstName;
         property LastName: String read FLastName write FLastName;
         property FullName: String read GetFullName;
         property WebAddress: String read FWebAddress write FWebAddress;
+        property Notes: String read FNotes write FNotes;
+        property WebContent: TgHTMLString read FWebContent write FWebContent;
+        property GoodCustomer: Boolean read FGoodCustomer write FGoodCustomer;
+        property OtherCustomer: TCustomer read FOtherCustomer write FOtherCustomer;
       end;
 
       TCustomers = TgList<TCustomer>;
@@ -395,11 +403,15 @@ type
       published
         property Customers: TCustomers read FCustomers;
       end;
-
   published
     procedure Replace;
     procedure Convert1;
     procedure ListTag;
+    procedure IncludeTag;
+    procedure AssignTag;
+    procedure WithTag;
+    procedure ifTag;
+    procedure HTMLField;
   end;
 
   [PersistenceManagerClassName('gCore.TgPersistenceManagerIBX')]
@@ -1941,11 +1953,11 @@ begin
   FSerializer.Deserialize(List,S);
   List.First;
   CheckFalse(List.EOL);
-  CheckEquals('Jim',List.Current.Name);
+  CheckEquals('Jim'#$A'Barney',List.Current.Name);
   CheckEquals(12.30,List.Current.Price);
   List.Next;
   CheckFalse(List.EOL);
-  CheckEquals('Fred',List.Current.Name);
+  CheckEquals('Fred'#$A'Mosbie',List.Current.Name);
   CheckEquals(50,List.Current.Price);
   List.Next;
   CheckTrue(List.EOL);
@@ -2069,24 +2081,51 @@ end;
 *)
 { TestTSerializeCSV.TgTest }
 
+
 constructor TestTSerializeCSV.TgTest.Create(AOwner: TgBase);
 begin
   inherited;
   FNames := TgList<TgName>.Create(Self);
-
 end;
 
 { TestHTMLParser }
 
+procedure TestHTMLParser.AssignTag;
+var
+  Text: String;
+  gCustomer: TCustomer;
+begin
+  gCustomer := TCustomer.Create;
+  try
+    CheckEquals('',gCustomer.FirstName);
+    Text :=
+  //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10+
+  //    '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>Untitled <b>Document</b>S</title></head><body></body></html>';
+      '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A+
+      '  <head xmlns="">'#$D#$A+
+      '    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A+
+      '    <title>Untitled   <b>Document</b>'#$D#$A+
+      '    S</title>'#$D#$A+
+      '  </head>'#$D#$A+
+      '  <body>'#$D#$A+
+      '    <assign condition="GoodCustomer" Name="FirstName" value="DeadMeat" />'#$D#$A+
+      '  </body>'#$D#$A+
+      '</html>'#$D#$A;
+    gCustomer.GoodCustomer := False;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'    <title>Untitled     <b>Document</b>'#$D#$A'    '#$D#$A'    S</title>'#$D#$A'  </head>'#$D#$A'  <body xmlns=""/>'#$D#$A'</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+    CheckEquals('',gCustomer.FirstName);
+    gCustomer.GoodCustomer := True;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'    <title>Untitled     <b>Document</b>'#$D#$A'    '#$D#$A'    S</title>'#$D#$A'  </head>'#$D#$A'  <body xmlns=""/>'#$D#$A'</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+    CheckEquals('DeadMeat',gCustomer.FirstName);
+  finally
+    gCustomer.Free;
+  end;
+
+end;
+
 procedure TestHTMLParser.Convert1;
 var
   Text: String;
-  TextResult: String;
-  SourceDocument: TXMLDocument;
-  SourceDocumentInterface: IXMLDocument;
-  TargetDocument: TXMLDocument;
-  TargetDocumentInterface: IXMLDocument;
-  gElement: TgElement;
 begin
   Text :=
 //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10+
@@ -2099,28 +2138,45 @@ begin
     '  </head>'#$D#$A+
     '  <body xmlns=""/>'#$D#$A+
     '</html>'#$D#$A;
-  SourceDocument := TXMLDocument.Create(Nil);
-  SourceDocumentInterface := SourceDocument;
-  SourceDocument.DOMVendor := GetDOMVendor('MSXML');
-  SourceDocument.Options := [doNodeAutoIndent];
-  SourceDocument.LoadFromXML(Text);
 
-  TargetDocument := TXMLDocument.Create(Nil);
-  TargetDocumentInterface := TargetDocument;
-  TargetDocument.DOMVendor := GetDOMVendor('MSXML');
-  TargetDocument.Options := [doNodeAutoIndent,doAttrNull];
-  TargetDocument.Active := True;
-  gElement := TgElement.Create;
+  CheckEquals(
+    '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+   +'  <head xmlns="">'#$D#$A
+   +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+   +'    <title>Untitled     <b>Document</b>'#$D#$A
+   +'    '#$D#$A
+   +'    S</title>'#$D#$A
+   +'  </head>'#$D#$A
+   +'  <body xmlns=""/>'#$D#$A
+   +'</html>'#$D#$A
+  ,TgDocument._ProcessText(Text));
+end;
+
+procedure TestHTMLParser.HTMLField;
+var
+  Customer: TCustomer;
+  Text: String;
+begin
+  Customer := TCustomer.Create;
   try
-    gElement.ProcessDocument(SourceDocument,TargetDocument);
-  finally
-    gElement.Free;
-  end;
-//  TargetDocumentInterface := TargetDocument;
-  TextResult := TargetDocument.XML.Text;
-//  TargetDocument.SaveToXML(TextResult);
-  CheckEquals(Text,TextResult);
+    Customer.FirstName := 'David';
+    Customer.LastName := 'Harper';
+    Customer.Webcontent := '<b>{FirstName}</b><br />{LastName}';
+    Customer.Notes := '<b>{FirstName}'#13#10'{LastName}</b>';
 
+    Text := '<html><div>{WebContent}</div><div>{Notes}</div></html>';
+    CheckEquals('<html>'#$D#$A
+    +'  <div>'#$D#$A
+    +'    <b>David</b>'#$D#$A
+    +'    <br/>'#$D#$A
+    +'  Harper</div>'#$D#$A
+    +'  <div>&lt;b&gt;{FirstName}'#$D#$A
+    +'{LastName}&lt;/b&gt;</div>'#$D#$A
+    +'</html>'#$D#$A
+    ,TgDocument._ProcessText(Text,Customer));
+  finally
+    FreeAndNil(Customer);
+  end;
 end;
 
 procedure TestTFirebirdObject.Save;
@@ -2170,64 +2226,175 @@ begin
   inherited;
 end;
 
+procedure TestHTMLParser.ifTag;
+var
+  Text: String;
+  gCustomer: TCustomer;
+begin
+  gCustomer := TCustomer.Create;
+  gCustomer.FirstName := 'Steve';
+  gCustomer.LastName := 'Nooner';
+  try
+    Text :=
+       '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+      +'<if condition="GoodCustomer">'#13#10
+        +'Hello'#13#10
+        +'<then>{FirstName}, You are awesome!</then>'#13#10
+        +'<else>{LastName}, Try to do better :(</else>'#13#10
+      +'</if>'#13#10
+      +'</html>';
+    gCustomer.GoodCustomer := True;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">Steve, You are awesome!</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+    gCustomer.GoodCustomer := False;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">Nooner, Try to do better :(</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+
+    Text :=
+       '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+      +'<if condition="GoodCustomer">'#13#10
+        +'{FirstName}, You are awesome!'#13#10
+      +'</if>'#13#10
+      +'</html>';
+    gCustomer.GoodCustomer := True;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+      +'Steve, You are awesome!'#$D#$A
+      +'</html>'#$D#$A
+      ,TgDocument._ProcessText(Text,gCustomer));
+    gCustomer.GoodCustomer := False;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml"/>'#$D#$A
+    ,TgDocument._ProcessText(Text,gCustomer));
+
+  finally
+    gCustomer.Free;
+  end;
+end;
+
+procedure TestHTMLParser.IncludeTag;
+var
+  gCustomer: TCustomer;
+begin
+  gCustomer := TCustomer.Create;
+  with TStringList.Create do try
+    gCustomer := TCustomer.Create;
+    gCustomer.FirstName := 'Steve';
+    gCustomer.LastName := '<b>Nooner</b>';
+    gCustomer.WebContent := '<b>Hello</b>';
+
+    Add('<html>{WebContent}{LastName}</html>');
+    SaveToFile('YYY.hti');
+
+    Text :=
+  //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+       '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+      +'<head>'#13#10
+      +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+      +'<title>Untitled<b> Document</b>!</title>'#13#10
+      +'</head>'#13#10
+      +'<body>'#13#10
+      +'<include FileName="YYY.hti" SearchPath=""/>'#13#10
+      +'</body>'#13#10
+      +'</html>'#13#10;
+  CheckEquals(
+    '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+   +'  <head xmlns="">'#$D#$A
+   +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+   +'    <title>Untitled  <b> Document</b>'#$D#$A
+   +'    !</title>'#$D#$A
+   +'  </head>'#$D#$A
+   +'  <body xmlns="">'#$D#$A
+   +'    <b>Hello</b>'#$D#$A
+   +'  &lt;b&gt;Nooner&lt;/b&gt;</body>'#$D#$A
+   +'</html>'#$D#$A
+      ,TgDocument._ProcessText(Text,gCustomer));
+  finally
+    DeleteFile('YYY.hti');
+    Free;
+    gCustomer.Free;
+  end;
+
+  with TStringList.Create do try
+    Add('<b>{2 + 2}</b>');
+    SaveToFile('YYY.hti');
+
+    Text :=
+  //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+         '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+        +'<head>'#13#10
+        +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+        +'<title>Untitled<b> Document</b>!</title>'#13#10
+        +'</head>'#13#10
+        +'<body>'#13#10
+        +'<include FileName="YYY.hti" SearchPath=""/>'#13#10
+        +'</body>'#13#10
+        +'</html>'#13#10;
+    CheckEquals(
+         '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+        +'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+        +'    <title>Untitled  <b> Document</b>'#$D#$A
+        +'    !</title>'#$D#$A'  </head>'#$D#$A
+        +'  <body xmlns="">'#$D#$A
+        +'    <b>{2 + 2}</b>'#$D#$A
+        +'  </body>'#$D#$A
+        +'</html>'#$D#$A
+{ TODO : What should this do with no gBase? }
+    ,TgDocument._ProcessText(Text));
+
+  finally
+    DeleteFile('YYY.hti');
+    Free;
+  end;
+
+end;
+
 procedure TestHTMLParser.ListTag;
 var
   Text: String;
-  TextResult: String;
   Model: TModel;
-  SourceDocument: TXMLDocument;
-  SourceDocumentInterface: IXMLDocument;
-  TargetDocument: TXMLDocument;
-  TargetDocumentInterface: IXMLDocument;
-  gElement: TgElement;
 begin
   Model := TModel.Create;
-  Model.Customers.Add;
-  Model.Customers.Current.FirstName := 'Steve<>';
-  Model.Customers.Current.LastName:= 'Joe & Jerry';
-  Model.Customers.Current.WebAddress := 'http://www.google.com';
-  Model.Customers.Add;
-  Model.Customers.Current.FirstName := 'Jim';
-  Model.Customers.Current.LastName := '<Bush>';
-  Model.Customers.Current.WebAddress := 'http://www.yahoo.com';
-
-  Text :=
-//     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
-     '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
-    +'<head>'#13#10
-    +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
-    +'<title>Untitled<b> Document</b>!</title>'#13#10
-    +'</head>'#13#10
-    +'<body>'#13#10
-    +'  <b conditionSelf="Customers.Count = 1" >Count</b>'
-    +'  <list condition="Customers.Count > 1" object="Customers">'#13#10 //DoList
-//    +'    <a href="{WebAddress}">{if(FirstName &lt;&gt; '',FirstName)}</a><br />'#13#10
-    +'    <a href="{WebAddress}">{FirstName} {LastName}</a><br />'#13#10
-//    <div conditionself="ValidationErrors.Name" class="Error">Name</div>
-    +'  </list>'#13#10
-    +'</body>'#13#10
-    +'</html>'#13#10;
-  SourceDocument := TXMLDocument.Create(Nil);
-  SourceDocumentInterface := SourceDocument;
-  SourceDocument.DOMVendor := GetDOMVendor('MSXML');
-  SourceDocument.Options := [doNodeAutoIndent];
-  SourceDocument.LoadFromXML(Text);
-
-  TargetDocument := TXMLDocument.Create(Nil);
-  TargetDocumentInterface := TargetDocument;
-  TargetDocument.DOMVendor := GetDOMVendor('MSXML');
-  TargetDocument.Options := [doNodeAutoIndent,doAttrNull];
-  TargetDocument.Active := True;
-  gElement := TgElement.Create;
   try
-    gElement.ProcessDocument(SourceDocument,TargetDocument,Model);
+    Model.Customers.Add;
+    Model.Customers.Current.FirstName := 'Steve<>';
+    Model.Customers.Current.LastName:= 'Joe & Jerry';
+    Model.Customers.Current.WebAddress := 'http://www.google.com';
+    Model.Customers.Add;
+    Model.Customers.Current.FirstName := 'Jim';
+    Model.Customers.Current.LastName := '<Bush>';
+    Model.Customers.Current.WebAddress := 'http://www.yahoo.com';
+
+    Text :=
+  //     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+       '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+      +'<head>'#13#10
+      +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+      +'<title>Untitled<b> Document</b>!</title>'#13#10
+      +'</head>'#13#10
+      +'<body>'#13#10
+      +'  <b conditionSelf="Customers.Count = 1" >Count</b>'
+      +'  <list condition="Customers.Count > 1" object="Customers">'#13#10 //DoList
+  //    +'    <a href="{WebAddress}">{if(FirstName &lt;&gt; '',FirstName)}</a><br />'#13#10
+      +'    <a href="{WebAddress}">{FirstName} {LastName}</a><br />'#13#10
+  //    <div conditionself="ValidationErrors.Name" class="Error">Name</div>
+      +'  </list>'#13#10
+      +'</body>'#13#10
+      +'</html>'#13#10;
+
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+      +'  <head xmlns="">'#$D#$A
+      +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+      +'    <title>Untitled  <b> Document</b>'#$D#$A
+      +'    !</title>'#$D#$A
+      +'  </head>'#$D#$A
+      +'  <body xmlns="">Count  <a href="http://www.google.com">Steve&lt;&gt; Joe &amp; Jerry</a>'#$D#$A
+      +'    <br/>'#$D#$A
+      +'    <a href="http://www.yahoo.com">Jim &lt;Bush&gt;</a>'#$D#$A
+      +'    <br/>'#$D#$A
+      +'  </body>'#$D#$A
+      +'</html>'#$D#$A
+    ,TgDocument._ProcessText(Text,Model));
+  //  TargetDocument.SaveToXML(TextResult);
   finally
-    gElement.Free;
+    Model.Free;
   end;
-//  TargetDocumentInterface := TargetDocument;
-  TextResult := TargetDocument.XML.Text;
-//  TargetDocument.SaveToXML(TextResult);
-  CheckEquals(Text,TextResult);
 
 end;
 
@@ -2235,21 +2402,24 @@ procedure TestHTMLParser.Replace;
 var
   Customer: TCustomer;
   Element: TgElement;
+  AIsHTML: Boolean;
+
 begin
   Customer := TCustomer.Create;
   Customer.FirstName := 'Steve';
   Customer.LastName := 'Nooner';
+  Customer.WebContent := 'Hello';
   Customer.WebAddress := 'http://www.google.com';
   try
     Element := TgElement.Create;
     try
       Element.gBase := Customer;
       CheckEquals('Hello',Element.ProcessValue('Hello'));
+      CheckEquals(Customer.FirstName+Customer.FirstName+'X',Element.ProcessValue('{FirstName}{FirstName}X'));
+      CheckEquals(Customer.FirstName+'X'+Customer.LastName,Element.ProcessValue('{FirstName}X{LastName}'));
       CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
       CheckEquals(Customer.FirstName+Customer.LastName,Element.ProcessValue('{FirstName}{LastName}'));
       CheckEquals('X'+Customer.FirstName+Customer.LastName,Element.ProcessValue('X{FirstName}{LastName}'));
-      CheckEquals(Customer.FirstName+'X'+Customer.LastName,Element.ProcessValue('{FirstName}X{LastName}'));
-      CheckEquals(Customer.FirstName+Customer.FirstName+'X',Element.ProcessValue('{FirstName}{FirstName}X'));
       CheckEquals('X'+Customer.FirstName+'X'+Customer.LastName+'X',Element.ProcessValue('X{FirstName}X{LastName}X'));
       CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
       CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
@@ -2257,6 +2427,11 @@ begin
       CheckEquals('<p>Hi, '+Customer.FirstName+'</p>',Element.ProcessValue('<p>Hi, {FirstName}</p>'));
       CheckEquals('<p>Hi, '+Customer.FirstName+' '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {FirstName} {LastName}</p>'));
       CheckEquals('<p>Hi, Mr. '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {''Mr. '' + LastName}</p>'));
+      CheckEquals(Customer.WebAddress,EvalHTML('WebAddress',Customer,AIsHTML));
+      CheckFalse(AIsHTML);
+      CheckEquals(Customer.WebContent,EvalHTML('WebContent',Customer,AIsHTML));
+      CheckTrue(AIsHTML);
+
       //Evaluate('<p>Hello {Name}</p>', Customer)
     finally
       Element.Free;
@@ -2266,6 +2441,49 @@ begin
     Customer.Free;
   end;
 
+end;
+
+
+procedure TestHTMLParser.WithTag;
+var
+  Text: String;
+  gCustomer: TCustomer;
+  gCustomer2: TCustomer;
+begin
+  gCustomer := TCustomer.Create;
+  gCustomer.FirstName := 'Steve';
+  gCustomer.LastName := 'Nooner';
+  gCustomer2 := TCustomer.Create;
+  gCustomer2.FirstName := 'Linda';
+  gCustomer2.LastName := 'Evans';
+  gCustomer.OtherCustomer := gCustomer2;
+  try
+  Text :=
+//     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'#13#10
+     '<html xmlns="http://www.w3.org/1999/xhtml">'#13#10
+    +'<head>'#13#10
+    +'<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'#13#10
+    +'</head>'#13#10
+    +'<body>'#13#10
+    +'{FirstName}'#13#10
+    +'<with object="OtherCustomer">'#13#10
+    +'{FirstName} {LastName}'#13#10
+    +'</with>'#13#10
+    +'{LastName}'#13#10
+    +'</body>'#13#10
+    +'</html>'#13#10;
+    gCustomer.GoodCustomer := True;
+    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'  </head>'#$D#$A'  <body xmlns="">'#$D#$A'Steve'#$D#$A#$D#$A'Linda Evans'#$D#$A#$D#$A'Nooner'#$D#$A'</body>'#$D#$A'</html>'#$D#$A
+      ,TgDocument._ProcessText(Text,gCustomer));
+(*
+    gCustomer.GoodCustomer := False;
+    CheckEquals('',TgElement._ProcessText(Text,gCustomer));
+*)
+  finally
+    gCustomer.OtherCustomer := nil;
+    gCustomer2.Free;
+    gCustomer.Free;
+  end;
 end;
 
 procedure TestEvalHTML.Eval;
