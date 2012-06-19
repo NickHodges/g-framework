@@ -2376,6 +2376,7 @@ begin
       +'  </list>'#13#10
       +'</body>'#13#10
       +'</html>'#13#10;
+
     CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
       +'  <head xmlns="">'#$D#$A
       +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A

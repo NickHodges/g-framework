@@ -1028,6 +1028,7 @@ type
 
   strict private
     FCurrentKey: String;
+    FBuffered: Boolean;
     procedure EnsureActive;
     function GetIsActivating: Boolean;
     procedure SetIsActivating(const AValue: Boolean);
@@ -1041,6 +1042,7 @@ type
     function GetCurrentKey: String; virtual;
     function GetItemClass: TgIdentityObjectClass; reintroduce; virtual;
     function GetItems(AIndex : Integer): TgIdentityObject; reintroduce; virtual;
+    function IndexOf(const AKey: String): Integer;
     procedure SetCurrentKey(const AValue: String); virtual;
     procedure SetItemClass(const Value: TgIdentityObjectClass); reintroduce; virtual;
     procedure SetItems(AIndex : Integer; const AValue: TgIdentityObject); reintroduce; virtual;
@@ -1067,6 +1069,7 @@ type
     property Current: TgIdentityObject read GetCurrent;
     [NotSerializable] [NotAssignable]
     property CurrentKey: String read GetCurrentKey write SetCurrentKey;
+    property Buffered: Boolean read FBuffered write FBuffered;
   end;
 
   TgIdentityList<T: TgIdentityObject> = class(TgIdentityList)
@@ -5249,6 +5252,16 @@ Begin
   Result := TgIdentityObject(Inherited GetItems(AIndex));
 End;
 
+function TgIdentityList.IndexOf(const AKey: String): Integer;
+begin
+  For Result := 0 To Count - 1 do
+  Begin
+    If TgIdentityObject(Items[Result]).Key = AKey Then
+      Exit;
+  End;
+  Result := -1;
+end;
+
 procedure TgIdentityList.Last;
 begin
   EnsureActive;
@@ -5304,7 +5317,18 @@ end;
 
 procedure TgIdentityList.SetCurrentKey(const AValue: String);
 begin
-  If ( AValue = '' ) Or  ( FCurrentKey <> AValue ) Then
+  If Buffered Then
+  Begin
+    If Not Active Then
+      Active := True;
+    CurrentIndex := IndexOf(AValue);
+    If AValue > '' Then
+      EditIndex := CurrentIndex
+    Else
+      EditIndex := -1;
+    FCurrentKey := AValue;
+  End
+  Else If ( AValue = '' ) Or  ( FCurrentKey <> AValue ) Then
   Begin
     Active := False;
     FCurrentKey := AValue;
