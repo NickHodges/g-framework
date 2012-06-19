@@ -41,6 +41,7 @@ contains
   gExpressionConstants in 'gExpressionConstants.pas',
   gExpressionLiterals in 'gExpressionLiterals.pas',
   gExpressionOperators in 'gExpressionOperators.pas',
-  gExpressionFunctions in 'gExpressionFunctions.pas';
+  gExpressionFunctions in 'gExpressionFunctions.pas',
+  gWebServerController in 'gWebServerController.pas';
 
 end.

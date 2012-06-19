@@ -383,6 +383,7 @@ type
       published
         property FirstName: String read FFirstName write FFirstName;
         property LastName: String read FLastName write FLastName;
+        property FullName: String read GetFullName;
         property WebAddress: String read FWebAddress write FWebAddress;
       end;
 

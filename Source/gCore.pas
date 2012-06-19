@@ -1301,10 +1301,17 @@ type
     property AppendName: String read GetAppendName;
   end;
 
+  TgController = class(TgBase)
+  end;
+
   TgModel = class(TgBase)
+  strict private
+    function GetController: TgController;
   public
     function IsAuthorized: Boolean; virtual;
     function PersistenceSegmentationString: String; virtual;
+  published
+    property Controller: TgController read GetController;
   end;
 
   CascadeDelete = class(TCustomAttribute)
@@ -1573,6 +1580,17 @@ type
     property DatabaseName: String read FDatabaseName write FDatabaseName;
     property Password: String read FPassword write FPassword;
     property UserName: String read FUserName write FUserName;
+  end;
+
+  TgDictionary = class(TgBase)
+  strict private
+    FDictionary: TDictionary<String, Variant>;
+  strict protected
+    function DoGetValues(const APath: string; out AValue: Variant): Boolean; override;
+    function DoSetValues(const APath: string; AValue: Variant): Boolean; override;
+  public
+    constructor Create(AOwner: TgBase = Nil); override;
+    destructor Destroy; override;
   end;
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -5323,6 +5341,11 @@ begin
   Result := Not FList.EOL;
 end;
 
+function TgModel.GetController: TgController;
+begin
+  Result := TgController(Owner);
+end;
+
 { TgModel }
 
 function TgModel.IsAuthorized: Boolean;
@@ -7179,6 +7202,35 @@ Begin
     FIsHTML := True;
   Result := FModel[AVariableName];
 End;
+
+constructor TgDictionary.Create(AOwner: TgBase = Nil);
+begin
+  inherited Create(AOwner);
+  FDictionary := TDictionary<String, Variant>.Create();
+end;
+
+destructor TgDictionary.Destroy;
+begin
+  FreeAndNil(FDictionary);
+  inherited Destroy;
+end;
+
+function TgDictionary.DoGetValues(const APath: string; out AValue: Variant): Boolean;
+begin
+  Result := inherited DoGetValues(APath, AValue);
+  if Not Result then
+    Result := FDictionary.TryGetValue(APath, AValue);
+end;
+
+function TgDictionary.DoSetValues(const APath: string; AValue: Variant): Boolean;
+begin
+  Result := inherited DoSetValues(APath, AValue);
+  if Not Result then
+  Begin
+    FDictionary.AddOrSetValue(APath, AValue);
+    Result := True;
+  End
+end;
 
 Initialization
   TgSerializerJSON.Register;
