@@ -384,6 +384,7 @@ type
         FOtherCustomer: TCustomer;
         FWebContent: TgHTMLString;
         FNotes: String;
+        function GetFullName: String;
       published
         property FirstName: String read FFirstName write FFirstName;
         property LastName: String read FLastName write FLastName;
@@ -2504,6 +2505,13 @@ end;
 procedure TestEvalHTML.TearDown;
 begin
   TestObject.Free;
+end;
+
+{ TestHTMLParser.TCustomer }
+
+function TestHTMLParser.TCustomer.GetFullName: String;
+begin
+  Result := Format('%s %s',[FirstName, LastName]);
 end;
 
 initialization

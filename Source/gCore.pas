@@ -1093,6 +1093,7 @@ type
     class function AddAttributes(ARTTIProperty: TRttiProperty): System.TArray<TSystemCustomAttribute>; override;
     function GetEnumerator: TgEnumerator;
     constructor Create(AOwner: TgBase = nil); override;
+    function TryGet(const Key: String; out Item: T): Boolean;
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   published
     property Current: T read GetCurrent;
@@ -5419,6 +5420,14 @@ procedure TgIdentityList<T>.SetItems(AIndex : Integer; const AValue: T);
 Begin
   Inherited SetItems(AIndex, AValue);
 End;
+
+function TgIdentityList<T>.TryGet(const Key: String; out Item: T): Boolean;
+begin
+  CurrentKey := Key;
+  Result := not Eol;
+  if Result then
+    Item := Current;
+end;
 
 function TgIdentityList<T>.TgEnumerator.GetCurrent: T;
 begin
