@@ -15,21 +15,36 @@ type
   TgWebServerControllerConfigurationData = class;
   TgRequestLogItem = class;
   TgResponse = class;
+  TgRequestMap = class;
+
+
   TgRequest = class(TgBase)
+  public
+    type
+      THeaderFields = class(TgDictionary)
+      strict private
+        FHost: String;
+      published
+        property Host: String read FHost write FHost;
+      end;
   strict private
     FContent: TgRequestContentBase;
-    FHeaderFields: TgDictionary;
+    FHeaderFields: THeaderFields;
     FQueryFields: TgDictionary;
     FCookieFields: TgDictionary;
     FContentFields: TgDictionary;
+    FHTTPVersion: String;
     FMaxFileUploadSize: Integer;
     FMultiPart: Boolean;
     FURI: String;
     FIPAddress: String;
     FIsSecure: Boolean;
     FIsMobile: Boolean;
+    FMethod: String;
     function GetFields(const AName: String): String;
+    function GetHost: String;
     function GetIsMobile: Boolean;
+    procedure SetHost(const AValue: String);
   Public
     Destructor Destroy;Override;
     function AsString: String;
@@ -38,11 +53,14 @@ type
     property MaxFileUploadSize: Integer read FMaxFileUploadSize write FMaxFileUploadSize;
     Property MultiPart : Boolean read FMultiPart write FMultiPart;
   Published
+    property Method: String read FMethod write FMethod;
+    property HTTPVersion: String read FHTTPVersion write FHTTPVersion;
+    property URI: String read FURI write FURI;
     property ContentFields: TgDictionary read FContentFields;
     property CookieFields: TgDictionary read FCookieFields;
-    property HeaderFields: TgDictionary read FHeaderFields;
+    property HeaderFields: THeaderFields read FHeaderFields;
+    property Host: String read GetHost write SetHost;
     property QueryFields: TgDictionary read FQueryFields;
-    property URI: String read FURI write FURI;
     property IPAddress: String read FIPAddress write FIPAddress;
     property IsSecure: Boolean read FIsSecure write FIsSecure;
     property IsMobile: Boolean read GetIsMobile write FIsMobile;
@@ -92,6 +110,7 @@ type
     FUIState: TgDictionary;
     FLogItem: TgRequestLogItem;
     FRequestDistiller: TgRequestDistiller;
+    FRequestMap: TgRequestMap;
     function GetRequest: TgRequest;
     function GetResponse: TgResponse;
     procedure PopulateModelFromRequest;
@@ -126,6 +145,8 @@ type
     property Response: TgResponse read GetResponse;
     property UIState: TgDictionary read FUIState;
     property LogItem: TgRequestLogItem read FLogItem;
+    [NoAutoCreate]
+    property RequestMap: TgRequestMap read FRequestMap;
   end;
 
   TgRequestContentFormData = Class(TgRequestContentBase)
@@ -320,7 +341,8 @@ type
 implementation
 
 Uses
-  SysUtils
+  SysUtils,
+  Types
   ;
 
 destructor TgWebServerController.Destroy;
@@ -368,9 +390,70 @@ var
   LoadList: TList;
   FileExtention: String;
   MimeType: String;
+  PathArray: TStringDynArray;
+  PathQuery: String;
   RedirectString: String;
+  TempString: String;
 begin
-//  DebugLog.WriteLn( 'Controller processing' );
+    RequestMap := TgWebServerController.ConfigurationData.Host[Request.Host + Request.URI];
+    If RequestMap.PathQuery Then
+    Begin
+      // host: bridalshowcase.com
+      // uri: pathquery/id=5/image.jpg
+
+      SplitOnChar(Request.URI, '/', PathQuery, TempString);
+      PathQuery := URLDecode(PathQuery);
+      Document := TempString;
+      StringList := TStringList.Create;
+      try
+        StringList.Delimiter := '&';
+        StringList.DelimitedText := PathQuery;
+        For Counter := 0 to StringList.Count - 1 Do
+          AController.Request.QueryFields[StringList.Names[Counter]] := StringList.ValueFromIndex[Counter];
+      finally
+        StringList.Free;
+      end;
+    End;
+    If ( Document = '' ) And ( AController.Request.HeaderFields['Document'][Length( AController.Request.HeaderFields['Document'] )] <> '/' ) Then
+    Begin
+      FRedirect := AController.Request.HeaderFields['Document'] + '/';
+      Exit;
+    End;
+    If ( Document = '' ) And ( RequestMap.DefaultPage > '' ) Then
+      Document := RequestMap.DefaultPage;
+    FFileName := FindDocument( RequestMap, Document );
+    { TODO -oskramer : Is this right?  Do we want to throw an  exception that a file
+                       wasn't found here or in the controller? What if the controller
+                       is generating the response? }
+    If FFileName = '' Then
+      FFileName := FindDocument( RequestMap, '404.html' );
+    If FFileName = '' Then
+      Raise EgFileNotFound.CreateFmt( SFileNotFound, [Document] );
+    FLoginTemplateFileName := FindDocument( RequestMap, RequestMap.LoginTemplate );
+    If RequestMap.ModelClassName > '' Then
+    Begin
+      FileNameExtension := ExtractFileExt( FFileName );
+      If FileNameExtension > '' Then
+      Begin
+        FileNameExtension := Copy( FileNameExtension, 2, MaxInt );
+        FIsTemplate := ConfigurationData.TemplateFileExtensions.IndexOf( FileNameExtension ) > -1;
+      End;
+      FIsPathQuery := RequestMap.PathQuery;
+      If FIsTemplate Or FIsPathQuery Then
+      Begin
+        FModelClass := TgModelClass(TgClassRegistry.GetClassWithNameSpace( RequestMap.NameSpace, RequestMap.ModelClassName ));
+        If Not FModelClass.InheritsFrom( TgModel ) Then
+          Raise EgClassMismatch.CreateFmt( SIsNotATgModel, [FModelClass.ClassName] );
+        If RequestMap.LogClassName > '' Then
+          FLogClass := TgRequestLogItemClass(TgClassRegistry.GetClassWithNameSpace( RequestMap.NameSpace, RequestMap.LogClassName ));
+        If Assigned(FLogClass) And Not FLogClass.InheritsFrom( TgRequestLogItem ) Then
+          Raise EgClassMismatch.CreateFmt( SIsNotATgModel, [FLogClass.ClassName] );
+      End;
+    End;
+
+
+
+
   try
     FRequestDistiller := TgRequestDistiller.Create( Self );
     try
@@ -1657,6 +1740,37 @@ begin
     WebServerController := TgWebServerController(Owner);
     Cookies['Display-Type'] := WebServerController.MakeCookie('Display-Type', Value, '', '', SysUtils.Date + 1000, WebServerController.Request.IsSecure);
   End;
+end;
+
+function TgWebServerController.GetHost: String;
+begin
+  // TODO -cMM: TgWebServerController.GetHost default body inserted
+  Result := ;
+end;
+
+procedure TgWebServerController.SetHost(const AValue: String);
+begin
+  // TODO -cMM: TgWebServerController.SetHost default body inserted
+end;
+
+function TgRequest.GetHost: String;
+begin
+  HeaderFields['Host'];
+end;
+
+procedure TgRequest.SetHost(const AValue: String);
+begin
+  HeaderFields['Host'] := AValue;
+end;
+
+function TgRequest.GetHost: String;
+begin
+  Result := HeaderFields.Host;
+end;
+
+procedure TgRequest.SetHost(const AValue: String);
+begin
+  HeaderFields.Host := AValue;
 end;
 
 end.
