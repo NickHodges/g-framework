@@ -210,9 +210,9 @@ type
     function GetModelClassName: String;
     function GetTemplateRequestMap: TgRequestMap;
     function GetBasePath: String;
-    function GetSubHost(const AHost: String): TgRequestMap;
     function GetLoginTemplate: String;
   strict protected
+    function GetSubHost(var AHost: String): TgRequestMap;
     function GetVirtualPath(var APath : String): TgRequestMap;
     Function GetPathInternal(const AHead, ATail : String) : String;
     function GetPath(ARequestString: String): String;
@@ -228,7 +228,7 @@ type
     Function TopRequestMap : TgRequestMap;
     property VirtualPath[var APath : String]: TgRequestMap read GetVirtualPath;
     Property Path[ARequestString : String] : String read GetPath;
-    Property SubHost[const AHost : String] : TgRequestMap read GetSubHost;
+    Property SubHost[var AHost : String] : TgRequestMap read GetSubHost;
   Published
     Property BasePath : String read GetBasePath write FBasePath;
     Property SearchPath : String read GetSearchPath write FSearchPath;
@@ -256,7 +256,6 @@ type
     function FileName: String;
     procedure AddDefaultPackages;
     procedure AddDefaultPackage(const AFileName: String);
-    function GetHost(const AHost : String): TgRequestMap;
   public
     constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
@@ -267,7 +266,7 @@ type
     procedure Save;
     procedure InitializeRequestMapBuilders;
     procedure FinalizeRequestMapBuilders;
-    property Host[const AHost : String]: TgRequestMap read GetHost;
+    procedure GetRequestMap(var Host, URI: String; out RequestMap: TgRequestMap);
   published
     property DefaultHost: String read FDefaultHost write FDefaultHost;
     property FileTypes: TgDictionary read FFileTypes;
@@ -394,14 +393,18 @@ var
   PathQuery: String;
   RedirectString: String;
   TempString: String;
+  Document: String;
+  Host: String;
 begin
-    RequestMap := TgWebServerController.ConfigurationData.Host[Request.Host + Request.URI];
+    Host := Request.Host;
+    Document := Request.URI;
+    TgWebServerController.ConfigurationData.GetRequestMap(Host,Document,RequestMap);
     If RequestMap.PathQuery Then
     Begin
       // host: bridalshowcase.com
       // uri: pathquery/id=5/image.jpg
 
-      SplitOnChar(Request.URI, '/', PathQuery, TempString);
+      SplitOnChar(Document, '/', PathQuery, TempString);
       PathQuery := URLDecode(PathQuery);
       Document := TempString;
       StringList := TStringList.Create;
@@ -1252,17 +1255,6 @@ begin
     Result := FDefaultPage;
 end;
 
-function TgRequestMap.GetSubHost(const AHost: String): TgRequestMap;
-Var
-  Head : String;
-  Tail : String;
-begin
-  SplitHostPath(AHost, Head, Tail);
-  if not SubHosts.TryGet(Head,Result) then exit(Self);
-  If Tail > '' Then
-    Result := Result.SubHost[Tail];
-End;
-
 function TgRequestMap.GetLogClassName: String;
 begin
 //  If (Not IsLoading) And Assigned(TemplateRequestMap) And (FLogClassName = '') Then
@@ -1334,6 +1326,18 @@ begin
     FTemplateRequestMap := Hosts.RequestMaps[Template];
   Result := FTemplateRequestMap;
 end;
+
+function TgRequestMap.GetSubHost(var AHost: String): TgRequestMap;
+Var
+  Head : String;
+  Tail : String;
+begin
+  SplitHostPath(AHost, Head, Tail);
+  if not SubHosts.TryGet(Head,Result) then exit(Self);
+  AHost := Tail;
+  If AHost > '' Then
+    Result := Result.SubHost[AHost];
+End;
 
 function TgRequestMap.GetVirtualPath(var APath : String): TgRequestMap;
 var
@@ -1561,25 +1565,27 @@ begin
   FreeAndNil(RequestMapBuilders);
 end;
 
-function TgWebServerControllerConfigurationData.GetHost(const AHost : String): TgRequestMap;
+
+procedure TgWebServerControllerConfigurationData.GetRequestMap(var Host,
+  URI: String; out RequestMap: TgRequestMap);
 Var
   Head : String;
   Tail : String;
-  URI: String;
-  Counter : Integer;
   TopLevelDomain : String;
   DefaultRequestMap : TgRequestMap;
 begin
-  DefaultRequestMap := Nil;
-  TgRequestMap.SplitRequestPath(AHost,Head, URI);
+  // Todo: Make sure DefaultRequestMap is assigned prior to this
+  RequestMap := DefaultRequestMap;
   TopLevelDomain := ExtractFileExt(Head);
   TgRequestMap.SplitHostPath(ChangeFileExt(Head, ''), Head, Tail);
-  if not Hosts.TryGet(Head + TopLevelDomain,Result) then
-     Exit(DefaultRequestMap);
-  if Tail > '' then
-    Result := Result.SubHost[Tail];
+  if not Hosts.TryGet(Head + TopLevelDomain,RequestMap) then
+    Exit;
+  Head := Tail;
+  if Head > '' then
+    RequestMap := RequestMap.SubHost[Head];
   if URI > '' then
-    Result := Result.VirtualPath[URI];
+    RequestMap := RequestMap.VirtualPath[URI];
+
 end;
 
 function TgRequestLogItem.GetDuration: Integer;

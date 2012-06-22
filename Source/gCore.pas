@@ -321,8 +321,8 @@ type
     class function AddAttributes(ARTTIProperty: TRttiProperty): TArray<TCustomAttribute>; virtual;
     procedure Assign(ASource : TgBase); virtual;
     procedure Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
-    class function FriendlyName: String;
-    function GetFriendlyClassName: String;
+    class function FriendlyName: String; virtual;
+    function GetFriendlyClassName: String; virtual;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
     function OwnerProperty: TRTTIProperty;
     /// <summary>TgBase.Owns determines if the object passed into  the ABase parameter
