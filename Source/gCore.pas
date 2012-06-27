@@ -1317,6 +1317,8 @@ type
     property Controller: TgController read GetController;
   end;
 
+  TgModelClass = class of TgModel;
+
   CascadeDelete = class(TCustomAttribute)
   end;
 
@@ -1687,6 +1689,8 @@ Function FileToString(AFileName : String) : String;
 
 Procedure StringToFile(const AString, AFileName : String);
 
+
+
 // This method does nothing with the classes in the array.
 // However, by referencing the classes in the array, the compiler
 // will generate runtime type information for them.
@@ -1697,6 +1701,8 @@ procedure RegisterRuntimeClasses(const AClasses: Array of TClass);
 function EvalHTML(const AExpression: String; ABase: TgBase; out AIsHTML: Boolean): Variant;
 
 function Eval(Const AExpression : String; ABase : TgBase): Variant;
+
+function URLDecode(Const AString : String): String;
 
 implementation
 
@@ -1847,6 +1853,33 @@ end;
 procedure RegisterRuntimeClasses(const AClasses: Array of TClass);
 begin
 
+end;
+
+function URLDecode(Const AString : String): String;
+var
+  PSource : PChar;
+  PDestination : PChar;
+  TempString : String;
+begin
+  SetLength(TempString, Length(AString));
+  PSource := PChar(AString);
+  PDestination := PChar(TempString);
+  while PSource^ <> #0 do
+  begin
+    If PSource^ = '+' Then
+      PDestination^ := ' '
+    Else If PSource^ <> '%' Then
+      PDestination^ := PSource^
+    Else
+    Begin
+      PDestination^ := Chr(StrToInt('$' + (PSource + 1)^ + (PSource + 2)^));
+      Inc(PSource, 2);
+    End;
+    Inc(PSource);
+    Inc(PDestination);
+  end;
+  SetLength(TempString, PDestination - PChar(TempString));
+  Result := TempString;
 end;
 
 { TgBase }
