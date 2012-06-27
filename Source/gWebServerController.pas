@@ -16,6 +16,7 @@ type
   TgRequestLogItem = class;
   TgResponse = class;
   TgRequestMap = class;
+  TgRequestLogItemClass = class of TgRequestLogItem;
 
 
   TgRequest = class(TgBase)
@@ -102,6 +103,10 @@ type
   End;
 
   TgWebServerController = class(TgController)
+  public
+    type
+      EFileNotFound = class(Exception)
+      end;
   strict private
     FActions: TgDictionary;
     FModel: TgModel;
@@ -118,6 +123,7 @@ type
     procedure LogOutInternal(AObject: TgBase);
     procedure ConvertEncryptedQueryFields(const APassword: String);
     procedure DoAction;
+    function FindDocument(const ADocument: String): String;
     procedure SetCookies(APropertyList: TStringList);
     property Model: TgModel read FModel write FModel;
   private
@@ -196,21 +202,23 @@ type
     FSubHosts: TgRequestMaps;
     FDefaultPage : String;
     FRedirect : String;
-    FLogClassName : String;
+    FLogClassName: String;
     FModelClassName: String;
     FTemplateRequestMap: TgRequestMap;
     FBasePath: String;
     FHosts: TgIdentityList;
+    FLogClass: TgRequestLogItemClass;
     FLoginTemplate: String;
     FSecurePath: String;
     FPathQuery: Boolean;
     FMobileSearchPath: String;
+    FModelClass: TgModelClass;
     function GetDefaultPage: String;
-    function GetLogClassName: String;
-    function GetModelClassName: String;
     function GetTemplateRequestMap: TgRequestMap;
     function GetBasePath: String;
     function GetLoginTemplate: String;
+    procedure SetLogClassName(const AValue: String);
+    procedure SetModelClassName(const Value: String);
   strict protected
     function GetSubHost(var AHost: String): TgRequestMap;
     function GetVirtualPath(var APath : String): TgRequestMap;
@@ -226,9 +234,11 @@ type
     class procedure SplitHostPath(const APath : String; var AHead, ATail : String);
     class Procedure SplitRequestPath(const ARequestPath : String; var AHead, ATail : String); Virtual;
     Function TopRequestMap : TgRequestMap;
+    property LogClass: TgRequestLogItemClass read FLogClass;
     property VirtualPath[var APath : String]: TgRequestMap read GetVirtualPath;
     Property Path[ARequestString : String] : String read GetPath;
     Property SubHost[var AHost : String] : TgRequestMap read GetSubHost;
+    property ModelClass: TgModelClass read FModelClass write FModelClass;
   Published
     Property BasePath : String read GetBasePath write FBasePath;
     Property SearchPath : String read GetSearchPath write FSearchPath;
@@ -237,8 +247,8 @@ type
     property SubHosts: TgRequestMaps read FSubHosts;
     Property DefaultPage : String read GetDefaultPage write FDefaultPage;
     Property Redirect : String read FRedirect write FRedirect;
-    Property LogClassName : String read GetLogClassName write FLogClassName;
-    property ModelClassName: String read GetModelClassName write FModelClassName;
+    property LogClassName: String read FLogClassName write SetLogClassName;
+    property ModelClassName: String read FModelClassName write SetModelClassName;
     Property LoginTemplate : String read GetLoginTemplate write FLoginTemplate;
     property SecurePath: String read FSecurePath write FSecurePath;
     property PathQuery: Boolean read FPathQuery write FPathQuery;
@@ -249,13 +259,15 @@ type
     FDefaultHost: String;
     FFileTypes: TgDictionary;
     FPackages: String;
-    FTemplateFileExtensions: String;
     FHosts: TgRequestMap.TgRequestMaps;
+    FTemplateFileExtensionList: TStringList;
     RequestMapBuilders: TObjectList;
     procedure AddDefaultFileTypes;
     function FileName: String;
     procedure AddDefaultPackages;
     procedure AddDefaultPackage(const AFileName: String);
+    function GetTemplateFileExtensions: String;
+    procedure SetTemplateFileExtensions(const AValue: String);
   public
     constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
@@ -267,12 +279,13 @@ type
     procedure InitializeRequestMapBuilders;
     procedure FinalizeRequestMapBuilders;
     procedure GetRequestMap(var Host, URI: String; out RequestMap: TgRequestMap);
+    property TemplateFileExtensionList: TStringList read FTemplateFileExtensionList;
   published
     property DefaultHost: String read FDefaultHost write FDefaultHost;
     property FileTypes: TgDictionary read FFileTypes;
     property Hosts: TgRequestMap.TgRequestMaps read FHosts;
     property Packages: String read FPackages write FPackages;
-    property TemplateFileExtensions: String read FTemplateFileExtensions write FTemplateFileExtensions;
+    property TemplateFileExtensions: String read GetTemplateFileExtensions write SetTemplateFileExtensions;
   end;
 
   TgRequestLogItem = class(TgBase)
@@ -380,6 +393,7 @@ end;
 
 procedure TgWebServerController.Execute;
 var
+  Counter: Integer;
   SerializationFormat: TgSerializationFormatXHTML;
   FileName: String;
   FileStream: TFileStream;
@@ -394,16 +408,21 @@ var
   RedirectString: String;
   TempString: String;
   Document: String;
+  FileNameExtension: String;
   Host: String;
+  IsTemplate: Boolean;
+  ModelNeeded: Boolean;
+  StringList: TStringList;
 begin
     Host := Request.Host;
     Document := Request.URI;
     TgWebServerController.ConfigurationData.GetRequestMap(Host,Document,RequestMap);
+
+    // exposites.com/pathquery/id=6/image.jpg
+    ModelNeeded := False;
     If RequestMap.PathQuery Then
     Begin
-      // host: bridalshowcase.com
-      // uri: pathquery/id=5/image.jpg
-
+      ModelNeeded := True;
       SplitOnChar(Document, '/', PathQuery, TempString);
       PathQuery := URLDecode(PathQuery);
       Document := TempString;
@@ -412,49 +431,44 @@ begin
         StringList.Delimiter := '&';
         StringList.DelimitedText := PathQuery;
         For Counter := 0 to StringList.Count - 1 Do
-          AController.Request.QueryFields[StringList.Names[Counter]] := StringList.ValueFromIndex[Counter];
+          Request.QueryFields[StringList.Names[Counter]] := StringList.ValueFromIndex[Counter];
       finally
         StringList.Free;
       end;
     End;
-    If ( Document = '' ) And ( AController.Request.HeaderFields['Document'][Length( AController.Request.HeaderFields['Document'] )] <> '/' ) Then
+
+    // if a document doesn't end in a slash, then redirect with a slash to
+    // make the client address include the root character
+    If Document = '' Then
     Begin
-      FRedirect := AController.Request.HeaderFields['Document'] + '/';
+      Response.StatusCode := 301;
+      Response.HeaderFields['Location'] := Request.URI + '/';
       Exit;
     End;
-    If ( Document = '' ) And ( RequestMap.DefaultPage > '' ) Then
+
+    If ( Document = '/' ) And ( RequestMap.DefaultPage > '' ) Then
       Document := RequestMap.DefaultPage;
-    FFileName := FindDocument( RequestMap, Document );
-    { TODO -oskramer : Is this right?  Do we want to throw an  exception that a file
-                       wasn't found here or in the controller? What if the controller
-                       is generating the response? }
-    If FFileName = '' Then
-      FFileName := FindDocument( RequestMap, '404.html' );
-    If FFileName = '' Then
-      Raise EgFileNotFound.CreateFmt( SFileNotFound, [Document] );
-    FLoginTemplateFileName := FindDocument( RequestMap, RequestMap.LoginTemplate );
-    If RequestMap.ModelClassName > '' Then
+    FileName := FindDocument(Document);
+    If FileName = '' Then
+      Raise EFileNotFound.CreateFmt( '%s not found.', [Document] );
+
+    If Assigned(RequestMap.ModelClass) Then
     Begin
-      FileNameExtension := ExtractFileExt( FFileName );
+      FileNameExtension := ExtractFileExt( FileName );
       If FileNameExtension > '' Then
       Begin
-        FileNameExtension := Copy( FileNameExtension, 2, MaxInt );
-        FIsTemplate := ConfigurationData.TemplateFileExtensions.IndexOf( FileNameExtension ) > -1;
+        Delete(FileNameExtension, 1, 1);
+        IsTemplate := ConfigurationData.TemplateFileExtensionList.IndexOf( FileNameExtension ) > -1;
+        if IsTemplate then
+          ModelNeeded := True;
       End;
-      FIsPathQuery := RequestMap.PathQuery;
-      If FIsTemplate Or FIsPathQuery Then
+      If ModelNeeded Then
       Begin
-        FModelClass := TgModelClass(TgClassRegistry.GetClassWithNameSpace( RequestMap.NameSpace, RequestMap.ModelClassName ));
-        If Not FModelClass.InheritsFrom( TgModel ) Then
-          Raise EgClassMismatch.CreateFmt( SIsNotATgModel, [FModelClass.ClassName] );
-        If RequestMap.LogClassName > '' Then
-          FLogClass := TgRequestLogItemClass(TgClassRegistry.GetClassWithNameSpace( RequestMap.NameSpace, RequestMap.LogClassName ));
-        If Assigned(FLogClass) And Not FLogClass.InheritsFrom( TgRequestLogItem ) Then
-          Raise EgClassMismatch.CreateFmt( SIsNotATgModel, [FLogClass.ClassName] );
+        FModel := RequestMap.ModelClass.Create(Self);
+        If Assigned(RequestMap.LogClass) Then
+          FLogItem := RequestMap.LogClass.Create(Self);
       End;
     End;
-
-
 
 
   try
@@ -491,7 +505,7 @@ begin
                 SetCookies( PropertyList );
               End
               Else
-                FileName := FRequestDistiller.LoginTemplateFileName;
+                FileName := FindDocument(RequestMap.LoginTemplate);
             finally
               LoadList.Free;
             end;
@@ -1216,7 +1230,8 @@ Var
 begin
   StringList := TStringList.Create;
   Try
-    StringList.Text := StringReplace(ARelativePath, ';', CRLF, [rfReplaceAll]);
+    StringList.Delimiter := ';';
+    StringList.DelimitedText := ARelativePath;
     For Counter := 0 to StringList.Count - 1 Do
     Begin
       If IsRelativePath( StringList[Counter] ) Then
@@ -1224,19 +1239,12 @@ begin
       If IsRelativePath( BasePath ) Then
         StringList[Counter] := IncludeTrailingPathDelimiter( ExecutablePath ) + StringList[Counter];
     End;
-    Result := StringReplace(StringList.Text, CRLF, ';', [rfReplaceAll]);
-    SetLength(Result, Length(Result) - 1);
+    Result := StringList.DelimitedText;
+    if Result[Length(Result)] = ';' then
+      SetLength(Result, Length(Result) - 1);
   Finally
     StringList.Free;
   End;
-end;
-
-function TgRequestMap.GetModelClassName: String;
-begin
-  If (Not IsLoading) And Assigned(TemplateRequestMap) And (FModelClassName = '') Then
-    Result := TemplateRequestMap.ModelClassName
-  Else
-    Result := FModelClassName;
 end;
 
 function TgRequestMap.GetBasePath: String;
@@ -1253,14 +1261,6 @@ begin
     Result := TemplateRequestMap.DefaultPage
   Else
     Result := FDefaultPage;
-end;
-
-function TgRequestMap.GetLogClassName: String;
-begin
-//  If (Not IsLoading) And Assigned(TemplateRequestMap) And (FLogClassName = '') Then
-//    Result := TemplateRequestMap.LogClassName
-//  Else
-    Result := FLogClassName;
 end;
 
 function TgRequestMap.GetLoginTemplate: String;
@@ -1307,12 +1307,10 @@ end;
 
 function TgRequestMap.GetSearchPath: String;
 begin
-  If (Not IsLoading) And Assigned(TemplateRequestMap) Then
+  If Not IsLoading Then
   Begin
     If FSearchPath > '' Then
       Result := AbsolutePath(FSearchPath)
-    Else
-      Result := TemplateRequestMap.SearchPath;
   End
   Else If Not IsSaving Then
     Result := AbsolutePath(FSearchPath)
@@ -1366,6 +1364,14 @@ Var
 begin
   PathLength := Length(APath);
   Result := (PathLength > 0) And Not (((PathLength > 0) And (APath[1] = '\')) or ((PathLength > 1) And (APath[2] = ':')));
+end;
+
+procedure TgRequestMap.SetModelClassName(const Value: String);
+begin
+  FModelClassName := Value;
+  FModelClass := TgModelClass(G.ClassByName(Value));
+  if Not Assigned(FModelClass) then
+    raise Exception.Create('Invalid Model Class Name');
 end;
 
 class procedure TgRequestMap.SplitHostPath(const APath : String; var AHead, ATail : String);
@@ -1424,14 +1430,24 @@ begin
     Result := FMobileSearchPath;
 end;
 
+procedure TgRequestMap.SetLogClassName(const AValue: String);
+begin
+  FLogClassName := AValue;
+  FLogClass := TgLogClass(G.ClassByName(AValue));
+  if Not Assigned(FLogClass) then
+    raise Exception.Create('Invalid Log Class Name');
+end;
+
 constructor TgWebServerControllerConfigurationData.Create(AOwner: TgBase = Nil);
 begin
   inherited Create(AOwner);
   RequestMapBuilders := TObjectList.Create();
+  FTemplateFileExtensionList := TStringList.Create();
 end;
 
 destructor TgWebServerControllerConfigurationData.Destroy;
 begin
+  FreeAndNil(FTemplateFileExtensionList);
   FreeAndNil(RequestMapBuilders);
   inherited Destroy;
 end;
@@ -1586,6 +1602,16 @@ begin
   if URI > '' then
     RequestMap := RequestMap.VirtualPath[URI];
 
+end;
+
+function TgWebServerControllerConfigurationData.GetTemplateFileExtensions: String;
+begin
+  Result := TemplateFileExtensionList.Text;
+end;
+
+procedure TgWebServerControllerConfigurationData.SetTemplateFileExtensions(const AValue: String);
+begin
+  TemplateFileExtensionList.Text := AValue;
 end;
 
 function TgRequestLogItem.GetDuration: Integer;
@@ -1745,6 +1771,20 @@ begin
   Begin
     WebServerController := TgWebServerController(Owner);
     Cookies['Display-Type'] := WebServerController.MakeCookie('Display-Type', Value, '', '', SysUtils.Date + 1000, WebServerController.Request.IsSecure);
+  End;
+end;
+
+function TgWebServerController.FindDocument(const ADocument: String): String;
+var
+  UnvirtualizedDocument: String;
+begin
+  Result := '';
+  If (RequestMap.SearchPath > '') And (ADocument > '') Then
+  Begin
+    UnvirtualizedDocument := StringReplace( ADocument, '/', '\', [rfReplaceAll] );
+    If UnvirtualizedDocument[1] = '\' Then
+      Delete(UnvirtualizedDocument, 1, 1);
+    Result := FileSearch( UnvirtualizedDocument, RequestMap.SearchPath );
   End;
 end;
 
