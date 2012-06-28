@@ -1683,6 +1683,26 @@ type
     destructor Destroy; override;
   end;
 
+  TgMemo = record
+  strict private
+    FValue: array of String;
+  private
+    function GetCount: Integer;
+    function GetItems(Index: Integer): String;
+    procedure SetCount(const Value: Integer);
+    procedure SetItems(Index: Integer; const Value: String);
+  public
+    function GetValue: String;
+    procedure SetValue(const AValue: String);
+    class operator Implicit(AValue: TgMemo): Variant; overload;
+    class operator Implicit(AValue: Variant): TgMemo; overload;
+    function IndexOf(const Value: String): Integer;
+    property Value: String read GetValue write SetValue;
+    property Count: Integer read GetCount write SetCount;
+    property Items[Index: Integer]: String read GetItems write SetItems; default;
+  end;
+
+
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 
 Function FileToString(AFileName : String) : String;
@@ -1713,6 +1733,7 @@ Uses
   Math,
   gExpressionEvaluator,
   StrUtils,
+  System.Types,
   Windows,
   Data.DBXCommon,
   ibDatabase,
@@ -1988,6 +2009,7 @@ function TgBase.DoGetValues(Const APath : String; Out AValue : Variant): Boolean
 Var
   Head : String;
   ObjectProperty: TgBase;
+  ClassProperty: TClass;
   PropertyValue: TValue;
   RecordProperty: G.TgRecordProperty;
   RTTIProperty : TRttiProperty;
@@ -2019,7 +2041,18 @@ Begin
       AValue := RecordProperty.Getter.Invoke(PropertyValue, []).AsVariant;
       Result := True;
     End
-    Else
+    Else if (RTTIProperty.PropertyType is TRttiClassRefType) then
+    begin
+//      If Not Assigned(RecordProperty.Getter) then
+//        Raise EgValue.CreateFmt('%s has no GetValue method for runtime assignment.', [RTTIProperty.Name]);
+      ClassProperty := RTTIProperty.GetValue(Self).AsClass;
+      if Assigned(ClassProperty) then
+        AValue := ClassProperty.ClassName
+      else
+        AValue := '';
+      Result := True;
+    end
+    else
     Begin
       if Tail = '' then
       Begin
@@ -2094,6 +2127,7 @@ function TgBase.DoSetValues(Const APath : String; AValue : Variant): Boolean;
 Var
   Head: String;
   ObjectProperty: TgBase;
+  BaseClassValue: TgBaseClass;
   PropertyValue: TValue;
   RecordProperty: G.TgRecordProperty;
   RTTIProperty : TRTTIProperty;
@@ -2153,6 +2187,16 @@ Begin
             Value := TValue.FromVariant(AValue);
           TkUString :
             Value := TValue.FromVariant(VarAsType(AValue, VarUString));
+          TkClassRef :
+            if AValue = '' then
+              Value := TClass(nil)
+            else begin
+              BaseClassValue := G.ClassByName(AValue);
+              Value := TClass(BaseClassValue);
+//              if (RTTIProperty.PropertyType as TRttiClassRefType).
+              if Value.IsEmpty then
+                raise EgValue.CreateFmt('%s was not found in ClassByName for the %s.%s property', [String(AValue),ClassName, RTTIProperty.Name]);
+            end
         Else
           Raise EgValue.CreateFmt('%s.%s is not a value property', [ClassName, RTTIProperty.Name]);
         End;
@@ -7651,6 +7695,83 @@ begin
   // This is ment to handle nest html tags
   if GetgDocument(AgDocument)  then
     ConditionSelf := AgDocument.Target.ChildNodes.Count = 0;
+end;
+
+{ TgMemo }
+
+
+function TgMemo.GetCount: Integer;
+begin
+  Result := Length(FValue);
+end;
+
+function TgMemo.GetItems(Index: Integer): String;
+begin
+  Result := FValue[Index];
+end;
+
+function TgMemo.GetValue: String;
+var
+  AStrings: TStringList;
+  AStr: String;
+begin
+  if Length(FValue) = 0 then
+    Result := ''
+  else with TStringList.Create do try
+    for AStr in FValue do
+      Add(AStr);
+    Result := Text;
+  finally
+    Free;
+  end;
+end;
+
+class operator TgMemo.Implicit(AValue: TgMemo): Variant;
+begin
+  Result := AValue.GetValue;
+end;
+
+class operator TgMemo.Implicit(AValue: Variant): TgMemo;
+begin
+  Result.SetValue(AValue);
+end;
+
+function TgMemo.IndexOf(const Value: String): Integer;
+begin
+  Result := High(FValue);
+  while (Result >= 0) and not SameText(Value,FValue[Result]) do
+    Dec(Result);
+
+end;
+
+procedure TgMemo.SetCount(const Value: Integer);
+begin
+  SetLength(FValue,Value);
+end;
+
+procedure TgMemo.SetItems(Index: Integer; const Value: String);
+begin
+  if Index > High(FValue) then
+    Count := Index+1;
+  FValue[Index] := Value;
+end;
+
+procedure TgMemo.SetValue(const AValue: String);
+var
+  AStrings: TStringList;
+  Index: Integer;
+
+begin
+  if Length(AValue) = 0 then
+    SetLength(FValue,0)
+  else with TStringList.Create do try
+    Text := AValue;
+    SetLength(FValue,Count);
+    for Index := 0 to Count-1 do
+      FValue[Index] := Strings[Index];
+  finally
+    Free;
+  end;
 end;
 
 Initialization

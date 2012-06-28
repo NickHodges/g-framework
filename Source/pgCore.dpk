@@ -32,7 +32,8 @@ requires
   xmlrtl,
   dsnap,
   dbrtl,
-  DbxCommonDriver;
+  DbxCommonDriver,
+  dbexpress;
 
 contains
   gCore in 'gCore.pas',

@@ -106,6 +106,7 @@
 			<DCCReference Include="dsnap.dcp"/>
 			<DCCReference Include="dbrtl.dcp"/>
 			<DCCReference Include="DbxCommonDriver.dcp"/>
+			<DCCReference Include="dbexpress.dcp"/>
 			<DCCReference Include="gCore.pas"/>
 			<DCCReference Include="gExpressionEvaluator.pas"/>
 			<DCCReference Include="gParse.pas"/>

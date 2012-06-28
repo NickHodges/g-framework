@@ -452,6 +452,32 @@ type
     procedure Eval;
   end;
 
+  TestMemo = class(TTestCase)
+  public
+    type
+      TTest = class(TgBase)
+      private
+        FMemo: TgMemo;
+      published
+        property Memo: TgMemo read FMemo write FMemo;
+      end;
+  published
+    procedure Test;
+  end;
+
+  TestClassProperty = class(TTestCase)
+  public
+    type
+      TTest = class(TgBase)
+      private
+        FBaseClass: TgBaseClass;
+      published
+        property BaseClass: TgBaseClass read FBaseClass write FBaseClass;
+      end;
+  published
+    procedure Test;
+  end;
+
 implementation
 
 Uses
@@ -2514,6 +2540,42 @@ begin
   Result := Format('%s %s',[FirstName, LastName]);
 end;
 
+{ TestMemo }
+
+procedure TestMemo.Test;
+var
+  Data: TTest;
+begin
+  Data := TTest.Create;
+  Data['Memo'] := 'Hello'#13#10'There';
+  CheckEquals('Hello'#13#10'There'#13#10,Data['Memo']);
+  CheckEquals(2,Data.Memo.Count);
+  CheckEquals('Hello',Data.Memo[0]);
+  CheckEquals('There',Data.Memo[1]);
+  CheckEquals(1,Data.Memo.IndexOf('There'));
+  FreeAndNil(Data);
+
+end;
+
+{ TestClassProperty }
+
+procedure TestClassProperty.Test;
+var
+  Data: TTest;
+begin
+  Data := TTest.Create;
+  CheckEquals('',Data['BaseClass']);
+  Data.BaseClass := TTest;
+  CheckEquals('TestClassProperty.TTest',Data['BaseClass']);
+  Data.BaseClass := nil;
+  Data['BaseClass'] := 'TTestgCore.TBase2';
+//  Data['BaseClass'] := 'TgBase';
+  CheckEquals(NativeInt(Data.BaseClass),NativeInt(TTest));
+
+  FreeAndNil(Data);
+
+end;
+
 initialization
 
   // Register any test cases with the test runner
@@ -2530,6 +2592,8 @@ initialization
   RegisterTest(TestHTMLParser.Suite);
   RegisterTest(TestTFirebirdObject.Suite);
   RegisterTest(TestEvalHTML.Suite);
+  RegisterTest(TestMemo.Suite);
+  RegisterTest(TestClassProperty.Suite);
   RegisterRuntimeClasses([TFirebirdObject]);
   G.Initialize;
 end.
