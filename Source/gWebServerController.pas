@@ -260,14 +260,12 @@ type
     FFileTypes: TgDictionary;
     FPackages: String;
     FHosts: TgRequestMap.TgRequestMaps;
-    FTemplateFileExtensionList: TStringList;
+    FTemplateFileExtensions: TgMemo;
     RequestMapBuilders: TObjectList;
     procedure AddDefaultFileTypes;
     function FileName: String;
     procedure AddDefaultPackages;
     procedure AddDefaultPackage(const AFileName: String);
-    function GetTemplateFileExtensions: String;
-    procedure SetTemplateFileExtensions(const AValue: String);
   public
     constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
@@ -279,13 +277,12 @@ type
     procedure InitializeRequestMapBuilders;
     procedure FinalizeRequestMapBuilders;
     procedure GetRequestMap(var Host, URI: String; out RequestMap: TgRequestMap);
-    property TemplateFileExtensionList: TStringList read FTemplateFileExtensionList;
   published
     property DefaultHost: String read FDefaultHost write FDefaultHost;
     property FileTypes: TgDictionary read FFileTypes;
     property Hosts: TgRequestMap.TgRequestMaps read FHosts;
     property Packages: String read FPackages write FPackages;
-    property TemplateFileExtensions: String read GetTemplateFileExtensions write SetTemplateFileExtensions;
+    property TemplateFileExtensions: TgMemo read FTemplateFileExtensions write FTemplateFileExtensions;
   end;
 
   TgRequestLogItem = class(TgBase)
@@ -354,7 +351,8 @@ implementation
 
 Uses
   SysUtils,
-  Types
+  Types,
+  RTTI
   ;
 
 destructor TgWebServerController.Destroy;
@@ -413,10 +411,19 @@ var
   IsTemplate: Boolean;
   ModelNeeded: Boolean;
   StringList: TStringList;
+  Attribute: TgPropertyAttribute;
 begin
     Host := Request.Host;
     Document := Request.URI;
     TgWebServerController.ConfigurationData.GetRequestMap(Host,Document,RequestMap);
+
+    if RequestMap.Redirect > '' then
+    Begin
+      Response.StatusCode := 301;
+      Response.HeaderFields['Location'] := RequestMap.Redirect;
+      Exit;
+    End;
+
 
     // exposites.com/pathquery/id=6/image.jpg
     ModelNeeded := False;
@@ -458,32 +465,39 @@ begin
       If FileNameExtension > '' Then
       Begin
         Delete(FileNameExtension, 1, 1);
-        IsTemplate := ConfigurationData.TemplateFileExtensionList.IndexOf( FileNameExtension ) > -1;
+        IsTemplate := ConfigurationData.TemplateFileExtensions.IndexOf( FileNameExtension ) > -1;
         if IsTemplate then
           ModelNeeded := True;
       End;
       If ModelNeeded Then
       Begin
+{ TODO : Add IPAddressLog stuff }
         FModel := RequestMap.ModelClass.Create(Self);
         If Assigned(RequestMap.LogClass) Then
           FLogItem := RequestMap.LogClass.Create(Self);
+
+        // Push authorization values
+        // [Authorization]
+        // property emailaddress : TgEmailAddressString
+        // [Authorization]
+        // property password : TgPasswordString
+
+        // Request Content Fields
+        // emailaddress: jim@computerminds.com
+        // password: password
+
+        for Attribute in G.Attributes(FModel, Authorization) do
+          FModel[Attribute.RTTIProperty.Name] := Request.ContentFields[Attribute.RTTIProperty.Name];
+
+        if FModel.IsAuthorized Then
+        Begin
+          TgResponse.Cookies['Token'] := FModel.
+        End
       End;
     End;
 
 
   try
-    FRequestDistiller := TgRequestDistiller.Create( Self );
-    try
-      RequestLogItemClass := FRequestDistiller.LogClass;
-      If Assigned(RequestLogItemClass) Then
-        FLogItem := RequestLogItemClass.Create(Self);
-      If FRequestDistiller.Encryption Then
-        ConvertEncryptedQueryFields( FRequestDistiller.EncryptionPassword );
-      If FRequestDistiller.Redirect > '' Then
-      Begin
-        Response.StatusCode := 301;
-        Response.HeaderFields['Location'] := FRequestDistiller.Redirect;
-      End
       Else If FRequestDistiller.IsTemplate Or FRequestDistiller.IsPathQuery Then
       Begin
         IPAddressLog.Add(Request.IPAddress);
@@ -1602,16 +1616,6 @@ begin
   if URI > '' then
     RequestMap := RequestMap.VirtualPath[URI];
 
-end;
-
-function TgWebServerControllerConfigurationData.GetTemplateFileExtensions: String;
-begin
-  Result := TemplateFileExtensionList.Text;
-end;
-
-procedure TgWebServerControllerConfigurationData.SetTemplateFileExtensions(const AValue: String);
-begin
-  TemplateFileExtensionList.Text := AValue;
 end;
 
 function TgRequestLogItem.GetDuration: Integer;
