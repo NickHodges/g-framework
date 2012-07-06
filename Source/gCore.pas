@@ -5544,6 +5544,9 @@ end;
 
 function TgModel.IsAuthorized(var AToken: String): Boolean;
 begin
+  // ID Integer - Expiration DateTime
+
+
   Result := True;
 end;
 
