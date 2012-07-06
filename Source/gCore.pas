@@ -1311,7 +1311,7 @@ type
   strict private
     function GetController: TgController;
   public
-    function IsAuthorized: Boolean; virtual;
+    function IsAuthorized(var AToken: String): Boolean; virtual;
     function PersistenceSegmentationString: String; virtual;
   published
     property Controller: TgController read GetController;
@@ -1681,6 +1681,9 @@ type
   public
     constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
+  end;
+
+  Authorization = class(TgPropertyAttribute)
   end;
 
   TgMemo = record
@@ -5539,7 +5542,7 @@ end;
 
 { TgModel }
 
-function TgModel.IsAuthorized: Boolean;
+function TgModel.IsAuthorized(var AToken: String): Boolean;
 begin
   Result := True;
 end;
