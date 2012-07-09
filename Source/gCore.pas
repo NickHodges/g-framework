@@ -1705,6 +1705,22 @@ type
     property Items[Index: Integer]: String read GetItems write SetItems; default;
   end;
 
+  TgWebCookie = record
+  public
+    type
+      E = class(exception);
+  strict private
+    FExpire: TDateTime;
+    FID: Integer;
+    const Key: Cardinal = $FE23A322;
+  public
+    function GetValue: String;
+    procedure SetValue(const AValue: String);
+    property Expire: TDateTime read FExpire write FExpire;
+    property ID: Integer read FID write FID;
+    property Value: String read GEtValue write SetValue;
+  end;
+
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 
@@ -7778,6 +7794,77 @@ begin
   finally
     Free;
   end;
+end;
+
+{ TgWebCookie }
+
+function TgWebCookie.GetValue: String;
+var
+  S1: UInt64;
+  S2: UInt64;
+  T1: UInt64;
+  T2: UInt64;
+  Index: Integer;
+
+begin
+  if (FExpire = 0) and (FID = 0) then Exit('');
+  S1 := pUInt64(@FExpire)^;
+  S2 := Key;
+  S2 := Cardinal(ID) or (S2 SHL 32);
+  T1 := 0;
+  T2 := 0;
+  for Index := 0 to 31 do begin
+    T1 := (T1 SHL 2) or ((S1 and $1) or ((S2 and $1) SHL 1));
+    S1 := S1 SHR 1;
+    S2 := S2 SHR 1;
+  end;
+  for Index := 0 to 31 do begin
+    T2 := (T2 SHL 2) or ((S1 and $1) or ((S2 and $1) SHL 1));
+    S1 := S1 SHR 1;
+    S2 := S2 SHR 1;
+  end;
+  Result := Format('%.16x%.16x',[T1,T2]);
+end;
+
+procedure TgWebCookie.SetValue(const AValue: String);
+var
+  S1: UInt64;
+  S2: UInt64;
+  T1: UInt64;
+  T2: UInt64;
+  Index: Integer;
+  Err: Integer;
+begin
+  if AValue = '' then begin
+    FExpire := 0;
+    FID := 0;
+    exit;
+  end;
+  Val('$'+Copy(AValue,1,16),T1,Err);
+  if Err <> 0 then
+    Raise E.CreateFmt('Invalide Cookie %d',[Err]);
+  Val('$'+Copy(AValue,17,16),T2,Err);
+  if Err <> 0 then
+    Raise E.CreateFmt('Invalide Cookie %d',[Err+16]);
+  S1 := 0;
+  S2 := 0;
+  for Index := 0 to 31 do begin
+    S1 := (S1 SHL 1) or (T2 AND $1);
+    T2 := (T2 SHR 1);
+    S2 := (S2 SHL 1) or (T2 AND $1);
+    T2 := (T2 SHR 1);
+  end;
+  for Index := 0 to 31 do begin
+    S1 := (S1 SHL 1) or (T1 AND $1);
+    T1 := (T1 SHR 1);
+    S2 := (S2 SHL 1) or (T1 AND $1);
+    T1 := (T1 SHR 1);
+  end;
+  pUInt64(@FExpire)^ := S1;
+  pCardinal(@ID)^ := S2 AND $FFFFFFFF;
+  S2 := S2 SHR 32;
+  if S2 <> Key then
+    raise E.Create('Invalid Cookie Key');
 end;
 
 Initialization

@@ -478,6 +478,11 @@ type
     procedure Test;
   end;
 
+  TestWebCookie = class(TTestCase)
+  published
+    procedure Test;
+  end;
+
 implementation
 
 Uses
@@ -2576,6 +2581,23 @@ begin
 
 end;
 
+{ TestCookie }
+
+procedure TestWebCookie.Test;
+var
+  Cookie: TgWebCookie;
+  S: String;
+begin
+  Cookie.Expire := StrToDateTime('7/8/2012 12:34:56.789');
+  Cookie.ID := $F0F0ABCD;
+  S := Cookie.Value;
+  CheckEquals('CA4EE22315AF14AF2064E062A4352AAE',S);
+  FillChar(Cookie,Sizeof(Cookie),0);
+  Cookie.SetValue(S);
+  CheckEquals('7/8/2012 12:34:56 PM',DateTimeToStr(Cookie.Expire));
+  CheckEquals(Integer($F0F0ABCD),Cookie.ID);
+end;
+
 initialization
 
   // Register any test cases with the test runner
@@ -2594,6 +2616,7 @@ initialization
   RegisterTest(TestEvalHTML.Suite);
   RegisterTest(TestMemo.Suite);
   RegisterTest(TestClassProperty.Suite);
+  RegisterTest(TestWebCookie.Suite);
   RegisterRuntimeClasses([TFirebirdObject]);
   G.Initialize;
 end.
