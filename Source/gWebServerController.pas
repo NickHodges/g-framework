@@ -8,7 +8,7 @@ uses
   , Contnrs
   , SysUtils
   , StrUtils
-  ;
+;
 
 type
   TgRequestContentBase = class;
@@ -105,7 +105,13 @@ type
   TgWebServerController = class(TgController)
   public
     type
-      EFileNotFound = class(Exception)
+      E = class(Exception)
+      public
+        function ResponseCode: Integer; virtual;
+      end;
+      EFileNotFound = class(E)
+      public
+        function ResponseCode: Integer; override;
       end;
   strict private
     FActions: TgDictionary;
@@ -116,8 +122,6 @@ type
     FLogItem: TgRequestLogItem;
     FRequestDistiller: TgRequestDistiller;
     FRequestMap: TgRequestMap;
-    function GetRequest: TgRequest;
-    function GetResponse: TgResponse;
     procedure PopulateModelFromRequest;
     procedure PushAuthorizationValues(AObject: TgObject; AStringList: TStringList);
     procedure LogOutInternal(AObject: TgBase);
@@ -147,8 +151,8 @@ type
   published
     property Action: String read FAction write SetAction;
     property Actions: TgDictionary read FActions;
-    property Request: TgRequest read GetRequest;
-    property Response: TgResponse read GetResponse;
+    property Request: TgRequest read FRequest;
+    property Response: TgResponse read FResponse;
     property UIState: TgDictionary read FUIState;
     property LogItem: TgRequestLogItem read FLogItem;
     [NoAutoCreate]
@@ -290,25 +294,36 @@ type
     FDateTime: TDateTime;
     FDuration: Integer;
     FStatusCode: Integer;
-    FIPAddress: TgIPAddressString;
-    FMethod: TgRequestMethodString;
-    FUserAgent: TgUserAgentString;
+// TODO: FMethod
+//// TODO: FIPAddress
+////  FIPAddress: TgIPAddressString;
+//  FMethod: TgRequestMethodString;
+// TODO: FUserAgent
+//  FUserAgent: TgUserAgentString;
     function GetDuration: Integer;
-    function GetHost: TgURI;
-    function GetReferer: TgURI;
+// TODO: GetHost
+//  function GetHost: TgURI;
+// TODO: GetReferer
+//  function GetReferer: TgURI;
     function GetWebServerController: TgWebServerController;
   strict protected
     property WebServerController: TgWebServerController read GetWebServerController;
   public
-    procedure Populate; override;
+// TODO: Populate
+//  procedure Populate; override;
   Published
     property DateTime: TDateTime read FDateTime write FDateTime;
     property Duration: Integer read GetDuration write FDuration;
-    property IPAddress: TgIPAddressString read FIPAddress write FIPAddress;
-    property Host: TgURI read GetHost;
-    property Referer: TgURI read GetReferer;
-    property Method: TgRequestMethodString read FMethod write FMethod;
-    property UserAgent: TgUserAgentString read FUserAgent write FUserAgent;
+// TODO: Host
+//// TODO: IPAddress
+////  property IPAddress: TgIPAddressString read FIPAddress write FIPAddress;
+//  property Host: TgURI read GetHost;
+// TODO: Referer
+//  property Referer: TgURI read GetReferer;
+// TODO: Method
+//  property Method: TgRequestMethodString read FMethod write FMethod;
+// TODO: UserAgent
+//  property UserAgent: TgUserAgentString read FUserAgent write FUserAgent;
     property StatusCode: Integer read FStatusCode write FStatusCode;
   End;
 
@@ -331,7 +346,7 @@ type
   Public
     constructor Create(AOwner: TgBase = Nil); override;
     Destructor Destroy;Override;
-    class function FriendlyClassName: string; override;
+    function GetFriendlyClassName: string; override;
     property ContentStream: TMemoryStream read FContentStream;
   Published
     property HeaderFields: TgDictionary read FHeaderFields;
@@ -347,13 +362,15 @@ type
     property IsMobile: Boolean write SetIsMobile;
   End;
 
+  EgWebServerController = class(Exception)
+  end;
+
 implementation
 
 Uses
-  SysUtils,
   Types,
   RTTI
-  ;
+;
 
 destructor TgWebServerController.Destroy;
 begin
@@ -369,16 +386,6 @@ begin
   Result := ConfigurationData;
 end;
 
-function TgWebServerController.GetRequest: TgRequest;
-begin
-  ReturnObjectReference( Result, FRequest, TgRequest, ooNone );
-end;
-
-function TgWebServerController.GetResponse: TgResponse;
-begin
-  ReturnObjectReference( Result, FResponse, TgResponse, ooNone );
-end;
-
 class procedure TgWebServerController.EndReadConfigurationData;
 begin
   ConfigurationDataSynchronizer.EndRead;
@@ -392,10 +399,8 @@ end;
 procedure TgWebServerController.Execute;
 var
   Counter: Integer;
-  SerializationFormat: TgSerializationFormatXHTML;
   FileName: String;
   FileStream: TFileStream;
-  SourceDocument: TgXMLDocument;
   PropertyList: TStringList;
   RequestLogItemClass : TgRequestLogItemClass;
   LoadList: TList;
@@ -411,11 +416,16 @@ var
   IsTemplate: Boolean;
   ModelNeeded: Boolean;
   StringList: TStringList;
-  Attribute: TgPropertyAttribute;
+  Attribute: TCustomAttribute;
+  Token: String;
+  GDocument: TgDocument;
+  PropertyAttribute: TgPropertyAttribute;
 begin
+{ TODO : Add request logging }
+  Try
     Host := Request.Host;
     Document := Request.URI;
-    TgWebServerController.ConfigurationData.GetRequestMap(Host,Document,RequestMap);
+    TgWebServerController.ConfigurationData.GetRequestMap(Host,Document,FRequestMap);
 
     if RequestMap.Redirect > '' then
     Begin
@@ -486,138 +496,70 @@ begin
         // emailaddress: jim@computerminds.com
         // password: password
 
-        for Attribute in G.Attributes(FModel, Authorization) do
-          FModel[Attribute.RTTIProperty.Name] := Request.ContentFields[Attribute.RTTIProperty.Name];
+        Token := Request.CookieFields['Token'];
 
-        if FModel.IsAuthorized Then
+        if Token = '' then
+        for Attribute in G.Attributes(FModel, Authorization) do
         Begin
-          TgResponse.Cookies['Token'] := FModel.
+          PropertyAttribute := TgPropertyAttribute(Attribute);
+          FModel[PropertyAttribute.RTTIProperty.Name] := Request.ContentFields[PropertyAttribute.RTTIProperty.Name];
+        End;
+
+        if FModel.IsAuthorized(Token) Then
+        Begin
+          Response.Cookies['Token'] := Token;
+          PopulateModelFromRequest;
+        End
+        Else
+          FileName := FindDocument(RequestMap.LoginTemplate);
+{ TODO : Check to see if we should add in X-SendFile }
+        if IsTemplate then
+        Begin
+          GDocument := TgDocument.Create(FModel);
+          try
+            GDocument.SearchPath := RequestMap.SearchPath;
+            //GDocument.IsSecure
+            GDocument.ProcessFile(FileName,Response.ContentStream);
+          finally
+            GDocument.Free;
+          end;
+        End
+        Else If Not (Response.StatusCode > 301) Then
+          Response.HeaderFields['X-SendFile'] := FileName
+        Else If Response.StatusCode = 200 Then
+        Begin
+          FileExtention := ExtractFileExt( FileName );
+          If FileExtention > '' Then
+          Begin
+            ConfigurationData := ReadConfigurationData;
+            try
+              MimeType := ConfigurationData.FileTypes.Values[Copy( FileExtention, 2, MaxInt)];
+            finally
+              EndReadConfigurationData;
+            end;
+          End;
+          If (MimeType > '') And (Response.HeaderFields['Content-Type'] = '') Then
+            Response.HeaderFields['Content-Type'] := MimeType;
         End
       End;
     End;
-
-
-  try
-      Else If FRequestDistiller.IsTemplate Or FRequestDistiller.IsPathQuery Then
-      Begin
-        IPAddressLog.Add(Request.IPAddress);
-        FModel := FRequestDistiller.ModelClass.Create;
-        try
-          FModel.Controller := Self;
-
-          PropertyList := TStringList.Create;
-          try
-            PushAuthorizationValues(FModel, PropertyList);
-            LoadList := TList.Create;
-            try
-//              FModel.BeforeAuthorization( PropertyList, LoadList );
-              If FModel.IsAuthorized Then
-              Begin
-                FileName := FRequestDistiller.FileName;
-                PopulateModelFromRequest;
-//                FModel.AfterPopulate( PropertyList, LoadList );
-                SetCookies( PropertyList );
-              End
-              Else
-                FileName := FindDocument(RequestMap.LoginTemplate);
-            finally
-              LoadList.Free;
-            end;
-            //If PopulateModelFromRequest didn't create a file to be sent in place of the template response
-            If FRequestDistiller.IsTemplate And (Response.HeaderFields['X-SendFile'] = '') Then
-            Begin
-              SourceDocument := TgXMLDocument.Create;
-              SerializationFormat := TgSerializationFormatXHTML.Create;
-              FileStream := TFileStream.Create( FileName, fmOpenRead + fmShareDenyWrite );
-              try
-                SourceDocument.SearchPath := FRequestDistiller.SearchPath;
-                If FRequestDistiller.Encryption Then
-                  SourceDocument.EncryptionPassword := FRequestDistiller.EncryptionPassword;
-                SourceDocument.AliasPath := FRequestDistiller.AliasPath;
-                SourceDocument.SecurePath := FRequestDistiller.SecurePath;
-                SourceDocument.IsSecure := FRequest.IsSecure;
-                SourceDocument.IsMobile := FRequest.IsMobile;
-                SerializationFormat.ShowDeclaration := False;
-                gDOM.EvaluateTemplate( FileStream, Response.ContentStream, FModel, SourceDocument, SerializationFormat );
-                Response.HeaderFields['Expires'] := Format(FormatDateTime(sDateFormat + ' "GMT; "', Now + TimeZoneBias), [DayOfWeekStr(Now), MonthStr(Now)]);
-              finally
-                FileStream.Free;
-                SerializationFormat.Free;
-                SourceDocument.Free;
-              end;
-            End;
-          finally
-            PropertyList.Free;
-          end;
-          If Assigned(LogItem) Then
-          Begin
-            Try
-              LogItem.Populate;
-            Except
-            End;
-          End;
-        finally
-          FModel.Free;
-        end;
-      End;
-      If Not (Response.StatusCode > 301) And Not FRequestDistiller.IsTemplate Then
-        Response.HeaderFields['X-SendFile'] := FRequestDistiller.Filename;
-      If Response.StatusCode = 301 Then
-      Begin
-        Response.ContentStream.Clear;
-        if EvaluatePartials then
-        Begin
-          Response.StatusCode := 200;
-          RedirectString := Format( '<div redirect="%s"></div>', [Response.HeaderFields['Location']] );
-          Response.HeaderFields['Location'] := '';
-          Response.ContentStream.Write( RedirectString[1], Length( RedirectString ) );
-        End;
-      End
-      Else If Response.StatusCode = 200 Then
-      Begin
-        FileExtention := ExtractFileExt( FRequestDistiller.Filename );
-        If FileExtention > '' Then
-        Begin
-          ConfigurationData := ReadConfigurationData;
-          try
-            MimeType := ConfigurationData.FileTypes.Values[Copy( FileExtention, 2, MaxInt)];
-          finally
-            EndReadConfigurationData;
-          end;
-        End;
-        If (MimeType > '') And (Response.HeaderFields['Content-Type'] = '') Then
-          Response.HeaderFields['Content-Type'] := MimeType;
-      End;
-    finally
-      FreeAndNil( FRequestDistiller );
-    end;
     Response.Date := Now;
   Except
-    On E: Exception Do
+    On Ex: Exception Do
     Begin
-      If E.InheritsFrom( EgWebServerController ) Then
+      If Ex.InheritsFrom( E ) Then
       Begin
-        Response.StatusCode := EgWebServerController(E).ResponseCode;
-        Response.ContentStream.Write( PChar(E.message)^, Length( E.Message ) );
+        Response.StatusCode := E(Ex).ResponseCode;
+{ TODO : Unicodify }
+//        Response.ContentStream.Write( PChar(E.message)^, Length( E.Message ) );
       End
       Else
       Begin
         Response.StatusCode := 500;
-        Response.ContentStream.Write( PChar(E.message)^, Length( E.Message ) );
+{ TODO : Unicodify }
+//        Response.ContentStream.Write( PChar(E.message)^, Length( E.Message ) );
         Raise;
       End;
-    End;
-  End;
-  If Assigned(LogItem) Then
-  Begin
-    Try
-      LogItem.StatusCode := Response.StatusCode;
-      try
-        LogItem.Save;
-      except
-      end;
-    Finally
-      LogItem.Free
     End;
   End;
 end;
@@ -631,6 +573,7 @@ var
   RequestFieldsArray: Array[0..1] Of TgOrderedStringHashTable;
   LastTwoChars: String;
   MethodFound: Boolean;
+  RTTIProperty: TRTTIProperty;
   TempObject : TgObject;
 begin
   MethodFound := False;
@@ -639,69 +582,86 @@ begin
   Try
     For RequestFields In RequestFieldsArray Do
     Begin
+{ TODO :
+Add TgDictionary.ToArray to represent Query and Content field lists.
+Each array element represents a name / value pair (StringHashValue) }
+
       For StringHashValue In RequestFields Do
       Begin
         try
           NewName := StringHashValue.Name;
           If NewName = '' Then
             Continue;
-          LastTwoChars := Copy( StringHashValue.Name, Length( StringHashValue.Name ) - 1, MaxInt );
-          If SameText( LastTwoChars, '.y' ) And MethodFound Then
-            MethodFound := False
-          Else
-          Begin
-            If SameText( LastTwoChars, '.x' ) Then
+{ TODO : Add image submit code }
+(*
+            LastTwoChars := Copy( StringHashValue.Name, Length( StringHashValue.Name ) - 1, MaxInt );
+            If SameText( LastTwoChars, '.y' ) And MethodFound Then
+              MethodFound := False
+            Else
             Begin
-              TempName := Copy( StringHashValue.Name, 1, Length( StringHashValue.Name ) - 2 );
-              If FModel.MethodExistsOnPath[TempName] Then
+              If SameText( LastTwoChars, '.x' ) Then
               Begin
-                NewName := TempName;
-                MethodFound := True;
+                TempName := Copy( StringHashValue.Name, 1, Length( StringHashValue.Name ) - 2 );
+                If FModel.MethodExistsOnPath[TempName] Then
+                Begin
+                  NewName := TempName;
+                  MethodFound := True;
+                End;
               End;
-            End;
-            If FModel.PropertyTypes[NewName] = gdtBoolean Then
+
+*)
+            RTTIProperty := G.PropertyByName(FModel, NewName);
+            If Assigned(RTTIProperty) And (RTTIProperty.PropertyType.Handle = TypeInfo(Boolean)) Then
             Begin
+
+ { TODO : Add security }
               If ( StringHashValue.Value = '' ) Or SameText( StringHashValue.Value, 'False' )  Then
-                FModel.StringValuesSecure[NewName] := 'False'
+                FModel[NewName] := False
               Else
-                FModel.StringValuesSecure[NewName] := 'True';
+                FModel[NewName] := True;
             End
             Else
-              FModel.StringValuesSecure[NewName] := StringHashValue.Value;
+              FModel[NewName] := StringHashValue.Value;
           End;
         except
           On E: EgValidation Do
             Raise;
-          On E: Exception Do
-          Begin
-            Try
-              TempObject := TgObject(FModel.LastObject(NewName, TempName));
-              If Assigned(TempObject) and TempObject.InheritsFrom(TgObject) Then
-              Begin
-                TempObject.ValidationErrors[TempName] := E.Message;
-                TempObject.ValidationErrors.Objects[TempName].ErrorLevel := gelTypeConversion;
-                TempObject.ValidationErrors.Objects[TempName].TypeConversionErrorValue := StringHashValue.Value;
+ { TODO : Figure out how to handle exceptions }
+(*
+            On E: Exception Do
+            Begin
+              Try
+                TempObject := TgObject(FModel.LastObject(NewName, TempName));
+                If Assigned(TempObject) and TempObject.InheritsFrom(TgObject) Then
+                Begin
+                  TempObject.ValidationErrors[TempName] := E.Message;
+                  TempObject.ValidationErrors.Objects[TempName].ErrorLevel := gelTypeConversion;
+                  TempObject.ValidationErrors.Objects[TempName].TypeConversionErrorValue := StringHashValue.Value;
+                End;
+              Except
+                On E: Exception Do
+                  Raise Exception.CreateFmt('%s, %s, NewName: %s, TempName: %s, StringHashValue.Value: %s', [E.ClassName, E.Message, NewName, TempName, StringHashValue.Value]);
               End;
-            Except
-              On E: Exception Do
-                Raise Exception.CreateFmt('%s, %s, NewName: %s, TempName: %s, StringHashValue.Value: %s', [E.ClassName, E.Message, NewName, TempName, StringHashValue.Value]);
             End;
-          End;
-        end;
+
+*)        end;
       End;
     End;
     DoAction;
   Except
-    On E: EgValidation Do
-    Begin
-      ValidationError := True;
-      With FModel.ValidationErrors Do
+ { TODO : Figure out how to handle exceptions }
+(*
+      On E: EgValidation Do
       Begin
-        Message := 'Please fix items in red.';
-        ErrorLevel := gelError;
+        ValidationError := True;
+        With FModel.ValidationErrors Do
+        Begin
+          Message := 'Please fix items in red.';
+          ErrorLevel := gelError;
+        End;
       End;
-    End;
-  End;
+
+*)  End;
 end;
 
 class function TgWebServerController.WriteConfiguationData: TgWebServerControllerConfigurationData;
@@ -1625,23 +1585,26 @@ begin
   Result := FDuration;
 end;
 
-function TgRequestLogItem.GetHost: TgURI;
-begin
-  ReturnObjectReference(Result, 'Host');
-end;
-
-function TgRequestLogItem.GetReferer: TgURI;
-begin
-  ReturnObjectReference(Result, 'Referer');
-end;
-
-procedure TgRequestLogItem.Populate;
-begin
-  IPAddress := WebServerController.Request.IPAddress;
-  Host.URI := WebServerController.Request.HeaderFields['Host'] + WebServerController.Request.URI;
-  Referer.URI := WebServerController.Request.HeaderFields['Referer'];
-  UserAgent := WebServerController.Request.HeaderFields['User-Agent'];
-end;
+// TODO: Populate
+//// TODO: GetHost
+////function TgRequestLogItem.GetHost: TgURI;
+////begin
+////ReturnObjectReference(Result, 'Host');
+////end;
+//
+//// TODO: GetReferer
+////function TgRequestLogItem.GetReferer: TgURI;
+////begin
+////ReturnObjectReference(Result, 'Referer');
+////end;
+//
+//procedure TgRequestLogItem.Populate;
+//begin
+//IPAddress := WebServerController.Request.IPAddress;
+//Host.URI := WebServerController.Request.HeaderFields['Host'] + WebServerController.Request.URI;
+//Referer.URI := WebServerController.Request.HeaderFields['Referer'];
+//UserAgent := WebServerController.Request.HeaderFields['User-Agent'];
+//end;
 
 function TgRequestLogItem.GetWebServerController: TgWebServerController;
 begin
@@ -1668,7 +1631,7 @@ begin
   inherited;
 end;
 
-class function TgResponse.FriendlyClassName: string;
+function TgResponse.GetFriendlyClassName: string;
 begin
   Result := 'gResponse';
 end;
@@ -1823,4 +1786,15 @@ begin
   HeaderFields.Host := AValue;
 end;
 
+function TgWebServerController.EFileNotFound.ResponseCode: Integer;
+begin
+  Result := 404;
+end;
+
+function TgWebServerController.E.ResponseCode: Integer;
+begin
+  Result := 500;
+end;
+
 end.
+

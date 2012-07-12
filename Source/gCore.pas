@@ -1743,6 +1743,8 @@ function Eval(Const AExpression : String; ABase : TgBase): Variant;
 
 function URLDecode(Const AString : String): String;
 
+procedure SplitOnChar(const ASourceString: String; ASplitChar: Char; out AFirstPart, ASecondPart: String);
+
 implementation
 
 Uses
@@ -1920,6 +1922,23 @@ begin
   end;
   SetLength(TempString, PDestination - PChar(TempString));
   Result := TempString;
+end;
+
+procedure SplitOnChar(const ASourceString: String; ASplitChar: Char; out AFirstPart, ASecondPart: String);
+var
+  SplitPos: Integer;
+begin
+  SplitPos := Pos( ASplitChar, ASourceString );
+  If SplitPos > 0 Then
+  Begin
+    AFirstPart := Copy( ASourceString, 1, SplitPos - 1 );
+    ASecondPart := Copy( ASourceString, SplitPos + 1, MaxInt );
+  End
+  Else
+  Begin
+    AFirstPart := ASourceString;
+    ASecondPart := '';
+  End;
 end;
 
 { TgBase }
