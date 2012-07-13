@@ -1573,6 +1573,7 @@ type
     function ProcessText(const Source: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean; overload;
     function ProcessDocument(SourceDocument: IXMLDocument; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean;
     function GetgDocument(out Value: TgDocument): Boolean; override;
+    procedure ProcessFile(const AFileName: String; AStream: TStream); overload;
     property Target: TXMLDocument read FTargetDocument;
   published
     property SearchPath: String read FSearchPath write FSearchPath;
@@ -6960,6 +6961,11 @@ begin
     SourceDocument := nil;
 //      SourceDocument.Free;
   end;
+end;
+
+procedure TgDocument.ProcessFile(const AFileName: String; AStream: TStream);
+begin
+  // TODO -cMM: TgDocument.ProcessFile default body inserted
 end;
 
 function TgDocument.ProcessText(const Source: String; var Target: String;
