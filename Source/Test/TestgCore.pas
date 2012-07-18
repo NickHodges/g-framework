@@ -149,6 +149,7 @@ type
     procedure SerializeCSV;
     procedure TestCreate;
     procedure ValidateRequired;
+    procedure PathValue;
   end;
 
   TestTgString5 = class(TTestCase)
@@ -483,6 +484,23 @@ type
     procedure Test;
   end;
 
+  TestTgDictionary = class(TTestCase)
+  public
+    type
+      TMy = class(TgDictionary)
+      private
+        FName: String;
+      published
+        property Name: String read FName write FName;
+      end;
+  protected
+    FMy: TMy;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure CheckPaths;
+  end;
+
 implementation
 
 Uses
@@ -551,6 +569,43 @@ end;
 procedure TestTBase.SetPathExtendsBeyondOrdinalProperty;
 begin
   Base['IntegerProperty.ThisShouldNotBeHere'] := 'Test';
+end;
+
+procedure TestTBase.PathValue;
+var
+  DateTime: TDateTime;
+  ACount: Integer;
+  Item: TgBase.TPathValue;
+begin
+  CheckEquals(9,Base.PathCount);
+  ACount := 0;
+  for Item in Base do
+    Inc(ACount);
+  CheckEquals(9,ACount);
+  CheckEquals('BooleanProperty',Base.Paths[0]);
+  CheckEquals('DateProperty',Base.Paths[1]);
+  CheckEquals('DateTimeProperty',Base.Paths[2]);
+  CheckEquals('IntegerProperty',Base.Paths[3]);
+  CheckEquals('ManuallyConstructedObjectProperty',Base.Paths[4]);
+  CheckEquals('ObjectProperty',Base.Paths[5]);
+  CheckEquals('UnconstructedObjectProperty',Base.Paths[6]);
+  CheckEquals('String5',Base.Paths[7]);
+  CheckEquals('Phone',Base.Paths[8]);
+
+  Base.BooleanProperty := True;
+  CheckTrue(Base.PathValues[0]);
+
+  Base.DateProperty := EncodeDate(2012,5,6);
+  DateTime := Base.PathValues[1];
+  CheckEquals('5/6/2012',DateTimeTostr(DateTime));
+
+  Base.DateTimeProperty := EncodeDate(2012,5,6)+EncodeTime(12,34,32,0);
+  DateTime := Base.PathValues[2];
+  CheckEquals('5/6/2012 12:34:32 PM',DateTimeTostr(DateTime));
+
+  Base.IntegerProperty := 1245;
+  CheckEquals(1245,Base.IntegerProperty);
+
 end;
 
 procedure TestTBase.SetUndeclaredProperty;
@@ -2598,6 +2653,40 @@ begin
   CheckEquals(Integer($F0F0ABCD),Cookie.ID);
 end;
 
+{ TestTgDictionary }
+
+procedure TestTgDictionary.CheckPaths;
+var
+  Index: Integer;
+  PathValue: TgBase.TPathValue;
+begin
+  FMy.Name := 'Name';
+  FMy['Value8'] := 'Yea!';
+  Index := 0;
+  for PathValue in FMy do begin
+    case Index of
+      0: CheckEquals('Name',PathValue);
+      1: CheckEquals('Yea!',PathValue);
+    end;
+    Inc(Index);
+  end;
+  CheckEquals(0,FMy.GetPathIndexOf('Name'));
+  CheckEquals(1,FMy.GetPathIndexOf('Value8'));
+end;
+
+procedure TestTgDictionary.SetUp;
+begin
+  inherited;
+  FMy := TMy.Create;
+end;
+
+procedure TestTgDictionary.TearDown;
+begin
+  FreeAndNil(FMy);
+  inherited;
+
+end;
+
 initialization
 
   // Register any test cases with the test runner
@@ -2617,6 +2706,7 @@ initialization
   RegisterTest(TestMemo.Suite);
   RegisterTest(TestClassProperty.Suite);
   RegisterTest(TestWebCookie.Suite);
+  RegisterTest(TestTgDictionary.Suite);
   RegisterRuntimeClasses([TFirebirdObject]);
   G.Initialize;
 end.

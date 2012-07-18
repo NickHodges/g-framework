@@ -265,6 +265,12 @@ type
       EgValue = class(Exception)
       end;
 
+      TPathValue = record
+        Path: String;
+        Value: Variant;
+        class operator Implicit(const Value: TPathValue): Variant;
+      end;
+
   strict private
     function GetIsAutoCreating: Boolean;
     function GetModel: TgModel;
@@ -281,6 +287,20 @@ type
           osOrdered, osFiltered, osSorted, osActivating, osActive
         );
       TStates = Set of TState;
+
+
+      TEnumerator = record
+      private
+        FCurrentIndex: Integer;
+        FCount: Integer;
+        FItem: TgBase;
+        function GetCurrent: TPathValue; {$IFDEF DEBUG}inline;{$ENDIF}
+      public
+        procedure Init(AItem: TgBase); inline;
+        function MoveNext: Boolean; inline;
+        property Current: TPathValue read GetCurrent;
+      end;
+
     var
     FOwner: TgBase;
     FStates: TStates;
@@ -290,6 +310,10 @@ type
     /// its behavior.
     /// </summary>
     procedure AutoCreate; virtual;
+    class function RTTIValueProperties: TArray<TRTTIProperty>; virtual;
+    function GetPathCount: Integer; virtual;
+    function GetPaths(AIndex: Integer): String; virtual;
+    function GetPathValues(AIndex: Integer): TPathValue;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
     function DoGetObjects(const APath: String; out AValue: TgBase): Boolean; virtual;
     function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean; virtual;
@@ -321,6 +345,7 @@ type
     class function AddAttributes(ARTTIProperty: TRttiProperty): TArray<TCustomAttribute>; virtual;
     procedure Assign(ASource : TgBase); virtual;
     procedure Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
+    function GetEnumerator: TEnumerator; inline;
     class function FriendlyName: String; virtual;
     function GetFriendlyClassName: String; virtual;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
@@ -343,6 +368,7 @@ type
     ///	</remarks>
     function AsPointer: Pointer; inline;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
+    function GetPathIndexOf(const APath: String): Integer; virtual;
     property IsAutoCreating: Boolean read GetIsAutoCreating write SetIsAutoCreating;
     property IsInspecting: Boolean read GetIsInspecting write SetIsInspecting;
 
@@ -376,6 +402,9 @@ type
     ///	  <see cref="TgBase" /> class decendant
     ///	</param>
     property Properties[Const APath : String]: TRTTIProperty read GetProperties;
+    property PathCount: Integer read GetPathCount;
+    property Paths[Index: Integer]: String read GetPaths;
+    property PathValues[Index: Integer]: TPathValue read GetPathValues;
   published
     [NotSerializable] [NotVisible]
     property FriendlyClassName: String read GetFriendlyClassName;
@@ -1679,6 +1708,8 @@ type
   strict protected
     function DoGetValues(const APath: string; out AValue: Variant): Boolean; override;
     function DoSetValues(const APath: string; AValue: Variant): Boolean; override;
+    function GetPathCount: Integer; override;
+    function GetPaths(AIndex: Integer): String; override;
   public
     constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
@@ -2266,6 +2297,11 @@ Begin
   Result := ReplaceText(ReplaceText(Result, '<', '_'), '>', '_')
 End;
 
+function TgBase.GetEnumerator: TEnumerator;
+begin
+  Result.Init(Self);
+end;
+
 function TgBase.GetFriendlyClassName: String;
 Begin
   Result := FriendlyName;
@@ -2279,6 +2315,30 @@ end;
 function TgBase.GetIsInspecting: Boolean;
 begin
   Result := osInspecting in FStates;
+end;
+
+function TgBase.GetPathCount: Integer;
+begin
+  Result := Length(RTTIValueProperties);
+end;
+
+function TgBase.GetPathIndexOf(const APath: String): Integer;
+begin
+  Result := PathCount-1;
+  while (Result >= 0) and not SameText(Paths[Result],APath) do
+    Dec(Result);
+end;
+
+function TgBase.GetPaths(AIndex: Integer): String;
+begin
+  Result := RTTIValueProperties[AIndex].Name;
+end;
+
+function TgBase.GetPathValues(AIndex: Integer): TPathValue;
+begin
+  Result.Path := GetPaths(AIndex);
+  if not DoGetValues(Result.Path,Result.Value) then
+    Result.Value := varNull;
 end;
 
 function TgBase.GetModel: TgModel;
@@ -2350,6 +2410,11 @@ function TgBase.Owns(ABase : TgBase): Boolean;
 Begin
   Result := Assigned(ABase) And (ABase.Owner = Self);
 End;
+
+class function TgBase.RTTIValueProperties: TArray<TRTTIProperty>;
+begin
+  Result := G.AssignableProperties(Self);
+end;
 
 function TgBase.Serialize(ASerializerClass: TgSerializerClass): String;
 var
@@ -7674,7 +7739,23 @@ begin
     Result := True;
   End
 End;
-  { TgElementIf }
+
+function TgDictionary.GetPathCount: Integer;
+begin
+  Result := inherited + FDictionary.Keys.Count;
+end;
+
+function TgDictionary.GetPaths(AIndex: Integer): String;
+begin
+  if AIndex < inherited GetPathCount then
+    Result := inherited
+  else begin
+    Dec(AIndex,inherited GetPathCount);
+    Result := FDictionary.Keys.ToArray[AIndex];
+  end;
+end;
+
+{ TgElementIf }
 
 procedure TgElementIf.ProcessNode(Source: IXMLNode;
   TargetChildNodes: IXMLNodeList);
@@ -7890,6 +7971,33 @@ begin
   S2 := S2 SHR 32;
   if S2 <> Key then
     raise E.Create('Invalid Cookie Key');
+end;
+
+{ TgBase.TEnumerator }
+
+function TgBase.TEnumerator.GetCurrent: TPathValue;
+begin
+  Result := FItem.GetPathValues(FCurrentIndex);
+end;
+
+procedure TgBase.TEnumerator.Init(AItem: TgBase);
+begin
+  FCount := AItem.GetPathCount;
+  FItem := AItem;
+  FCurrentIndex := -1;
+end;
+
+function TgBase.TEnumerator.MoveNext: Boolean;
+begin
+  Inc(FCurrentIndex);
+  Result := FCurrentIndex < FCount;
+end;
+
+{ TgBase.TPathValue }
+
+class operator TgBase.TPathValue.Implicit(const Value: TPathValue): Variant;
+begin
+  Result := Value.Value;
 end;
 
 Initialization
