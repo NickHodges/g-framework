@@ -23,7 +23,18 @@ Uses
   SyncObjs
 ;
 
-type
+const
+  CRLF = #13#10;
+  TAB = #9;
+  DaysOfWeek: array[1..7] of string = (
+    'Sun', 'Mon', 'Tue', 'Wed',
+    'Thu', 'Fri', 'Sat');
+  Months: array[1..12] of string = (
+    'Jan', 'Feb', 'Mar', 'Apr',
+    'May', 'Jun', 'Jul', 'Aug',
+    'Sep', 'Oct', 'Nov', 'Dec');
+
+    type
 
   TgHTMLString = Type String;
   TSystemCustomAttribute = System.TCustomAttribute; // Gets around Class complete not supporting the . in some generics
@@ -269,6 +280,7 @@ type
         Path: String;
         Value: Variant;
         class operator Implicit(const Value: TPathValue): Variant;
+        function Text: String;
       end;
 
   strict private
@@ -912,12 +924,14 @@ type
     function GetIsDeleting: Boolean;
     function GetIsCreatingOriginalValues: Boolean;
     function GetIsLoaded: Boolean;
+    function GetIsLoading: Boolean;
     function GetIsOriginalValues: Boolean;
     function GetIsSaving: Boolean;
     function GetOriginalValues: TgBase;
     procedure SetIsDeleting(const AValue: Boolean);
     procedure SetIsCreatingOriginalValues(const AValue: Boolean);
     procedure SetIsLoaded(const AValue: Boolean);
+    procedure SetIsLoading(const AValue: Boolean);
     procedure SetIsOriginalValues(const AValue: Boolean);
     procedure SetIsSaving(const AValue: Boolean);
   strict protected
@@ -945,6 +959,7 @@ type
     property IsDeleting: Boolean read GetIsDeleting write SetIsDeleting;
     property IsCreatingOriginalValues: Boolean read GetIsCreatingOriginalValues write SetIsCreatingOriginalValues;
     property IsLoaded: Boolean read GetIsLoaded write SetIsLoaded;
+    property IsLoading: Boolean read GetIsLoading write SetIsLoading;
     property IsModified: Boolean read GetIsModified;
     property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
     property IsSaving: Boolean read GetIsSaving write SetIsSaving;
@@ -1025,9 +1040,9 @@ type
   strict private
     procedure AssignChanged(ASourceObject, ADestinationObject: TgIdentityObject);
     function Filename: String;
-    procedure LoadList(const AList: TList);
-    function Locate(const AList: TList; AObject: TgIdentityObject): Boolean;
-    procedure SaveList(const AList: TList);
+    procedure LoadList(const AList: TgPersistenceManagerFile.TList);
+    function Locate(const AList: TgPersistenceManagerFile.TList; AObject: TgIdentityObject): Boolean;
+    procedure SaveList(const AList: TgPersistenceManagerFile.TList);
   public
     procedure Commit(AObject: TgIdentityObject); override;
     procedure StartTransaction(AObject: TgIdentityObject; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); override;
@@ -1719,7 +1734,7 @@ type
   end;
 
   TgMemo = record
-  strict private
+  public
     FValue: array of String;
   private
     function GetCount: Integer;
@@ -1732,6 +1747,7 @@ type
     class operator Implicit(AValue: TgMemo): Variant; overload;
     class operator Implicit(AValue: Variant): TgMemo; overload;
     function IndexOf(const Value: String): Integer;
+    function Add(const Value: String): Integer;
     property Value: String read GetValue write SetValue;
     property Count: Integer read GetCount write SetCount;
     property Items[Index: Integer]: String read GetItems write SetItems; default;
@@ -1752,6 +1768,13 @@ type
     property ID: Integer read FID write FID;
     property Value: String read GEtValue write SetValue;
   end;
+
+type
+  TBuffer = Class(TObject)
+  public
+    Address : Pointer;
+    Length : Integer;
+  End;
 
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
@@ -1776,6 +1799,19 @@ function Eval(Const AExpression : String; ABase : TgBase): Variant;
 function URLDecode(Const AString : String): String;
 
 procedure SplitOnChar(const ASourceString: String; ASplitChar: Char; out AFirstPart, ASecondPart: String);
+
+function TimeZoneBias: TDateTime;
+
+function DayOfWeekStr(DateTime: TDateTime): string;
+
+function MonthStr(DateTime: TDateTime): string;
+
+function RootPath: String;
+
+procedure SplitBuffer(Const ASearchString : AnsiString; ABuffer : Pointer; ALength : Integer; AList : TList);
+
+var
+  ExecutablePath : String;
 
 implementation
 
@@ -1972,6 +2008,84 @@ begin
     ASecondPart := '';
   End;
 end;
+
+function TimeZoneBias: TDateTime;
+var
+  ATimeZone: TTimeZoneInformation;
+begin
+  Result := 0;
+  case GetTimeZoneInformation(ATimeZone) of
+    TIME_ZONE_ID_DAYLIGHT:
+      Result := ATimeZone.Bias + ATimeZone.DaylightBias;
+    TIME_ZONE_ID_STANDARD:
+      Result := ATimeZone.Bias + ATimeZone.StandardBias;
+    TIME_ZONE_ID_UNKNOWN:
+      Result := ATimeZone.Bias;
+  end;
+  Result := Result / 1440;
+end;
+
+function DayOfWeekStr(DateTime: TDateTime): string;
+begin
+  Result := DaysOfWeek[DayOfWeek(DateTime)];
+end;
+
+function MonthStr(DateTime: TDateTime): string;
+var
+  Year, Month, Day: Word;
+begin
+  DecodeDate(DateTime, Year, Month, Day);
+  Result := Months[Month];
+end;
+
+function RootPath: String;
+begin
+  Result := IncludeTrailingPathDelimiter( ExecutablePath ) + IncludeTrailingPathDelimiter('..');
+end;
+
+{ TODO : Unicodification }
+procedure SplitBuffer(Const ASearchString : AnsiString; ABuffer : Pointer; ALength : Integer; AList : TList);
+var
+  SearchBuffer : PByteArray;
+  SearchBufferLength : Integer;
+  BufferArray : PByteArray;
+  BufferIndex : Integer;
+  SearchBufferIndex : Integer;
+  Part : PByteArray;
+  PartBuffer : TBuffer;
+Begin
+  BufferArray := ABuffer;
+  Part := ABuffer;
+  SearchBuffer := PByteArray(PChar(ASearchString));
+  SearchBufferLength := Length(ASearchString);
+  BufferIndex := 0;
+  SearchBufferIndex := 0;
+  While BufferIndex < ALength - SearchBufferLength Do
+  Begin
+     If BufferArray^[BufferIndex] = SearchBuffer^[SearchBufferIndex] Then
+     Begin
+       Repeat
+         Inc(BufferIndex);
+         Inc(SearchBufferIndex);
+       Until (SearchBufferIndex = SearchBufferLength) Or (BufferArray^[BufferIndex] <> SearchBuffer[SearchBufferIndex]);
+       If SearchBufferIndex = SearchBufferLength Then
+       Begin
+         PartBuffer := TBuffer.Create;
+         PartBuffer.Address := Part;
+         PartBuffer.Length := (BufferIndex - Integer(Cardinal(Part) - Cardinal(BufferArray)) - SearchBufferLength);
+         AList.Add(PartBuffer);
+         Part := @Part^[PartBuffer.Length + SearchBufferLength];
+       End;
+       SearchBufferIndex := 0;
+     End
+     Else
+       Inc(BufferIndex);
+  End;
+  PartBuffer := TBuffer.Create;
+  PartBuffer.Address := Part;
+  PartBuffer.Length := ALength - BufferIndex;
+  AList.Add(PartBuffer);
+End;
 
 { TgBase }
 
@@ -4935,6 +5049,11 @@ begin
   Result := osLoaded in FStates;
 end;
 
+function TgIdentityObject.GetIsLoading: Boolean;
+begin
+  Result := osLoading in FStates;
+end;
+
 function TgIdentityObject.GetIsModified: Boolean;
 var
   RTTIProperty: TRTTIProperty;
@@ -5090,6 +5209,17 @@ begin
     Exclude(FStates, osLoaded);
 end;
 
+procedure TgIdentityObject.SetIsLoading(const AValue: Boolean);
+begin
+  if AValue And Not (osLoading in FStates) then
+  Begin
+    Include(FStates, osLoading);
+    InitializeOriginalValues;
+  End
+  else if (osLoading in FStates) then
+    Exclude(FStates, osLoading);
+end;
+
 procedure TgIdentityObject.SetIsOriginalValues(const AValue: Boolean);
 begin
   If AValue Then
@@ -5230,7 +5360,7 @@ begin
   Result := Format('%s%s.xml', [G.DataPath, ForClass.FriendlyName]);
 end;
 
-procedure TgPersistenceManagerFile.LoadList(const AList: TList);
+procedure TgPersistenceManagerFile.LoadList(const AList: TgPersistenceManagerFile.TList);
 begin
   if Not PersistentStorageExists then
     CreatePersistentStorage;
@@ -5260,7 +5390,7 @@ begin
   end;
 end;
 
-function TgPersistenceManagerFile.Locate(const AList: TList; AObject: TgIdentityObject): Boolean;
+function TgPersistenceManagerFile.Locate(const AList: TgPersistenceManagerFile.TList; AObject: TgIdentityObject): Boolean;
 begin
   // We use a While loop instead of a For-In loop to preserve the CurrentIndex value
   AList.First;
@@ -5283,7 +5413,7 @@ begin
 
 end;
 
-procedure TgPersistenceManagerFile.SaveList(const AList: TList);
+procedure TgPersistenceManagerFile.SaveList(const AList: TgPersistenceManagerFile.TList);
 begin
   ForceDirectories(ExtractFilePath(FileName));
   StringToFile(AList.Serialize(TgSerializerXML), FileName);
@@ -7828,6 +7958,14 @@ end;
 { TgMemo }
 
 
+function TgMemo.Add(const Value: String): Integer;
+begin
+  Result := Length(FValue);
+  SetLength(FValue,Result+1);
+  FValue[Result] := Value;
+
+end;
+
 function TgMemo.GetCount: Integer;
 begin
   Result := Length(FValue);
@@ -8000,12 +8138,18 @@ begin
   Result := Value.Value;
 end;
 
+function TgBase.TPathValue.Text: String;
+begin
+  Result := Path + '=' + Value;
+end;
+
 Initialization
   TgSerializerJSON.Register;
   TgSerializerXML.Register;
   TgSerializerCSV.Register;
   RegisterRuntimeClasses([TgPersistenceManagerFile, TgPersistenceManagerDBXFirebird, TgPersistenceManagerIBX, TgConnectionDescriptorIBX, TgConnectionDescriptorDBXFirebird]);
 end.
+
 
 
 

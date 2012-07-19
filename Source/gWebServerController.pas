@@ -5,9 +5,11 @@ interface
 uses
   gCore
   , System.Classes
+  , Generics.Collections
   , Contnrs
   , SysUtils
   , StrUtils
+  , Windows
 ;
 
 type
@@ -73,6 +75,7 @@ type
   TgRequestContentItemBase = class(TgBase)
   private
     FContentLength: Integer;
+    function FileUploadPath: String;
   Protected
     FContent: TMemoryStream;
     function GetContent: TMemoryStream;Virtual;
@@ -123,9 +126,7 @@ type
     FRequestDistiller: TgRequestDistiller;
     FRequestMap: TgRequestMap;
     procedure PopulateModelFromRequest;
-    procedure PushAuthorizationValues(AObject: TgObject; AStringList: TStringList);
     procedure LogOutInternal(AObject: TgBase);
-    procedure ConvertEncryptedQueryFields(const APassword: String);
     procedure DoAction;
     function FindDocument(const ADocument: String): String;
     procedure SetCookies(APropertyList: TStringList);
@@ -200,15 +201,19 @@ type
   public
     type
       TgRequestMaps = TgIdentityList<TgRequestMap>;
+      TPopulateMethod = reference to procedure;
+    class var _Builders: TList<TPopulateMethod>;
+    class procedure RegisterBuilder(Anon: TPopulateMethod);
   strict private
     FVirtualPaths: TgRequestMaps;
     FSearchPath : String;
     FSubHosts: TgRequestMaps;
-    FDefaultPage : String;
+    FDefaultPage: String;
     FRedirect : String;
-    FLogClassName: String;
-    FModelClassName: String;
-    FTemplateRequestMap: TgRequestMap;
+// TODO: FModelClassName
+//// TODO: FLogClassName
+////  FLogClassName: String;
+//  FModelClassName: String;
     FBasePath: String;
     FHosts: TgIdentityList;
     FLogClass: TgRequestLogItemClass;
@@ -217,12 +222,11 @@ type
     FPathQuery: Boolean;
     FMobileSearchPath: String;
     FModelClass: TgModelClass;
-    function GetDefaultPage: String;
-    function GetTemplateRequestMap: TgRequestMap;
-    function GetBasePath: String;
     function GetLoginTemplate: String;
-    procedure SetLogClassName(const AValue: String);
-    procedure SetModelClassName(const Value: String);
+// TODO: SetModelClassName
+//// TODO: SetLogClassName
+////  procedure SetLogClassName(const AValue: String);
+//  procedure SetModelClassName(const Value: String);
   strict protected
     function GetSubHost(var AHost: String): TgRequestMap;
     function GetVirtualPath(var APath : String): TgRequestMap;
@@ -231,10 +235,10 @@ type
     function AbsolutePath(ARelativePath: String): String;
     Function IsRelativePath(APath : String) : Boolean;
     Function GetSearchPath : String;
-    function GetMobileSearchPath: String;
-    Property TemplateRequestMap : TgRequestMap read GetTemplateRequestMap;
     property Hosts: TgIdentityList read FHosts;
   Public
+    class constructor Create;
+    class destructor Destroy;
     class procedure SplitHostPath(const APath : String; var AHead, ATail : String);
     class Procedure SplitRequestPath(const ARequestPath : String; var AHead, ATail : String); Virtual;
     Function TopRequestMap : TgRequestMap;
@@ -244,15 +248,19 @@ type
     Property SubHost[var AHost : String] : TgRequestMap read GetSubHost;
     property ModelClass: TgModelClass read FModelClass write FModelClass;
   Published
-    Property BasePath : String read GetBasePath write FBasePath;
+    property BasePath: String read FBasePath write FBasePath;
     Property SearchPath : String read GetSearchPath write FSearchPath;
-    property MobileSearchPath: String read GetMobileSearchPath write FMobileSearchPath;
+    property MobileSearchPath: String read FMobileSearchPath write FMobileSearchPath;
     property VirtualPaths: TgRequestMaps read FVirtualPaths stored False;
     property SubHosts: TgRequestMaps read FSubHosts;
-    Property DefaultPage : String read GetDefaultPage write FDefaultPage;
+    property DefaultPage: String read FDefaultPage write FDefaultPage;
     Property Redirect : String read FRedirect write FRedirect;
-    property LogClassName: String read FLogClassName write SetLogClassName;
-    property ModelClassName: String read FModelClassName write SetModelClassName;
+// TODO: ModelClassName
+//// TODO: LogClassName
+////{ TODO : Turn into LogClass }
+////  property LogClassName: String read FLogClassName write SetLogClassName;
+//{ TODO : Turn into ModelClass }
+//  property ModelClassName: String read FModelClassName write SetModelClassName;
     Property LoginTemplate : String read GetLoginTemplate write FLoginTemplate;
     property SecurePath: String read FSecurePath write FSecurePath;
     property PathQuery: Boolean read FPathQuery write FPathQuery;
@@ -262,7 +270,7 @@ type
   strict private
     FDefaultHost: String;
     FFileTypes: TgDictionary;
-    FPackages: String;
+    FPackages: TStringList;
     FHosts: TgRequestMap.TgRequestMaps;
     FTemplateFileExtensions: TgMemo;
     RequestMapBuilders: TObjectList;
@@ -285,7 +293,7 @@ type
     property DefaultHost: String read FDefaultHost write FDefaultHost;
     property FileTypes: TgDictionary read FFileTypes;
     property Hosts: TgRequestMap.TgRequestMaps read FHosts;
-    property Packages: String read FPackages write FPackages;
+    property Packages: TStringList read FPackages write FPackages;
     property TemplateFileExtensions: TgMemo read FTemplateFileExtensions write FTemplateFileExtensions;
   end;
 
@@ -369,7 +377,8 @@ implementation
 
 Uses
   Types,
-  RTTI
+  RTTI,
+  DateUtils
 ;
 
 destructor TgWebServerController.Destroy;
@@ -566,11 +575,11 @@ end;
 
 procedure TgWebServerController.PopulateModelFromRequest;
 var
-  StringHashValue: TgOrderedStringHashValue;
+  NameValuePair: TgBase.TPathValue;
   NewName: String;
   TempName: String;
-  RequestFields: TgOrderedStringHashTable;
-  RequestFieldsArray: Array[0..1] Of TgOrderedStringHashTable;
+  RequestFields: TgBase;
+  RequestFieldsArray: Array[0..1] Of TgBase;
   LastTwoChars: String;
   MethodFound: Boolean;
   RTTIProperty: TRTTIProperty;
@@ -584,24 +593,24 @@ begin
     Begin
 { TODO :
 Add TgDictionary.ToArray to represent Query and Content field lists.
-Each array element represents a name / value pair (StringHashValue) }
+Each array element represents a name / value pair (NameValuePair) }
 
-      For StringHashValue In RequestFields Do
+      For NameValuePair In RequestFields Do
       Begin
         try
-          NewName := StringHashValue.Name;
+          NewName := NameValuePair.Path;
           If NewName = '' Then
             Continue;
 { TODO : Add image submit code }
 (*
-            LastTwoChars := Copy( StringHashValue.Name, Length( StringHashValue.Name ) - 1, MaxInt );
+            LastTwoChars := Copy( NameValuePair.Name, Length( NameValuePair.Name ) - 1, MaxInt );
             If SameText( LastTwoChars, '.y' ) And MethodFound Then
               MethodFound := False
             Else
             Begin
               If SameText( LastTwoChars, '.x' ) Then
               Begin
-                TempName := Copy( StringHashValue.Name, 1, Length( StringHashValue.Name ) - 2 );
+                TempName := Copy( NameValuePair.Name, 1, Length( NameValuePair.Name ) - 2 );
                 If FModel.MethodExistsOnPath[TempName] Then
                 Begin
                   NewName := TempName;
@@ -615,14 +624,13 @@ Each array element represents a name / value pair (StringHashValue) }
             Begin
 
  { TODO : Add security }
-              If ( StringHashValue.Value = '' ) Or SameText( StringHashValue.Value, 'False' )  Then
+              If ( NameValuePair.Value = '' ) Or SameText( NameValuePair.Value, 'False' )  Then
                 FModel[NewName] := False
               Else
                 FModel[NewName] := True;
             End
             Else
-              FModel[NewName] := StringHashValue.Value;
-          End;
+              FModel[NewName] := NameValuePair.Value;
         except
           On E: EgValidation Do
             Raise;
@@ -636,11 +644,11 @@ Each array element represents a name / value pair (StringHashValue) }
                 Begin
                   TempObject.ValidationErrors[TempName] := E.Message;
                   TempObject.ValidationErrors.Objects[TempName].ErrorLevel := gelTypeConversion;
-                  TempObject.ValidationErrors.Objects[TempName].TypeConversionErrorValue := StringHashValue.Value;
+                  TempObject.ValidationErrors.Objects[TempName].TypeConversionErrorValue := NameValuePair.Value;
                 End;
               Except
                 On E: Exception Do
-                  Raise Exception.CreateFmt('%s, %s, NewName: %s, TempName: %s, StringHashValue.Value: %s', [E.ClassName, E.Message, NewName, TempName, StringHashValue.Value]);
+                  Raise Exception.CreateFmt('%s, %s, NewName: %s, TempName: %s, StringHashValue.Value: %s', [E.ClassName, E.Message, NewName, TempName, NameValuePair.Value]);
               End;
             End;
 
@@ -696,48 +704,6 @@ begin
     Result := Result + '; secure';
 end;
 
-procedure TgWebServerController.PushAuthorizationValues(AObject: TgObject; AStringList: TStringList);
-var
-  PropertyName: String;
-  FullPropertyName: String;
-  Counter: Integer;
-  AuthorizationAttributeValue : String;
-  ObjectPropertyClassType: TgIdentityObjectClass;
-  FullPropertyValue: String;
-begin
-  For Counter := 0 to AObject.VisiblePropertyNames.Count - 1 Do
-  Begin
-    PropertyName := AObject.VisiblePropertyNames[Counter];
-    FullPropertyName := AObject.ObjectPathName;
-    If FullPropertyName > '' Then
-      FullPropertyName := FullPropertyName + '.';
-    FullPropertyName := FullPropertyName + PropertyName;
-    If AObject.PropertyIsObject(PropertyName) Then
-    Begin
-      ObjectPropertyClassType := TgIdentityObjectClass(AObject.ObjectPropertyClassType(PropertyName));
-      If ObjectPropertyClassType.InheritsFrom(TgIdentityObject) Then
-        FullPropertyName := FullPropertyName + '.' + ObjectPropertyClassType.KeyPropertyName;
-    End;
-    AuthorizationAttributeValue := AObject.PropertyAttributes[PropertyName, 'Authorization'];
-    If Not (AuthorizationAttributeValue = '') And Not SameText( AuthorizationAttributeValue, 'False' ) Then
-    Begin
-      AStringList.Values[FullPropertyName] := AuthorizationAttributeValue;
-      FModel.StringValues[FullPropertyName] := Request.Fields[FullPropertyName];
-    End;
-    If AObject.PropertyIsObject(PropertyName) And AObject.ObjectPropertyClassType(PropertyName).InheritsFrom(TgObject) And Not AObject.ObjectPropertyClassType(PropertyName).InheritsFrom(TgIdentityObject) Then
-      PushAuthorizationValues(TgObject(AObject.Objects[PropertyName]), AStringList);
-  End;
-  // Special case for Logout
-  FullPropertyName := 'Controller.Logout';
-  FullPropertyValue := Request.Fields[FullPropertyName];
-  If FullPropertyValue > '' Then
-    FModel.StringValues[FullPropertyName] := Request.Fields[FullPropertyName];
-  FullPropertyName := 'Model.Controller.Logout';
-  FullPropertyValue := Request.Fields[FullPropertyName];
-  If FullPropertyValue > '' Then
-    FModel.StringValues[FullPropertyName] := Request.Fields[FullPropertyName];
-end;
-
 procedure TgWebServerController.LogOutInternal(AObject: TgBase);
 var
   Counter: Integer;
@@ -745,49 +711,27 @@ var
   FullPropertyName: String;
   AuthorizationAttributeValue: String;
 begin
-  For Counter := 0 to AObject.VisiblePropertyNames.Count - 1 Do
-  Begin
-    PropertyName := AObject.VisiblePropertyNames[Counter];
-    FullPropertyName := AObject.ObjectPathName;
-    If FullPropertyName > '' Then
-      FullPropertyName := FullPropertyName + '.';
-    FullPropertyName := FullPropertyName + PropertyName;
-    AuthorizationAttributeValue := AObject.PropertyAttributes[PropertyName, 'Authorization'];
-    If Not AnsiSameText(FullPropertyName, 'HostName') And ( AuthorizationAttributeValue > '' ) And Not SameText( AuthorizationAttributeValue, 'Insecure' ) Then
-    Begin
-      FModel.StringValues[FullPropertyName] := '';
-      Response.Cookies.EmptyValues[FullPropertyName] := '';
-    End;
-    If (AObject.PropertyTypes[PropertyName] = gdtClass) And AObject.ObjectPropertyClassType(PropertyName).InheritsFrom(TgObject) And Not AObject.ObjectPropertyClassType(PropertyName).InheritsFrom(TgIdentityObject) Then
-      LogoutInternal( TgObject(AObject.Objects[PropertyName]) );
-  End;
-end;
+{ TODO : Complete }
+(*
 
-procedure TgWebServerController.ConvertEncryptedQueryFields(const APassword: String);
-var
-  Counter: Integer;
-  FieldList : TList;
-  Item: TgOrderedStringHashValue;
-  GIValue: String;
-begin
-  FieldList := TList.Create;
-  try
-    Request.QueryFields.PopulateList( FieldList );
-    For Counter := 0 to FieldList.Count - 1 Do
+    For Counter := 0 to AObject.VisiblePropertyNames.Count - 1 Do
     Begin
-      Item := TgOrderedStringHashValue(FieldList[Counter]);
-      If SameText( 'GI', Item.Name ) Then
+      PropertyName := AObject.VisiblePropertyNames[Counter];
+      FullPropertyName := AObject.ObjectPathName;
+      If FullPropertyName > '' Then
+        FullPropertyName := FullPropertyName + '.';
+      FullPropertyName := FullPropertyName + PropertyName;
+      AuthorizationAttributeValue := AObject.PropertyAttributes[PropertyName, 'Authorization'];
+      If Not AnsiSameText(FullPropertyName, 'HostName') And ( AuthorizationAttributeValue > '' ) And Not SameText( AuthorizationAttributeValue, 'Insecure' ) Then
       Begin
-        GIValue := Item.Value;
-        Request.QueryFields.Delete( 'GI' );
-        TgWebRequestParser.PopulateQueryFields( DeEscapeHTML( ObfuscateDecode( GIValue, APassword ) ), Request.QueryFields );
-        Exit;
+        FModel.StringValues[FullPropertyName] := '';
+        Response.Cookies.EmptyValues[FullPropertyName] := '';
       End;
+      If (AObject.PropertyTypes[PropertyName] = gdtClass) And AObject.ObjectPropertyClassType(PropertyName).InheritsFrom(TgObject) And Not AObject.ObjectPropertyClassType(PropertyName).InheritsFrom(TgIdentityObject) Then
+        LogoutInternal( TgObject(AObject.Objects[PropertyName]) );
     End;
-  finally
-    FieldList.Free;
-  end;
-end;
+
+*)end;
 
 procedure TgWebServerController.DoAction;
 var
@@ -800,8 +744,9 @@ begin
     try
       ActionsList.StrictDelimiter := True;
       ActionsList.CommaText := Actions[Action];
+{ TODO : Make Secure }
       For Counter := 0 To ActionsList.Count - 1 Do
-        FModel.StringValuesSecure[ActionsList.Names[Counter]] := ActionsList.ValueFromIndex[Counter];
+        FModel[ActionsList.Names[Counter]] := ActionsList.ValueFromIndex[Counter];
     finally
       ActionsList.Free;
     end;
@@ -849,7 +794,7 @@ begin
     Else If Not SameText(AttributeValue, 'Secure') Then
       Continue;
     PropertyName := APropertyList.Names[Counter];
-    Response.Cookies[PropertyName] := MakeCookie( PropertyName, FModel.StringValues[PropertyName], '', '', ExpirationDate, False );
+    Response.Cookies[PropertyName] := MakeCookie( PropertyName, FModel[PropertyName], '', '', ExpirationDate, False );
   End;
 end;
 
@@ -868,7 +813,7 @@ end;
 function TgRequest.AsString: String;
 var
   StringList: TStringList;
-  Field: TgOrderedStringHashValue;
+  Field: TgBase.TPathValue;
 begin
   StringList := TStringList.Create;
   try
@@ -951,6 +896,11 @@ destructor TgRequestContentItemBase.Destroy;
 begin
   FContent.Free;
   inherited;
+end;
+
+function TgRequestContentItemBase.FileUploadPath: String;
+begin
+  Result := RootPath + IncludeTrailingPathDelimiter('FileUploads');
 end;
 
 function TgRequestContentItemBase.GetContent: TMemoryStream;
@@ -1178,9 +1128,9 @@ begin
             ContentDisposition.Values[TempString] := Trim(ContentDisposition.Values[TempString]);
           End;
           If AnsiDequotedStr( ContentDisposition.Values['FileName'], '"' ) > '' Then
-            NewItemClass := TgRequestContentItemFile
+            ItemClass := TgRequestContentItemFile
           Else
-            NewItemClass := TgRequestContentItemMultiPartFormData;
+            ItemClass := TgRequestContentItemMultiPartFormData;
           Add;
           Current.Content.Write(Buffer.Address^, Buffer.Length);
         Finally
@@ -1193,6 +1143,18 @@ begin
   Finally
     ObjectList.Free;
   End;
+end;
+
+class constructor TgRequestMap.Create;
+begin
+  inherited;
+  _Builders := TList<TPopulateMethod>.Create;
+end;
+
+class destructor TgRequestMap.Destroy;
+begin
+  FreeAndNil(_Builders);
+  inherited;
 end;
 
 { TgRequestMap }
@@ -1219,22 +1181,6 @@ begin
   Finally
     StringList.Free;
   End;
-end;
-
-function TgRequestMap.GetBasePath: String;
-begin
-  If (Not IsLoading) And Assigned(TemplateRequestMap) And (FBasePath = '') Then
-    Result := TemplateRequestMap.BasePath
-  Else
-    Result := FBasePath;
-end;
-
-function TgRequestMap.GetDefaultPage: String;
-begin
-  If (Not IsLoading) And Assigned(TemplateRequestMap) And (FDefaultPage = '') Then
-    Result := TemplateRequestMap.DefaultPage
-  Else
-    Result := FDefaultPage;
 end;
 
 function TgRequestMap.GetLoginTemplate: String;
@@ -1264,8 +1210,7 @@ Var
   NewTail : String;
   ResultLength : Integer;
 begin
-  VirtualPathRequestMap := VirtualPaths[AHead];
-  If Assigned(VirtualPathRequestMap) Then
+  If VirtualPaths.TryGet(AHead,VirtualPathRequestMap) Then
   Begin
     SplitRequestPath(ATail, NewHead, NewTail);
     Result := VirtualPathRequestMap.GetPathInternal(NewHead, NewTail);
@@ -1292,13 +1237,6 @@ begin
     Result := FSearchPath;
 end;
 
-function TgRequestMap.GetTemplateRequestMap: TgRequestMap;
-begin
-  If Not IsInspecting And Not Assigned(FTemplateRequestMap) And Assigned(Hosts) Then
-    FTemplateRequestMap := Hosts.RequestMaps[Template];
-  Result := FTemplateRequestMap;
-end;
-
 function TgRequestMap.GetSubHost(var AHost: String): TgRequestMap;
 Var
   Head : String;
@@ -1323,8 +1261,7 @@ begin
     APath := ''
   Else
   Begin
-    VirtualPathRequestMap := VirtualPaths[Head];
-    If Assigned(VirtualPathRequestMap) Then
+    If VirtualPaths.TryGet(Head,VirtualPathRequestMap) Then
     Begin
       APath := Tail;
       Result := VirtualPathRequestMap.GetVirtualPath(APath);
@@ -1340,13 +1277,20 @@ begin
   Result := (PathLength > 0) And Not (((PathLength > 0) And (APath[1] = '\')) or ((PathLength > 1) And (APath[2] = ':')));
 end;
 
-procedure TgRequestMap.SetModelClassName(const Value: String);
+class procedure TgRequestMap.RegisterBuilder(
+  Anon: TPopulateMethod);
 begin
-  FModelClassName := Value;
-  FModelClass := TgModelClass(G.ClassByName(Value));
-  if Not Assigned(FModelClass) then
-    raise Exception.Create('Invalid Model Class Name');
+  _Builders.Add(Anon);
 end;
+
+// TODO: SetModelClassName
+//procedure TgRequestMap.SetModelClassName(const Value: String);
+//begin
+//FModelClassName := Value;
+//FModelClass := TgModelClass(G.ClassByName(Value));
+//if Not Assigned(FModelClass) then
+//  raise Exception.Create('Invalid Model Class Name');
+//end;
 
 class procedure TgRequestMap.SplitHostPath(const APath : String; var AHead, ATail : String);
 Var
@@ -1372,7 +1316,7 @@ begin
   AHead := ARequestPath;
   ATail := '';
   If (Length(AHead) > 0) And (AHead[1] = '/') Then
-    Delete(AHead,1,1);
+    System.Delete(AHead,1,1);
   Position := Pos('/', AHead);
   If Position > 1 Then
   Begin
@@ -1383,45 +1327,29 @@ end;
 
 function TgRequestMap.TopRequestMap: TgRequestMap;
 begin
-  If Assigned(OwnersOwner) And OwnersOwner.InheritsFrom(TgRequestMap) Then
-    Result := TgRequestMap(OwnersOwner).TopRequestMap
+  If Assigned(Owner.Owner) And Owner.Owner.InheritsFrom(TgRequestMap) Then
+    Result := TgRequestMap(Owner.Owner).TopRequestMap
   Else
     Result := Self;
 end;
 
-function TgRequestMap.GetMobileSearchPath: String;
-begin
-  If (Not IsLoading) And Assigned(TemplateRequestMap) Then
-  Begin
-    If FMobileSearchPath > '' Then
-      Result := AbsolutePath(FMobileSearchPath)
-    Else
-      Result := TemplateRequestMap.MobileSearchPath;
-  End
-  Else If Not IsSaving Then
-    Result := AbsolutePath(FMobileSearchPath)
-  Else
-    Result := FMobileSearchPath;
-end;
-
-procedure TgRequestMap.SetLogClassName(const AValue: String);
-begin
-  FLogClassName := AValue;
-  FLogClass := TgLogClass(G.ClassByName(AValue));
-  if Not Assigned(FLogClass) then
-    raise Exception.Create('Invalid Log Class Name');
-end;
+// TODO: SetLogClassName
+//procedure TgRequestMap.SetLogClassName(const AValue: String);
+//begin
+//FLogClassName := AValue;
+//FLogClass := TgLogClass(G.ClassByName(AValue));
+//if Not Assigned(FLogClass) then
+//  raise Exception.Create('Invalid Log Class Name');
+//end;
 
 constructor TgWebServerControllerConfigurationData.Create(AOwner: TgBase = Nil);
 begin
   inherited Create(AOwner);
   RequestMapBuilders := TObjectList.Create();
-  FTemplateFileExtensionList := TStringList.Create();
 end;
 
 destructor TgWebServerControllerConfigurationData.Destroy;
 begin
-  FreeAndNil(FTemplateFileExtensionList);
   FreeAndNil(RequestMapBuilders);
   inherited Destroy;
 end;
@@ -1429,26 +1357,26 @@ end;
 procedure TgWebServerControllerConfigurationData.AddDefaultFileTypes;
 begin
   TemplateFileExtensions.Add( 'html' );
-  FileTypes.Text := 'htm=text/html' + CRLF +
-                    'txt=text/ascii' + CRLF +
-                    'gif=image/gif' + CRLF +
-                    'jpg=image/jpg' + CRLF +
-                    'png=image/png' + CRLF +
-                    'htf=text/html' + CRLF +
-                    'html=text/html' + CRLF +
-                    'jpeg=image/jpeg' + CRLF +
-                    'xls=application/vnd.ms-excel' + CRLF +
-                    'htg=image/gif' + CRLF +
-                    'swf=application/x-shockwave-flash' + CRLF +
-                    'htt=text/html' + CRLF +
-                    'css=text/css' + CRLF +
-                    'pdf=application/pdf' + CRLF +
-                    'mp3=audio/mp3' + CRLF +
-                    'wmv=video/x-ms-wmv' + CRLF +
-                    'mov=video/quicktime' + CRLF +
-                    'ico=image/x-icon' + CRLF +
-                    'csv=text/csv' + CRLF +
-                    'zip=application/zip' + CRLF;
+  FileTypes['htm'] := 'text/html';
+  FileTypes['txt'] := 'text/ascii';
+  FileTypes['gif'] := 'image/gif';
+  FileTypes['jpg'] := 'image/jpg';
+  FileTypes['png'] := 'image/png';
+  FileTypes['htf'] := 'text/html';
+  FileTypes['html'] := 'text/html';
+  FileTypes['jpeg'] := 'image/jpeg';
+  FileTypes['xls'] := 'application/vnd.ms-excel';
+  FileTypes['htg'] := 'image/gif';
+  FileTypes['swf'] := 'application/x-shockwave-flash';
+  FileTypes['htt'] := 'text/html';
+  FileTypes['css'] := 'text/css';
+  FileTypes['pdf'] := 'application/pdf';
+  FileTypes['mp3'] := 'audio/mp3';
+  FileTypes['wmv'] := 'video/x-ms-wmv';
+  FileTypes['mov'] := 'video/quicktime';
+  FileTypes['ico'] := 'image/x-icon';
+  FileTypes['csv'] := 'text/csv';
+  FileTypes['zip'] := 'application/zip';
 end;
 
 function TgWebServerControllerConfigurationData.FileName: String;
@@ -1462,7 +1390,7 @@ var
 begin
   If Assigned( FPackages ) Then
     For Counter := 0 To FPackages.Count - 1 Do
-      FPackages.Objects[Counter] := TObject(GLoadPackage( FPackages[Counter] ));
+      FPackages.Objects[Counter] := TObject(LoadPackage( FPackages[Counter] ));
 end;
 
 procedure TgWebServerControllerConfigurationData.UnloadPackages;
@@ -1475,7 +1403,7 @@ begin
     Begin
       Module := Cardinal(FPackages.Objects[Counter]);
       If Module > 0 Then
-        GUnloadPackage( Module );
+        UnloadPackage( Module );
     End;
 end;
 
@@ -1507,12 +1435,12 @@ begin
     AddDefaultPackages;
     Save;
   End;
-  LoadFromFile( FileName );
+  Deserialize(TgSerializerXML, FileToString(FileName));
 end;
 
 procedure TgWebServerControllerConfigurationData.Save;
 begin
-  SaveToFile( FileName );
+  StringToFile(Serialize(TgSerializerXML), FileName);
 end;
 
 procedure TgWebServerControllerConfigurationData.AddDefaultPackages;
@@ -1532,22 +1460,10 @@ end;
 
 procedure TgWebServerControllerConfigurationData.InitializeRequestMapBuilders;
 var
-  RequestMapBuilderPointer : Pointer;
-  RequestMapBuilder : TgRequestMapBuilder;
-  RequestMapBuilderClassList : TList;
+  RequestMapBuilder : TgRequestMap.TPopulateMethod;
 begin
-  RequestMapBuilderClassList := TList.Create;
-  Try
-    ClassRegistry.AllClassDescendents(TgRequestMapBuilder, RequestMapBuilderClassList);
-    For RequestMapBuilderPointer In RequestMapBuilderClassList Do
-    Begin
-      RequestMapBuilder := TgRequestMapBuilderClass(RequestMapBuilderPointer).Create;
-      RequestMapBuilder.Initialize;
-      RequestMapBuilders.Add(RequestMapBuilder);
-    End;
-  Finally
-    RequestMapBuilderClassList.Free;
-  End;
+  for RequestMapBuilder in TgRequestMap._Builders do
+    RequestMapBuilder;
 end;
 
 procedure TgWebServerControllerConfigurationData.FinalizeRequestMapBuilders;
@@ -1616,14 +1532,10 @@ begin
   inherited Create( AOwner );
   StatusCode := 200;
   FContentStream := TMemoryStream.Create();
-  FCookies := TgOrderedStringHashTable.Create();
-  FHeaderFields := TgOrderedStringHashTable.Create();
 end;
 
 destructor TgResponse.Destroy;
 begin
-  FreeAndNil(FHeaderFields);
-  FreeAndNil(FCookies);
   FreeAndNil(FContentStream);
   FContentStream.Free;
   FHeaderFields.Free;
@@ -1699,15 +1611,9 @@ begin
 end;
 
 procedure TgResponse.SetRedirect(const AURL: String);
-var
-  URL: String;
 begin
   StatusCode := 301;
-  If Assigned(Owner) And Owner.InheritsFrom(TgWebServerController) Then
-    URL := gCore.EvaluateTemplateString(AURL, TgWebServerController(Owner).RequestModel)
-  Else
-    URL := AURL;
-  HeaderFields['Location'] := URL;
+  HeaderFields['Location'] := AURL;
 end;
 
 procedure TgResponse.SetHeader(const AValue: String);
@@ -1755,30 +1661,9 @@ begin
   End;
 end;
 
-function TgWebServerController.GetHost: String;
-begin
-  // TODO -cMM: TgWebServerController.GetHost default body inserted
-  Result := ;
-end;
-
-procedure TgWebServerController.SetHost(const AValue: String);
-begin
-  // TODO -cMM: TgWebServerController.SetHost default body inserted
-end;
-
 function TgRequest.GetHost: String;
 begin
   HeaderFields['Host'];
-end;
-
-procedure TgRequest.SetHost(const AValue: String);
-begin
-  HeaderFields['Host'] := AValue;
-end;
-
-function TgRequest.GetHost: String;
-begin
-  Result := HeaderFields.Host;
 end;
 
 procedure TgRequest.SetHost(const AValue: String);
