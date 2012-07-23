@@ -210,10 +210,6 @@ type
     FSubHosts: TgRequestMaps;
     FDefaultPage: String;
     FRedirect : String;
-// TODO: FModelClassName
-//// TODO: FLogClassName
-////  FLogClassName: String;
-//  FModelClassName: String;
     FBasePath: String;
     FHosts: TgIdentityList;
     FLogClass: TgRequestLogItemClass;
@@ -223,10 +219,6 @@ type
     FMobileSearchPath: String;
     FModelClass: TgModelClass;
     function GetLoginTemplate: String;
-// TODO: SetModelClassName
-//// TODO: SetLogClassName
-////  procedure SetLogClassName(const AValue: String);
-//  procedure SetModelClassName(const Value: String);
   strict protected
     function GetSubHost(var AHost: String): TgRequestMap;
     function GetVirtualPath(var APath : String): TgRequestMap;
@@ -242,11 +234,9 @@ type
     class procedure SplitHostPath(const APath : String; var AHead, ATail : String);
     class Procedure SplitRequestPath(const ARequestPath : String; var AHead, ATail : String); Virtual;
     Function TopRequestMap : TgRequestMap;
-    property LogClass: TgRequestLogItemClass read FLogClass;
     property VirtualPath[var APath : String]: TgRequestMap read GetVirtualPath;
     Property Path[ARequestString : String] : String read GetPath;
     Property SubHost[var AHost : String] : TgRequestMap read GetSubHost;
-    property ModelClass: TgModelClass read FModelClass write FModelClass;
   Published
     property BasePath: String read FBasePath write FBasePath;
     Property SearchPath : String read GetSearchPath write FSearchPath;
@@ -254,14 +244,10 @@ type
     property VirtualPaths: TgRequestMaps read FVirtualPaths stored False;
     property SubHosts: TgRequestMaps read FSubHosts;
     property DefaultPage: String read FDefaultPage write FDefaultPage;
+    property LogClass: TgRequestLogItemClass read FLogClass write FLogClass;
     Property Redirect : String read FRedirect write FRedirect;
-// TODO: ModelClassName
-//// TODO: LogClassName
-////{ TODO : Turn into LogClass }
-////  property LogClassName: String read FLogClassName write SetLogClassName;
-//{ TODO : Turn into ModelClass }
-//  property ModelClassName: String read FModelClassName write SetModelClassName;
     Property LoginTemplate : String read GetLoginTemplate write FLoginTemplate;
+    property ModelClass: TgModelClass read FModelClass write FModelClass;
     property SecurePath: String read FSecurePath write FSecurePath;
     property PathQuery: Boolean read FPathQuery write FPathQuery;
   End;
@@ -1283,15 +1269,6 @@ begin
   _Builders.Add(Anon);
 end;
 
-// TODO: SetModelClassName
-//procedure TgRequestMap.SetModelClassName(const Value: String);
-//begin
-//FModelClassName := Value;
-//FModelClass := TgModelClass(G.ClassByName(Value));
-//if Not Assigned(FModelClass) then
-//  raise Exception.Create('Invalid Model Class Name');
-//end;
-
 class procedure TgRequestMap.SplitHostPath(const APath : String; var AHead, ATail : String);
 Var
   Position: Integer;
@@ -1500,27 +1477,6 @@ begin
     FDuration := MilliSecondOfTheDay(Now - FDateTime);
   Result := FDuration;
 end;
-
-// TODO: Populate
-//// TODO: GetHost
-////function TgRequestLogItem.GetHost: TgURI;
-////begin
-////ReturnObjectReference(Result, 'Host');
-////end;
-//
-//// TODO: GetReferer
-////function TgRequestLogItem.GetReferer: TgURI;
-////begin
-////ReturnObjectReference(Result, 'Referer');
-////end;
-//
-//procedure TgRequestLogItem.Populate;
-//begin
-//IPAddress := WebServerController.Request.IPAddress;
-//Host.URI := WebServerController.Request.HeaderFields['Host'] + WebServerController.Request.URI;
-//Referer.URI := WebServerController.Request.HeaderFields['Referer'];
-//UserAgent := WebServerController.Request.HeaderFields['User-Agent'];
-//end;
 
 function TgRequestLogItem.GetWebServerController: TgWebServerController;
 begin

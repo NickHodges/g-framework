@@ -2231,7 +2231,7 @@ Begin
 //        Raise EgValue.CreateFmt('%s has no GetValue method for runtime assignment.', [RTTIProperty.Name]);
       ClassProperty := RTTIProperty.GetValue(Self).AsClass;
       if Assigned(ClassProperty) then
-        AValue := ClassProperty.ClassName
+        AValue := ClassProperty.UnitName+'.'+ClassProperty.ClassName
       else
         AValue := '';
       Result := True;

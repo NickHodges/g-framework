@@ -2626,9 +2626,9 @@ begin
   Data := TTest.Create;
   CheckEquals('',Data['BaseClass']);
   Data.BaseClass := TTest;
-  CheckEquals('TestClassProperty.TTest',Data['BaseClass']);
+  CheckEquals('TestgCore.TestClassProperty.TTest',Data['BaseClass']);
   Data.BaseClass := nil;
-  Data['BaseClass'] := 'TTestgCore.TBase2';
+  Data['BaseClass'] := 'TestgCore.TestClassProperty.TTest';
 //  Data['BaseClass'] := 'TgBase';
   CheckEquals(NativeInt(Data.BaseClass),NativeInt(TTest));
 
