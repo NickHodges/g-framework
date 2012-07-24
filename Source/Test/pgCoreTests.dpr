@@ -19,7 +19,8 @@ uses
   TestFramework,
   GUITestRunner,
   TextTestRunner,
-  TestgCore in 'TestgCore.pas';
+  TestgCore in 'TestgCore.pas',
+  gWebServerController in '..\gWebServerController.pas';
 
 {$R *.RES}
 

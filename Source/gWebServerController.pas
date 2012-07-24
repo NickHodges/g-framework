@@ -20,6 +20,9 @@ type
   TgRequestMap = class;
   TgRequestLogItemClass = class of TgRequestLogItem;
 
+  TMemoryStream_Helper = class helper for TMemoryStream
+    procedure WriteString(const Value: String);
+  end;
 
   TgRequest = class(TgBase)
   public
@@ -545,14 +548,12 @@ begin
       If Ex.InheritsFrom( E ) Then
       Begin
         Response.StatusCode := E(Ex).ResponseCode;
-{ TODO : Unicodify }
-//        Response.ContentStream.Write( PChar(E.message)^, Length( E.Message ) );
+        Response.ContentStream.WriteString( Ex.message );
       End
       Else
       Begin
         Response.StatusCode := 500;
-{ TODO : Unicodify }
-//        Response.ContentStream.Write( PChar(E.message)^, Length( E.Message ) );
+        Response.ContentStream.WriteString( Ex.message );
         Raise;
       End;
     End;
@@ -1635,6 +1636,13 @@ end;
 function TgWebServerController.E.ResponseCode: Integer;
 begin
   Result := 500;
+end;
+
+{ TMemoryStream_Helper }
+
+procedure TMemoryStream_Helper.WriteString(const Value: String);
+begin
+  WriteBuffer(pChar(Value)^,ByteLength(Value));
 end;
 
 end.

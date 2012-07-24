@@ -1609,15 +1609,15 @@ const
   public
     constructor Create(Owner: TgBase = nil); override;
     destructor Destroy; override;
-  class function _ProcessText(const Source: String; AgBase: TgBase = nil): String; overload;
+    class function _ProcessText(const Source: String; AgBase: TgBase = nil): String; overload;
     class function _ProcessText(const Source: String; var Target: String; AgBase: TgBase = nil): Boolean; overload;
     function ProcessFile(const AFileName: String; ASearchPath: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean; overload;
     function ProcessFile(const FileName: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean; overload;
+    function ProcessFile(const AFileName: String; AStream: TStream): Boolean; overload;
     function ProcessText(const Source: String; var Target: String; AgBase: TgBase = nil): Boolean; overload;
     function ProcessText(const Source: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean; overload;
     function ProcessDocument(SourceDocument: IXMLDocument; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean;
     function GetgDocument(out Value: TgDocument): Boolean; override;
-    procedure ProcessFile(const AFileName: String; AStream: TStream); overload;
     property Target: TXMLDocument read FTargetDocument;
   published
     property SearchPath: String read FSearchPath write FSearchPath;
@@ -7158,8 +7158,11 @@ begin
   end;
 end;
 
-procedure TgDocument.ProcessFile(const AFileName: String; AStream: TStream);
+function TgDocument.ProcessFile(const AFileName: String; AStream: TStream): Boolean;
 begin
+  if not ProcessFile(AFileName,FTargetDocument.ChildNodes,Owner) then Exit(False);
+  FTargetDocument.SaveToStream(AStream);
+  Result := True;
   // TODO -cMM: TgDocument.ProcessFile default body inserted
 end;
 
