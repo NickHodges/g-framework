@@ -126,7 +126,7 @@ type
     FResponse: TgResponse;
     FUIState: TgDictionary;
     FLogItem: TgRequestLogItem;
-    FRequestDistiller: TgRequestDistiller;
+//    FRequestDistiller: TgRequestDistiller;
     FRequestMap: TgRequestMap;
     procedure PopulateModelFromRequest;
     procedure LogOutInternal(AObject: TgBase);
@@ -143,6 +143,8 @@ type
     procedure SetAction(const AValue: String);
   strict protected
   public
+    class constructor Create;
+    class destructor Destroy;
     destructor Destroy; override;
     class function ReadConfigurationData: TgWebServerControllerConfigurationData;
     class procedure EndReadConfigurationData;
@@ -203,7 +205,10 @@ type
   private
   public
     type
-      TgRequestMaps = TgIdentityList<TgRequestMap>;
+      TgRequestMaps = class(TgIdentityList<TgRequestMap>)
+      public
+        constructor Create(Owner: TgBase = nil); override;
+      end;
       TPopulateMethod = reference to procedure;
     class var _Builders: TList<TPopulateMethod>;
     class procedure RegisterBuilder(Anon: TPopulateMethod);
@@ -369,6 +374,18 @@ Uses
   RTTI,
   DateUtils
 ;
+
+class constructor TgWebServerController.Create;
+begin
+  ConfigurationData := TgWebServerControllerConfigurationData.Create;
+  ConfigurationDataSynchronizer := TMultiReadExclusiveWriteSynchronizer.Create;
+end;
+
+class destructor TgWebServerController.Destroy;
+begin
+  FreeAndNil(ConfigurationData);
+  FreeAndNil(ConfigurationDataSynchronizer);
+end;
 
 destructor TgWebServerController.Destroy;
 begin
@@ -1460,8 +1477,8 @@ Var
 begin
   // Todo: Make sure DefaultRequestMap is assigned prior to this
   RequestMap := DefaultRequestMap;
-  TopLevelDomain := ExtractFileExt(Head);
-  TgRequestMap.SplitHostPath(ChangeFileExt(Head, ''), Head, Tail);
+  TopLevelDomain := ExtractFileExt(Host);
+  TgRequestMap.SplitHostPath(ChangeFileExt(Host, ''), Head, Tail);
   if not Hosts.TryGet(Head + TopLevelDomain,RequestMap) then
     Exit;
   Head := Tail;
@@ -1620,7 +1637,7 @@ end;
 
 function TgRequest.GetHost: String;
 begin
-  HeaderFields['Host'];
+  Result := HeaderFields.Host;
 end;
 
 procedure TgRequest.SetHost(const AValue: String);
@@ -1643,6 +1660,15 @@ end;
 procedure TMemoryStream_Helper.WriteString(const Value: String);
 begin
   WriteBuffer(pChar(Value)^,ByteLength(Value));
+end;
+
+{ TgRequestMap.TgRequestMaps }
+
+constructor TgRequestMap.TgRequestMaps.Create(Owner: TgBase);
+begin
+  inherited;
+  Buffered := True;
+  Active := True;
 end;
 
 end.

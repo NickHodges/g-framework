@@ -19,6 +19,7 @@ uses
   TestFramework,
   GUITestRunner,
   TextTestRunner,
+  gPackageLoader in '..\gPackageLoader.pas',
   TestgCore in 'TestgCore.pas',
   gWebServerController in '..\gWebServerController.pas';
 

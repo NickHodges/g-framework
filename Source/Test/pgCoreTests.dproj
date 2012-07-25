@@ -101,6 +101,7 @@
 			<DelphiCompile Include="$(MainSource)">
 				<MainSource>MainSource</MainSource>
 			</DelphiCompile>
+			<DCCReference Include="..\gPackageLoader.pas"/>
 			<DCCReference Include="TestgCore.pas"/>
 			<DCCReference Include="..\gWebServerController.pas"/>
 			<BuildConfiguration Include="Release">

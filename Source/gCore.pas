@@ -560,6 +560,7 @@ const
     class function ClassValidationAttributes(AClass: TgBaseClass): TArray<Validation>; overload; static;
     class function ClassValidationAttributes(ABase: TgBase): TArray<Validation>; overload; static;
     class function ConnectionDescriptor(const AName: String): TgConnectionDescriptor; static;
+
     class function DataPath: String; static;
     class function IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function IdentityListProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
@@ -1086,7 +1087,6 @@ const
     function GetCurrentKey: String; virtual;
     function GetItemClass: TgIdentityObjectClass; reintroduce; virtual;
     function GetItems(AIndex : Integer): TgIdentityObject; reintroduce; virtual;
-    function IndexOf(const AKey: String): Integer;
     procedure SetCurrentKey(const AValue: String); virtual;
     procedure SetItemClass(const Value: TgIdentityObjectClass); reintroduce; virtual;
     procedure SetItems(AIndex : Integer; const AValue: TgIdentityObject); reintroduce; virtual;
@@ -1099,6 +1099,7 @@ const
     function ExtendedWhere: String; virtual;
     function GetEnumerator: TgEnumerator;
     procedure Save; virtual;
+    function IndexOf(const AKey: String): Integer;
     property Active: Boolean read GetActive write SetActive;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
     property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;

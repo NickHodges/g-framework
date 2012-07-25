@@ -13,6 +13,7 @@ interface
 
 uses
   TestFramework, Classes,gCore, System.Rtti,
+  gWebServerController,
   Xml.XMLDoc,
   Xml.XMLDom,
   Xml.XMLIntf;
@@ -499,6 +500,16 @@ type
     procedure TearDown; override;
   published
     procedure CheckPaths;
+  end;
+
+  TestTgWebServerController = class(TTestCase)
+  protected
+    FWebServerController: TgWebServerController;
+    class constructor Create;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Test;
   end;
 
 implementation
@@ -2687,8 +2698,62 @@ begin
 
 end;
 
-initialization
+{ TestTgWebServerController }
 
+class constructor TestTgWebServerController.Create;
+begin
+  asm
+      nop
+  end;
+end;
+
+procedure TestTgWebServerController.SetUp;
+var
+  WSCCD: TgWebServerControllerConfigurationData;
+  RM: TgRequestMap;
+begin
+  inherited;
+  FWebServerController := TgWebServerController.Create;
+  WSCCD :=  FWebServerController.WriteConfiguationData;
+  try
+    with TStringList.Create do try
+      Add('<html><body>hello!</body></html>');
+      SaveToFile(G.DataPath+'default.html');
+    finally
+      Free;
+    end;
+    WSCCD.Hosts.Add;
+    CheckEquals(1,WSCCD.Hosts.Count);
+    RM := WSCCD.Hosts.Current;
+    RM.BasePath := G.DataPath;
+    RM.SearchPath := '';
+    RM.ID := 'g.com';
+    RM.DefaultPage := 'default.html';
+    CheckEquals(0,WSCCD.Hosts.IndexOf('g.com'));
+    
+  finally
+    FWebServerController.EndWriteConfigurationData;
+  end;
+end;
+
+procedure TestTgWebServerController.TearDown;
+begin
+  FreeAndNil(FWebServerController);
+  inherited;
+
+end;
+
+procedure TestTgWebServerController.Test;
+begin
+  FWebServerController.Request.Method := 'GET';
+  FWebServerController.Request.Host := 'g.com';
+  CheckEquals('g.com',FWebServerController.Request.Host);
+  FWebServerController.Request.URI := 'default.html';
+  FWebServerController.Execute;
+  
+end;
+
+initialization
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
   RegisterTest(TestTgString5.Suite);
@@ -2707,7 +2772,9 @@ initialization
   RegisterTest(TestClassProperty.Suite);
   RegisterTest(TestWebCookie.Suite);
   RegisterTest(TestTgDictionary.Suite);
+  RegisterTest(TestTgWebServerController.Suite);
+
   RegisterRuntimeClasses([TFirebirdObject]);
-  G.Initialize;
+
 end.
 
