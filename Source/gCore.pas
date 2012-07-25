@@ -5734,7 +5734,10 @@ Begin
 End;
 
 function TgIdentityList<T>.TryGet(const Key: String; out Item: T): Boolean;
+var
+  Index: Integer;
 begin
+  if Active and Buffered and (IndexOf(Key) < 0) then exit(False);
   CurrentKey := Key;
   Result := not Eol;
   if Result then
