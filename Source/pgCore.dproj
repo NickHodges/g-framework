@@ -115,6 +115,7 @@
 			<DCCReference Include="gExpressionOperators.pas"/>
 			<DCCReference Include="gExpressionFunctions.pas"/>
 			<DCCReference Include="gWebServerController.pas"/>
+			<DCCReference Include="gWebUI.pas"/>
 			<BuildConfiguration Include="Release">
 				<Key>Cfg_2</Key>
 				<CfgParent>Base</CfgParent>

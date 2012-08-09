@@ -14,6 +14,7 @@ interface
 uses
   TestFramework, Classes,gCore, System.Rtti,
   gWebServerController,
+  gWebUI,
   Xml.XMLDoc,
   Xml.XMLDom,
   Xml.XMLIntf;
@@ -376,9 +377,13 @@ type
   TestHTMLParser = class(TTestCase)
   public
     type
-
+      TEnum1 = (e,ePurse,eBag,eWallet);
+      TEnum2 = (d,dCalifornia,dDallas,dAustin,dTexas,dAlisoViejo,dShreveport);
+      TEnumSet1 = set of TEnum1;
+      TEnumSet2 = set of TEnum2;
       TCustomer = class(TgObject)
       private
+        FEnum1: TEnum1;
         FFirstName: String;
         FLastName: String;
         FWebAddress: String;
@@ -386,8 +391,15 @@ type
         FOtherCustomer: TCustomer;
         FWebContent: TgHTMLString;
         FNotes: String;
+        FEnum2: TEnum2;
+        FEnumSet1: TEnumSet1;
+        FEnumSet2: TEnumSet2;
         function GetFullName: String;
       published
+        property Enum1: TEnum1 read FEnum1 write FEnum1;
+        property Enum2: TEnum2 read FEnum2 write FEnum2;
+        property EnumSet1: TEnumSet1 read FEnumSet1 write FEnumSet1;
+        property EnumSet2: TEnumSet2 read FEnumSet2 write FEnumSet2;
         property FirstName: String read FFirstName write FFirstName;
         property LastName: String read FLastName write FLastName;
         property FullName: String read GetFullName;
@@ -415,6 +427,7 @@ type
     procedure WithTag;
     procedure ifTag;
     procedure HTMLField;
+    procedure gForm;
   end;
 
   [PersistenceManagerClassName('gCore.TgPersistenceManagerIBX')]
@@ -505,11 +518,35 @@ type
   TestTgWebServerController = class(TTestCase)
   protected
     FWebServerController: TgWebServerController;
+    const DefaulthtmlContent = '<html><body>hello!</body></html>';
+    const DefaulthtmContent = '<html><body>{Name}, hello!</body></html>';
+    const WebConfigurationDataContent = '';
     class constructor Create;
     procedure SetUp; override;
     procedure TearDown; override;
   published
-    procedure Test;
+    procedure DefaultConfig;
+    procedure TestNoModel;
+    procedure TestModel;
+  end;
+  TestTgWebUI = class(TTestCase)
+  public
+    type
+      TEnum2 = (f,fCalifornia,fDallas,fAustin,fTexas,fAlisoViejo,fShreveport);
+      TMyClass = class(TgBase)
+      private
+        FBool: Boolean;
+        FEnum2: TEnum2;
+        FInt: Integer;
+        FText: string;
+      published
+        property Bool: Boolean read FBool write FBool;
+        property Enum2: TEnum2 read FEnum2 write FEnum2;
+        property Int: Integer read FInt write FInt;
+        property Text: string read FText write FText;
+      end;
+  published
+    procedure Default;
   end;
 
 implementation
@@ -2250,6 +2287,27 @@ begin
   ,TgDocument._ProcessText(Text));
 end;
 
+procedure TestHTMLParser.gForm;
+var
+  Customer: TCustomer;
+  Text: String;
+begin
+  Customer := TCustomer.Create;
+  try
+    Customer.FirstName := 'David';
+    Customer.LastName := 'Harper';
+    Customer.Webcontent := '<b>{FirstName}</b><br />{LastName}';
+    Customer.Notes := '<b>{FirstName}'#13#10'{LastName}</b>';
+    Customer.Enum1 := ePurse;
+    Customer.GoodCustomer := True;
+    Text := '<gform/>';
+    CheckEquals(''
+    ,TgDocument._ProcessText(Text,Customer));
+  finally
+    FreeAndNil(Customer);
+  end;
+end;
+
 procedure TestHTMLParser.HTMLField;
 var
   Customer: TCustomer;
@@ -2707,33 +2765,51 @@ begin
   end;
 end;
 
+procedure TestTgWebServerController.DefaultConfig;
+begin
+  FWebServerController.ReadConfigurationData
+end;
+
 procedure TestTgWebServerController.SetUp;
-var
-  WSCCD: TgWebServerControllerConfigurationData;
-  RM: TgRequestMap;
 begin
   inherited;
-  FWebServerController := TgWebServerController.Create;
-  WSCCD :=  FWebServerController.WriteConfiguationData;
-  try
-    with TStringList.Create do try
-      Add('<html><body>hello!</body></html>');
-      SaveToFile(G.DataPath+'default.html');
-    finally
-      Free;
-    end;
-    WSCCD.Hosts.Add;
-    CheckEquals(1,WSCCD.Hosts.Count);
-    RM := WSCCD.Hosts.Current;
-    RM.BasePath := G.DataPath;
-    RM.SearchPath := '';
-    RM.ID := 'g.com';
-    RM.DefaultPage := 'default.html';
-    CheckEquals(0,WSCCD.Hosts.IndexOf('g.com'));
-    
+  with TStringList.Create do try
+    Add(DefaultHtmlContent);
+    SaveToFile(G.DataPath+'default.html');
   finally
-    FWebServerController.EndWriteConfigurationData;
+    Free;
   end;
+  with TStringList.Create do try
+    Add(DefaulthtmContent);
+    SaveToFile(G.DataPath+'default.htm');
+  finally
+    Free;
+  end;
+  with TStringList.Create do try
+    Add(WebConfigurationDataContent);
+    TgWebServerController.ReadConfigurationData(procedure(WSCCD: TgWebServerControllerConfigurationData)
+      begin
+        SaveToFile(WSCCD.FileName);
+      end);
+  finally
+    Free;
+  end;
+
+  FWebServerController := TgWebServerController.Create;
+
+  FWebServerController.WriteConfiguationData(procedure(WSCCD: TgWebServerControllerConfigurationData)
+    var
+      RM: TgRequestMap;
+    begin
+      WSCCD.Hosts.Add;
+      CheckEquals(1,WSCCD.Hosts.Count);
+      RM := WSCCD.Hosts.Current;
+      RM.BasePath := G.DataPath;
+      RM.SearchPath := '.';
+      RM.ID := 'g.com';
+      RM.DefaultPage := 'default.html';
+      CheckEquals(0,WSCCD.Hosts.IndexOf('g.com'));
+    end);
 end;
 
 procedure TestTgWebServerController.TearDown;
@@ -2743,14 +2819,58 @@ begin
 
 end;
 
-procedure TestTgWebServerController.Test;
+procedure TestTgWebServerController.TestModel;
 begin
   FWebServerController.Request.Method := 'GET';
   FWebServerController.Request.Host := 'g.com';
   CheckEquals('g.com',FWebServerController.Request.Host);
   FWebServerController.Request.URI := 'default.html';
   FWebServerController.Execute;
-  
+  with TStringList.Create do try
+    LoadFromStream(FWebServerController.Response.ContentStream);
+    // String list added the #13#10
+    CheckEquals(DefaulthtmlContent+#13#10,Text);
+  finally
+    Free;
+
+  end;
+end;
+
+procedure TestTgWebServerController.TestNoModel;
+begin
+  FWebServerController.Request.Method := 'GET';
+  FWebServerController.Request.Host := 'g.com';
+  CheckEquals('g.com',FWebServerController.Request.Host);
+  FWebServerController.Request.URI := 'default.html';
+  FWebServerController.Execute;
+  with TStringList.Create do try
+    LoadFromStream(FWebServerController.Response.ContentStream);
+    // String list added the #13#10
+    CheckEquals(DefaulthtmlContent+#13#10,Text);
+  finally
+    Free;
+
+  end;
+
+end;
+
+{ TestTgWebUI }
+
+procedure TestTgWebUI.Default;
+var
+ Data: TMyClass;
+begin
+  Data := TMyClass.Create;
+  Data.Text := 'JonlyBonly Stewart';
+  Data.Int := 12;
+  Data.Bool := True;
+  Data.Enum2:= fAlisoViejo;
+  CheckEquals('JonlyBonly Stewart',Data['Text']);
+  CheckEquals('<td>Text</td><td><input type="text" id="Text" name="Text" value="{Text}"/></td>',TgWebUIBase.ToString('Text',Data));
+  CheckEquals('<td>Int</td><td><input type="text" id="Int" name="Int" value="{Int}"/></td>',TgWebUIBase.ToString('Int',Data));
+  CheckEquals('<td>Bool</td><td><input type="checkbox" id="Bool" name="Bool" checked="{Bool}"/></td>',TgWebUIBase.ToString('Bool',Data));
+  CheckEquals('',TgWebUIBase.ToString('Enum2',Data));
+  FreeAndNil(Data);
 end;
 
 initialization
@@ -2773,6 +2893,7 @@ initialization
   RegisterTest(TestWebCookie.Suite);
   RegisterTest(TestTgDictionary.Suite);
   RegisterTest(TestTgWebServerController.Suite);
+  RegisterTest(TestTgWebUI.Suite);
 
   RegisterRuntimeClasses([TFirebirdObject]);
 

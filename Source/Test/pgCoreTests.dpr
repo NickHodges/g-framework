@@ -21,7 +21,8 @@ uses
   TextTestRunner,
   gPackageLoader in '..\gPackageLoader.pas',
   TestgCore in 'TestgCore.pas',
-  gWebServerController in '..\gWebServerController.pas';
+  gWebServerController in '..\gWebServerController.pas',
+  gWebUI in '..\gWebUI.pas';
 
 {$R *.RES}
 

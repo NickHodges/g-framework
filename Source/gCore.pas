@@ -328,7 +328,6 @@ const
     function GetPathValues(AIndex: Integer): TPathValue;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
     function DoGetObjects(const APath: String; out AValue: TgBase): Boolean; virtual;
-    function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetIsInspecting: Boolean; virtual;
     function GetPathName: String; virtual;
@@ -379,6 +378,8 @@ const
     ///	  This is really used to overcome a compiler error in XE2
     ///	</remarks>
     function AsPointer: Pointer; inline;
+    function DoGetProperties(const APath: String; out ARTTIProperty:
+        TRTTIProperty): Boolean; virtual;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
     function GetPathIndexOf(const APath: String): Integer; virtual;
     property IsAutoCreating: Boolean read GetIsAutoCreating write SetIsAutoCreating;
@@ -1631,6 +1632,7 @@ const
   public
     constructor Create(Owner: TgBase = nil); override;
   end;
+
   TgElementList = class(TgElement)
   private
     FObject: TgList;
@@ -1817,8 +1819,8 @@ var
 implementation
 
 Uses
-  TypInfo,
-  Variants,
+  System.TypInfo,
+  System.Variants,
   XML.XMLDOM,
   Math,
   gExpressionEvaluator,
@@ -2194,6 +2196,7 @@ function TgBase.DoGetValues(Const APath : String; Out AValue : Variant): Boolean
 Var
   Head : String;
   ObjectProperty: TgBase;
+  ATValue: TValue;
   ClassProperty: TClass;
   PropertyValue: TValue;
   RecordProperty: G.TgRecordProperty;
@@ -2241,16 +2244,30 @@ Begin
     Begin
       if Tail = '' then
       Begin
-        If (RTTIProperty.PropertyType.TypeKind = TkEnumeration) And SameText(RTTIProperty.PropertyType.Name, 'Boolean') Then
-        Begin
-          AValue := RTTIProperty.GetValue(Self).AsBoolean;
-          Result := True;
-        End
+        case RTTIProperty.PropertyType.TypeKind of
+          TkEnumeration
+          : if (RTTIProperty.PropertyType.Handle = TypeInfo(Boolean)) Then
+            Begin
+              AValue := RTTIProperty.GetValue(Self).AsBoolean;
+              Result := True;
+            end
+            else begin
+              AValue := RTTIProperty.GetValue(Self).ToString;
+//              AValue := GetEnumName(RTTIProperty.PropertyType.Handle,AValue);
+              Result := True;
+            end;
+          TkSet
+          : begin
+              AValue := RTTIProperty.GetValue(Self).ToString;
+              Result := True;
+            end;
         Else
-        Begin
-          AValue := RTTIProperty.GetValue(Self).AsType<Variant>;
-          Result := True;
-        End;
+          Begin
+            AValue := RTTIProperty.GetValue(Self).AsType<Variant>;
+            Result := True;
+          End;
+        end;
+
       End
       Else
         raise EgValue.CreateFmt('Can''t return %s.%s, because %s is not an object property', [RTTIProperty.Name, Tail, RTTIProperty.Name]);
@@ -2284,12 +2301,15 @@ Begin
   end;
 End;
 
-function TgBase.DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean;
+function TgBase.DoGetProperties(const APath: String; out ARTTIProperty:
+    TRTTIProperty): Boolean;
 Var
   Head : String;
   ObjectProperty: TgBase;
   Tail : String;
 Begin
+  ARTTIProperty := G.PropertyByName(Self, APath);
+  if Assigned(ARTTIProperty) then Exit(True);
   Result := False;
   SplitPath(APath, Head, Tail);
   ARTTIProperty := G.PropertyByName(Self, Head);
@@ -2867,6 +2887,7 @@ end;
 class function G.ApplicationPath: String;
 begin
   Result := IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0))) + '..');
+//  Result := IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(Application.ExeName + '..');
 end;
 
 class function G.AssignableProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;

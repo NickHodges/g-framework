@@ -43,6 +43,7 @@ contains
   gExpressionLiterals in 'gExpressionLiterals.pas',
   gExpressionOperators in 'gExpressionOperators.pas',
   gExpressionFunctions in 'gExpressionFunctions.pas',
-  gWebServerController in 'gWebServerController.pas';
+  gWebServerController in 'gWebServerController.pas',
+  gWebUI in 'gWebUI.pas';
 
 end.

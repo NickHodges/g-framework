@@ -119,6 +119,7 @@ type
       public
         function ResponseCode: Integer; override;
       end;
+      TgWebServerControllerConfigurationDataAnon = reference to procedure(Item: TgWebServerControllerConfigurationData);
   strict private
     FActions: TgDictionary;
     FModel: TgModel;
@@ -146,10 +147,12 @@ type
     class constructor Create;
     class destructor Destroy;
     destructor Destroy; override;
-    class function ReadConfigurationData: TgWebServerControllerConfigurationData;
+    class function ReadConfigurationData: TgWebServerControllerConfigurationData; overload;
+    class procedure ReadConfigurationData(Method: TgWebServerControllerConfigurationDataAnon); overload;
     class procedure EndReadConfigurationData;
     class procedure EndWriteConfigurationData;
-    class function WriteConfiguationData: TgWebServerControllerConfigurationData;
+    class function WriteConfiguationData: TgWebServerControllerConfigurationData; overload;
+    class procedure WriteConfiguationData(Method: TgWebServerControllerConfigurationDataAnon); overload;
     procedure Execute;
     procedure Login;
     procedure LogOut;
@@ -269,7 +272,7 @@ type
     FTemplateFileExtensions: TgMemo;
     RequestMapBuilders: TObjectList;
     procedure AddDefaultFileTypes;
-    function FileName: String;
+    function GetFileName: String;
     procedure AddDefaultPackages;
     procedure AddDefaultPackage(const AFileName: String);
   public
@@ -283,6 +286,7 @@ type
     procedure InitializeRequestMapBuilders;
     procedure FinalizeRequestMapBuilders;
     procedure GetRequestMap(var Host, URI: String; out RequestMap: TgRequestMap);
+    property FileName: String read GetFileName;
   published
     property DefaultHost: String read FDefaultHost write FDefaultHost;
     property FileTypes: TgDictionary read FFileTypes;
@@ -557,7 +561,11 @@ begin
             Response.HeaderFields['Content-Type'] := MimeType;
         End
       End;
-    End;
+    End
+    else begin
+      // Just send file
+      Response.ContentStream.LoadFromFile(FileName);
+    end;
     Response.Date := Now;
   Except
     On Ex: Exception Do
@@ -674,6 +682,20 @@ Each array element represents a name / value pair (NameValuePair) }
       End;
 
 *)  End;
+end;
+
+class procedure TgWebServerController.ReadConfigurationData(
+  Method: TgWebServerControllerConfigurationDataAnon);
+var
+  Temp: TgWebServerControllerConfigurationData;
+begin
+  Temp := ReadConfigurationData;
+  try
+    Method(Temp);
+  finally
+    EndReadConfigurationData;
+  end;
+
 end;
 
 class function TgWebServerController.WriteConfiguationData: TgWebServerControllerConfigurationData;
@@ -800,6 +822,20 @@ begin
     PropertyName := APropertyList.Names[Counter];
     Response.Cookies[PropertyName] := MakeCookie( PropertyName, FModel[PropertyName], '', '', ExpirationDate, False );
   End;
+end;
+
+class procedure TgWebServerController.WriteConfiguationData(
+  Method: TgWebServerControllerConfigurationDataAnon);
+var
+  Temp: TgWebServerControllerConfigurationData;
+begin
+  Temp := WriteConfiguationData;
+  try
+    Method(Temp);
+  finally
+    EndWriteConfigurationData;
+  end;
+
 end;
 
 { TgRequest }
@@ -1374,7 +1410,7 @@ begin
   FileTypes['zip'] := 'application/zip';
 end;
 
-function TgWebServerControllerConfigurationData.FileName: String;
+function TgWebServerControllerConfigurationData.GetFileName: String;
 begin
   Result := IncludeTrailingPathDelimiter( ExecutablePath ) + 'gwscontroller.xml';
 end;
