@@ -6,6 +6,7 @@ interface
 
 Uses
     Classes
+  , System.Types
   , SysUtils
   , Contnrs
   , gExpressionEvaluator
@@ -95,11 +96,17 @@ Type
     procedure Evaluate(AStack: TgVariantStack); override;
   end;
 
+  TInSet = class(TFunction)
+  public
+    procedure Evaluate(AStack: TgVariantStack); override;
+  end;
+
 implementation
 
 Uses
     Variants
   , StrUtils
+  , System.TypInfo
   ;
 
 { TFunction }
@@ -269,6 +276,32 @@ begin
   AStack.Push(Abs(Value));
 end;
 
+{ TInSet }
+
+procedure TInSet.Evaluate(AStack: TgVariantStack);
+Var
+  ItemValue: String;
+  SetValue: String;
+  Strings: TStringDynArray;
+  S: String;
+Begin
+  SetValue := Trim(AStack.Pop);
+  ItemValue := Trim(AStack.Pop);
+  if SetValue = '' then begin
+    AStack.Push(False);
+    exit;
+  end;
+  if (SetValue[1] = '[') and (SetValue[Length(SetValue)] = ']') then
+    SetValue := Copy(SetValue,2,Length(SetValue)-2);
+  Strings := SplitString(SetValue,',');
+  for S in Strings do
+    if SameText(ItemValue,Trim(S)) then begin
+      AStack.Push(True);
+      exit;
+    end;
+  AStack.Push(False)
+End;
+
 Initialization
   TSameText.Register('SameText');
   TAbs.Register('Abs');
@@ -286,4 +319,5 @@ Initialization
   TRight.Register( 'RightStr' );
   TDateFunction.Register('Date');
   TNow.Register('Now');
+  TInSet.Register( 'InSet' );
 end.

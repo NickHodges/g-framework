@@ -36,7 +36,6 @@ const
 
     type
 
-  TgHTMLString = Type String;
   TSystemCustomAttribute = System.TCustomAttribute; // Gets around Class complete not supporting the . in some generics
   TCustomAttributeClass = class of TCustomAttribute;
   TgBaseClass = class of TgBase;
@@ -212,6 +211,39 @@ const
   Singleton = class(TgPropertyAttribute)
   end;
 
+  ///	<summary>
+  ///	  <para>
+  ///	    Used to attach a HTML control to a Delphi Type.  Using the format of
+  ///	    a Delphi format() function here is the breakdown of parameters
+  ///	  </para>
+  ///	  <para>
+  ///	    %0:s   Field Label - Readable Name<br />%1:s   Id - FieldName<br />%2:
+  ///	    s   Value - CurrentValue<br />%3:s   Additional Attributes
+  ///	  </para>
+  ///	</summary>
+  ///	<remarks>
+  ///	  &lt;textarea class="HTMLEditor" id="%1:s" name="%1:s"
+  ///	  %3&gt;%2:s&lt;/textarea&gt;'
+  ///	</remarks>
+  HTMLAttribute = class(TCustomAttribute)
+    HTML: String;
+    constructor Create(const AHTML: String);
+  end;
+
+  MaxTextLength = class(TgPropertyAttribute)
+  private
+    Fmaxlength: Integer;
+    Fsize: Integer;
+  public
+    constructor Create(AMaxLength: Integer; ASize: Integer = -1);
+    property maxlength: Integer read Fmaxlength;
+    property size: Integer read Fsize;
+
+  end;
+//  [HTMLAttribute('<input type="textarea" class ="HTMLEditor" id="%1:s" name="%1:s" />')]
+  [HTMLAttribute('<textarea class="HTMLEditor" id="%1:s" name="%1:s"%3:s>{%2:s}</textarea>')]
+  TgHTMLString = Type String;
+
   TgSerializerClass = class of TgSerializer;
 
 
@@ -261,6 +293,7 @@ const
   /// create in <see cref="G" />
   /// </summary>
   TgBase = class(TObject)
+  protected
   public
     type
       /// <summary>
@@ -280,6 +313,8 @@ const
         Path: String;
         Value: Variant;
         class operator Implicit(const Value: TPathValue): Variant;
+        function Empty: Boolean;
+        function IsDefault(ARttiInstanceProperty: TRttiInstanceProperty): Boolean;
         function Text: String;
       end;
 
@@ -326,7 +361,7 @@ const
     function GetPathCount: Integer; virtual;
     function GetPaths(AIndex: Integer): String; virtual;
     function GetPathValues(AIndex: Integer): TPathValue;
-    function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; virtual;
+    function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; overload; virtual;
     function DoGetObjects(const APath: String; out AValue: TgBase): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetIsInspecting: Boolean; virtual;
@@ -378,8 +413,12 @@ const
     ///	  This is really used to overcome a compiler error in XE2
     ///	</remarks>
     function AsPointer: Pointer; inline;
-    function DoGetProperties(const APath: String; out ARTTIProperty:
-        TRTTIProperty): Boolean; virtual;
+    function DoGetMembers(const APath: String; out AValue: TRttiMember): boolean;
+        virtual;
+    function DoGetMethods(const APath: String; out AValue: TRttiMethod): Boolean; virtual;
+    function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean; virtual;
+    function DoGetValues(ARttiProperty: TRttiProperty; out AValue: Variant; const
+        ATail: String = ''): Boolean; overload;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
     function GetPathIndexOf(const APath: String): Integer; virtual;
     property IsAutoCreating: Boolean read GetIsAutoCreating write SetIsAutoCreating;
@@ -990,6 +1029,9 @@ const
   ///	  This type should be limited to Simple types
   ///	</typeparam>
   TgIdentityObject<T> = class(TgIdentityObject)
+  public
+    type
+      E = class(exception);
   strict protected
     function GetID: T;
     procedure SetID(const AValue: T);
@@ -1102,6 +1144,7 @@ const
     procedure Save; virtual;
     function IndexOf(const AKey: String): Integer;
     property Active: Boolean read GetActive write SetActive;
+    property Buffered: Boolean read FBuffered write FBuffered;
     property IsActivating: Boolean read GetIsActivating write SetIsActivating;
     property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
     property Items[AIndex : Integer]: TgIdentityObject read GetItems write SetItems; default;
@@ -1115,7 +1158,6 @@ const
     property Current: TgIdentityObject read GetCurrent;
     [NotSerializable] [NotAssignable]
     property CurrentKey: String read GetCurrentKey write SetCurrentKey;
-    property Buffered: Boolean read FBuffered write FBuffered;
   end;
 
   TgIdentityList<T: TgIdentityObject> = class(TgIdentityList)
@@ -1542,7 +1584,7 @@ const
     constructor Create(const AName: String);
     property Value: String read FValue;
   end;
-
+  [MaxTextLength(50)]
   TString50 = record
   strict private
     FValue: String;
@@ -1551,6 +1593,7 @@ const
     procedure SetValue(const AValue: String);
     class operator implicit(AValue: Variant): TString50; overload;
     class operator Implicit(AValue: TString50): Variant; overload;
+    class operator Implicit(AValue: TString50): String; overload;
     property Value: String read GetValue write SetValue;
   end;
   ImpliedExpressionEvaulator = class(TCustomAttribute);
@@ -2192,87 +2235,27 @@ begin
   end;
 end;
 
+function TgBase.DoGetMembers(const APath: String; out AValue: TRttiMember):
+    boolean;
+begin
+  Result := DoGetProperties(APath,TRttiProperty(AValue)) or DoGetMethods(APath,TRttiMethod(AValue));
+end;
+
+function TgBase.DoGetMethods(const APath: String; out AValue: TRttiMethod):
+    Boolean;
+begin
+  AValue := G.MethodByName(Self,APath);
+  Result := Assigned(AValue);
+end;
+
 function TgBase.DoGetValues(Const APath : String; Out AValue : Variant): Boolean;
 Var
   Head : String;
-  ObjectProperty: TgBase;
-  ATValue: TValue;
-  ClassProperty: TClass;
-  PropertyValue: TValue;
-  RecordProperty: G.TgRecordProperty;
-  RTTIProperty : TRttiProperty;
   Tail : String;
 Begin
   Result := False;
   SplitPath(APath, Head, Tail);
-  RTTIProperty := G.PropertyByName(Self, Head);
-  if Assigned(RTTIProperty) then
-  begin
-    if Not RTTIProperty.IsReadable then
-      raise EgValue.CreateFmt('%s.%s is not a readable property.', [ClassName, RTTIProperty.Name]);
-    if RTTIProperty.PropertyType.IsInstance then
-    begin
-      if Tail > '' then
-      Begin
-        ObjectProperty := TgBase(RTTIProperty.GetValue(Self).AsObject);
-        Result := ObjectProperty.DoGetValues(Tail, AValue);
-      End
-      Else
-        raise EgValue.CreateFmt('Can''t return %s.%s, because it''s an object property', [ClassName, RTTIProperty.Name]);
-    end
-    Else if RTTIProperty.PropertyType.IsRecord Then
-    Begin
-      RecordProperty := G.RecordProperty(RTTIProperty);
-      If Not Assigned(RecordProperty.Getter) then
-        Raise EgValue.CreateFmt('%s has no GetValue method for runtime assignment.', [RTTIProperty.Name]);
-      PropertyValue := RTTIProperty.GetValue(Self);
-      AValue := RecordProperty.Getter.Invoke(PropertyValue, []).AsVariant;
-      Result := True;
-    End
-    Else if (RTTIProperty.PropertyType is TRttiClassRefType) then
-    begin
-//      If Not Assigned(RecordProperty.Getter) then
-//        Raise EgValue.CreateFmt('%s has no GetValue method for runtime assignment.', [RTTIProperty.Name]);
-      ClassProperty := RTTIProperty.GetValue(Self).AsClass;
-      if Assigned(ClassProperty) then
-        AValue := ClassProperty.UnitName+'.'+ClassProperty.ClassName
-      else
-        AValue := '';
-      Result := True;
-    end
-    else
-    Begin
-      if Tail = '' then
-      Begin
-        case RTTIProperty.PropertyType.TypeKind of
-          TkEnumeration
-          : if (RTTIProperty.PropertyType.Handle = TypeInfo(Boolean)) Then
-            Begin
-              AValue := RTTIProperty.GetValue(Self).AsBoolean;
-              Result := True;
-            end
-            else begin
-              AValue := RTTIProperty.GetValue(Self).ToString;
-//              AValue := GetEnumName(RTTIProperty.PropertyType.Handle,AValue);
-              Result := True;
-            end;
-          TkSet
-          : begin
-              AValue := RTTIProperty.GetValue(Self).ToString;
-              Result := True;
-            end;
-        Else
-          Begin
-            AValue := RTTIProperty.GetValue(Self).AsType<Variant>;
-            Result := True;
-          End;
-        end;
-
-      End
-      Else
-        raise EgValue.CreateFmt('Can''t return %s.%s, because %s is not an object property', [RTTIProperty.Name, Tail, RTTIProperty.Name]);
-    End
-  end;
+  Result := DoGetValues(G.PropertyByName(Self, Head),AValue,Tail);
 End;
 
 function TgBase.DoGetObjects(const APath: String; out AValue: TgBase): Boolean;
@@ -2327,6 +2310,85 @@ Begin
       Result := True;
   end;
 End;
+
+function TgBase.DoGetValues(ARttiProperty: TRttiProperty; out AValue: Variant;
+    const ATail: String = ''): Boolean;
+var
+  ObjectProperty: TgBase;
+  ATValue: TValue;
+  ClassProperty: TClass;
+  PropertyValue: TValue;
+  RecordProperty: G.TgRecordProperty;
+  RTTIProperty : TRttiProperty;
+begin
+  Result := False;
+  if not Assigned(ARTTIProperty) then exit;
+  if Not ARTTIProperty.IsReadable then
+    raise EgValue.CreateFmt('%s.%s is not a readable property.', [ClassName, ARTTIProperty.Name]);
+  if ARTTIProperty.PropertyType.IsInstance then
+  begin
+    if ATail > '' then
+    Begin
+      ObjectProperty := TgBase(ARTTIProperty.GetValue(Self).AsObject);
+      Result := ObjectProperty.DoGetValues(ATail, AValue);
+    End
+    Else
+      raise EgValue.CreateFmt('Can''t return %s.%s, because it''s an object property', [ClassName, ARTTIProperty.Name]);
+  end
+  Else if ARTTIProperty.PropertyType.IsRecord Then
+  Begin
+    RecordProperty := G.RecordProperty(ARTTIProperty);
+    If Not Assigned(RecordProperty.Getter) then
+      Raise EgValue.CreateFmt('%s has no GetValue method for runtime assignment.', [ARTTIProperty.Name]);
+    PropertyValue := ARTTIProperty.GetValue(Self);
+    AValue := RecordProperty.Getter.Invoke(PropertyValue, []).AsVariant;
+    Result := True;
+  End
+  Else if (ARTTIProperty.PropertyType is TRttiClassRefType) then
+  begin
+//      If Not Assigned(RecordProperty.Getter) then
+//        Raise EgValue.CreateFmt('%s has no GetValue method for runtime assignment.', [ARTTIProperty.Name]);
+    ClassProperty := ARTTIProperty.GetValue(Self).AsClass;
+    if Assigned(ClassProperty) then
+      AValue := ClassProperty.UnitName+'.'+ClassProperty.ClassName
+    else
+      AValue := '';
+    Result := True;
+  end
+  else
+  Begin
+    if ATail = '' then
+    Begin
+      case ARTTIProperty.PropertyType.TypeKind of
+        TkEnumeration
+        : if (ARTTIProperty.PropertyType.Handle = TypeInfo(Boolean)) Then
+          Begin
+            AValue := ARTTIProperty.GetValue(Self).AsBoolean;
+            Result := True;
+          end
+          else begin
+            AValue := ARTTIProperty.GetValue(Self).ToString;
+//              AValue := GetEnumName(ARTTIProperty.PropertyType.Handle,AValue);
+            Result := True;
+          end;
+        TkSet
+        : begin
+            AValue := ARTTIProperty.GetValue(Self).ToString;
+            Result := True;
+          end;
+      Else
+        Begin
+          ATValue := ARTTIProperty.GetValue(Self);
+          AValue := ATValue.AsType<Variant>;
+          Result := True;
+        End;
+      end;
+
+    End
+    Else
+      raise EgValue.CreateFmt('Can''t return %s.%s, because %s is not an object property', [ARTTIProperty.Name, ATail, ARTTIProperty.Name]);
+  End
+end;
 
 function TgBase.DoSetValues(Const APath : String; AValue : Variant): Boolean;
 Var
@@ -4883,7 +4945,16 @@ end;
 function TgIdentityObject<T>.GetID: T;
 begin
 //  Result := Inherited GetID;
-  Result := TValue.FromVariant(inherited ID).AsType<T>;
+{$IFDEF DEBUG}
+  try
+{$ENDIF}
+    Result := TValue.FromVariant(inherited ID).AsType<T>;
+{$IFDEF DEBUG}
+  except
+    raise;
+  end;
+{$ENDIF}
+
 end;
 
 procedure TgIdentityObject<T>.SetID(const AValue: T);
@@ -5082,8 +5153,8 @@ var
 begin
   Result := False;
   for RTTIProperty in G.PersistableProperties(Self) do
-  If IsPropertyModified(RTTIProperty) Then
-    Exit(True);
+    If IsPropertyModified(RTTIProperty) Then
+      Exit(True);
 end;
 
 function TgIdentityObject.GetIsOriginalValues: Boolean;
@@ -5140,11 +5211,12 @@ begin
 end;
 
 function TgIdentityObject.IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean;
+var Value1,Value2: Variant;
 begin
   if ARTTIProperty.PropertyType.IsRecord then
     Result := Not (G.RecordProperty(ARTTIProperty).Getter.Invoke(ARTTIProperty.GetValue(Self) , []).AsVariant = G.RecordProperty(ARTTIProperty).Getter.Invoke(ARTTIProperty.GetValue(OriginalValues), []).AsVariant)
   Else If Not ARTTIProperty.PropertyType.IsInstance Then
-    Result := Not (ARTTIProperty.GetValue(Self).AsVariant = ARTTIProperty.GetValue(OriginalValues).AsVariant)
+    Result := Self.DoGetValues(ARTTIProperty,Value1) and OriginalValues.DoGetValues(ARTTIProperty,Value2) and  (Value1 <> Value2)
   Else if ARTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityObject) then
     Result := TgIdentityObject(ARTTIProperty.GetValue(Self).AsObject).IsModified
   Else
@@ -5814,6 +5886,11 @@ end;
 function TString50.GetValue: String;
 begin
   Result := FValue;
+end;
+
+class operator TString50.implicit(AValue: TString50): String;
+begin
+  Result := AValue.FValue;
 end;
 
 procedure TString50.SetValue(const AValue: String);
@@ -6950,6 +7027,7 @@ end;
 procedure TgElement.ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList);
 var
   Target: IXMLNode;
+  Temp: OleVariant;
   Index: Integer;
   AgDocument: TgDocument;
 begin
@@ -6976,9 +7054,13 @@ begin
     for Index := 0 to Index do
       with Source.AttributeNodes[Index] do
         if not VarIsNull(NodeValue) and not VarIsEmpty(NodeValue) then
-          if GetPropertyByName(NodeName) = nil then
+          if GetPropertyByName(NodeName) = nil then begin
   { TODO : Should I drop any specific attributes }
-            Target.Attributes[NodeName] := ProcessValue(NodeValue);
+            Temp := NodeValue;
+            Temp := ProcessValue(Temp);
+            if (NodeValue = Temp) or (not VarIsEmpty(Temp) and (Temp <> '')) then
+              Target.Attributes[NodeName] := Temp;
+           end;
     ProcessChildNodes(Source.ChildNodes,Target.ChildNodes);
   end
   else
@@ -8161,6 +8243,21 @@ end;
 
 { TgBase.TPathValue }
 
+function TgBase.TPathValue.Empty: Boolean;
+begin
+  Result := varIsEmpty(Value) or varIsNull(Value) or varIsClear(Value) or (varIsStr(Value) and (Value = ''));
+end;
+
+function TgBase.TPathValue.IsDefault(ARttiInstanceProperty: TRttiInstanceProperty): Boolean;
+begin
+  Result := False;
+  if not Assigned(ARttiInstanceProperty) then exit;
+  case ARttiInstanceProperty.PropertyType.TypeKind of
+    tkInteger,tkInt64
+    : Result := ARttiInstanceProperty.Default = Value;
+  end;
+end;
+
 class operator TgBase.TPathValue.Implicit(const Value: TPathValue): Variant;
 begin
   Result := Value.Value;
@@ -8169,6 +8266,25 @@ end;
 function TgBase.TPathValue.Text: String;
 begin
   Result := Path + '=' + Value;
+end;
+
+{ MaxTextLength }
+
+constructor MaxTextLength.Create(AMaxLength: Integer; ASize: Integer = -1);
+begin
+  inherited Create;
+  Fmaxlength := AMaxLength;
+  Fsize := ASize;
+
+end;
+
+{ HTMLAttribute }
+
+constructor HTMLAttribute.Create(const AHTML: String);
+begin
+  inherited Create;
+  HTML := AHTML;
+
 end;
 
 Initialization

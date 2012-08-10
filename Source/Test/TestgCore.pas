@@ -32,7 +32,7 @@ type
   strict private
     FValue: String;
   public
-    function GetValue: String;
+    FUNCTION GetValue: String;
     procedure SetValue(const AValue: String);
     class operator implicit(AValue: Variant): TgString5; overload;
     class operator Implicit(AValue: TgString5): Variant; overload;
@@ -379,13 +379,15 @@ type
     type
       TEnum1 = (e,ePurse,eBag,eWallet);
       TEnum2 = (d,dCalifornia,dDallas,dAustin,dTexas,dAlisoViejo,dShreveport);
+      TStr20 = string[20];
       TEnumSet1 = set of TEnum1;
       TEnumSet2 = set of TEnum2;
       TCustomer = class(TgObject)
       private
+        FBoolField: Boolean;
         FEnum1: TEnum1;
-        FFirstName: String;
-        FLastName: String;
+        FFirstName: TStr20;
+        FLastName: TString50;
         FWebAddress: String;
         FGoodCustomer: Boolean;
         FOtherCustomer: TCustomer;
@@ -394,20 +396,28 @@ type
         FEnum2: TEnum2;
         FEnumSet1: TEnumSet1;
         FEnumSet2: TEnumSet2;
+        FIntValue: Integer;
+        FMiddleInitial: Char;
+        FSingleValue: Single;
         function GetFullName: String;
       published
+        procedure ClickIt;
+        property BoolField: Boolean read FBoolField write FBoolField;
         property Enum1: TEnum1 read FEnum1 write FEnum1;
         property Enum2: TEnum2 read FEnum2 write FEnum2;
         property EnumSet1: TEnumSet1 read FEnumSet1 write FEnumSet1;
         property EnumSet2: TEnumSet2 read FEnumSet2 write FEnumSet2;
-        property FirstName: String read FFirstName write FFirstName;
-        property LastName: String read FLastName write FLastName;
+        property FirstName: TStr20 read FFirstName write FFirstName;
+        property MiddleInitial: Char read FMiddleInitial write FMiddleInitial;
+        property LastName: TString50 read FLastName write FLastName;
         property FullName: String read GetFullName;
         property WebAddress: String read FWebAddress write FWebAddress;
         property Notes: String read FNotes write FNotes;
         property WebContent: TgHTMLString read FWebContent write FWebContent;
         property GoodCustomer: Boolean read FGoodCustomer write FGoodCustomer;
+        property IntValue: Integer read FIntValue write FIntValue;
         property OtherCustomer: TCustomer read FOtherCustomer write FOtherCustomer;
+        property SingleValue: Single read FSingleValue write FSingleValue;
       end;
 
       TCustomers = TgList<TCustomer>;
@@ -530,23 +540,62 @@ type
     procedure TestModel;
   end;
   TestTgWebUI = class(TTestCase)
+  protected
+    procedure SetUp; override;
+    procedure TearDown; override;
   public
     type
       TEnum2 = (f,fCalifornia,fDallas,fAustin,fTexas,fAlisoViejo,fShreveport);
+      TStr10 = string[10];
       TMyClass = class(TgBase)
       private
+        FAnsiCharValue: AnsiChar;
         FBool: Boolean;
+        FBool2: Boolean;
+        FCharValue: Char;
+        FCurrencyValue: Currency;
+        FDoubleValue: Double;
         FEnum2: TEnum2;
+        FExtendedValue: Extended;
+        FHTML: TgHTMLString;
         FInt: Integer;
+        FSingleValue: Single;
+        FString50: TString50;
         FText: string;
+        FStr10: TStr10;
       published
+        procedure CheckIt;
+        property AnsiCharValue: AnsiChar read FAnsiCharValue write FAnsiCharValue;
         property Bool: Boolean read FBool write FBool;
+        property Bool2: Boolean read FBool2 write FBool2;
+        property CharValue: Char read FCharValue write FCharValue;
+        property CurrencyValue: Currency read FCurrencyValue write FCurrencyValue;
+        property DoubleValue: Double read FDoubleValue write FDoubleValue;
         property Enum2: TEnum2 read FEnum2 write FEnum2;
+        property ExtendedValue: Extended read FExtendedValue write FExtendedValue;
+        property HTMLText: TgHTMLString read FHTML write FHTML;
         property Int: Integer read FInt write FInt;
+        property SingleValue: Single read FSingleValue write FSingleValue;
+        property String50: TString50 read FString50 write FString50;
         property Text: string read FText write FText;
+        property Str10: TStr10 read FStr10 write FStr10;
       end;
+  private
+    FData: TMyClass;
   published
-    procedure Default;
+    procedure String_;
+    procedure Method;
+    procedure CheckBox;
+    procedure Int;
+    procedure gHTMLString;
+    procedure String50;
+    procedure Str10;
+    procedure AnsiChar;
+    procedure Char;
+    procedure SingleValue;
+    procedure DoubleValue;
+    procedure ExtendedValue;
+    procedure CurrencyValue;
   end;
 
 implementation
@@ -2295,10 +2344,15 @@ begin
   Customer := TCustomer.Create;
   try
     Customer.FirstName := 'David';
+    Customer.MiddleInitial := 'B';
     Customer.LastName := 'Harper';
     Customer.Webcontent := '<b>{FirstName}</b><br />{LastName}';
     Customer.Notes := '<b>{FirstName}'#13#10'{LastName}</b>';
     Customer.Enum1 := ePurse;
+    Customer.IntValue := 2341;
+    Customer.SingleValue := 342.122;
+    Customer.EnumSet1 := [ePurse,eBag];
+    Customer.EnumSet2 := [dCalifornia,dAustin,dTexas,dAlisoViejo];
     Customer.GoodCustomer := True;
     Text := '<gform/>';
     CheckEquals(''
@@ -2572,16 +2626,16 @@ begin
       Element.gBase := Customer;
       CheckEquals('Hello',Element.ProcessValue('Hello'));
       CheckEquals(Customer.FirstName+Customer.FirstName+'X',Element.ProcessValue('{FirstName}{FirstName}X'));
-      CheckEquals(Customer.FirstName+'X'+Customer.LastName,Element.ProcessValue('{FirstName}X{LastName}'));
+      CheckEquals(Customer.FirstName+'X'+Customer.LastName.Value,Element.ProcessValue('{FirstName}X{LastName}'));
       CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
-      CheckEquals(Customer.FirstName+Customer.LastName,Element.ProcessValue('{FirstName}{LastName}'));
-      CheckEquals('X'+Customer.FirstName+Customer.LastName,Element.ProcessValue('X{FirstName}{LastName}'));
-      CheckEquals('X'+Customer.FirstName+'X'+Customer.LastName+'X',Element.ProcessValue('X{FirstName}X{LastName}X'));
+      CheckEquals(Customer.FirstName+Customer.LastName.Value,Element.ProcessValue('{FirstName}{LastName}'));
+      CheckEquals('X'+Customer.FirstName+Customer.LastName.Value,Element.ProcessValue('X{FirstName}{LastName}'));
+      CheckEquals('X'+Customer.FirstName+'X'+Customer.LastName.Value+'X',Element.ProcessValue('X{FirstName}X{LastName}X'));
       CheckEquals(Customer.FirstName,Element.ProcessValue('{FirstName}'));
       CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
       CheckEquals(Customer.WebAddress,Element.ProcessValue('{WebAddress}'));
       CheckEquals('<p>Hi, '+Customer.FirstName+'</p>',Element.ProcessValue('<p>Hi, {FirstName}</p>'));
-      CheckEquals('<p>Hi, '+Customer.FirstName+' '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {FirstName} {LastName}</p>'));
+      CheckEquals('<p>Hi, '+Customer.FirstName+' '+Customer.LastName.Value+'</p>',Element.ProcessValue('<p>Hi, {FirstName} {LastName}</p>'));
       CheckEquals('<p>Hi, Mr. '+Customer.LastName+'</p>',Element.ProcessValue('<p>Hi, {''Mr. '' + LastName}</p>'));
       CheckEquals(Customer.WebAddress,EvalHTML('WebAddress',Customer,AIsHTML));
       CheckFalse(AIsHTML);
@@ -2664,9 +2718,13 @@ end;
 
 { TestHTMLParser.TCustomer }
 
+procedure TestHTMLParser.TCustomer.ClickIt;
+begin
+end;
+
 function TestHTMLParser.TCustomer.GetFullName: String;
 begin
-  Result := Format('%s %s',[FirstName, LastName]);
+  Result := Format('%s %s',[FirstName, LastName.Value]);
 end;
 
 { TestMemo }
@@ -2856,21 +2914,88 @@ end;
 
 { TestTgWebUI }
 
-procedure TestTgWebUI.Default;
-var
- Data: TMyClass;
+procedure TestTgWebUI.AnsiChar;
 begin
-  Data := TMyClass.Create;
-  Data.Text := 'JonlyBonly Stewart';
-  Data.Int := 12;
-  Data.Bool := True;
-  Data.Enum2:= fAlisoViejo;
-  CheckEquals('JonlyBonly Stewart',Data['Text']);
-  CheckEquals('<td>Text</td><td><input type="text" id="Text" name="Text" value="{Text}"/></td>',TgWebUIBase.ToString('Text',Data));
-  CheckEquals('<td>Int</td><td><input type="text" id="Int" name="Int" value="{Int}"/></td>',TgWebUIBase.ToString('Int',Data));
-  CheckEquals('<td>Bool</td><td><input type="checkbox" id="Bool" name="Bool" checked="{Bool}"/></td>',TgWebUIBase.ToString('Bool',Data));
-  CheckEquals('',TgWebUIBase.ToString('Enum2',Data));
-  FreeAndNil(Data);
+  CheckEquals('<td>Ansi Char Value</td><td><input type="text" id="AnsiCharValue" name="AnsiCharValue" value="{AnsiCharValue}" size="1" maxlength="1"/></td>',TgWebUIBase.ToString('AnsiCharValue',FData));
+end;
+procedure TestTgWebUI.Char;
+begin
+  CheckEquals('<td>Char Value</td><td><input type="text" id="CharValue" name="CharValue" value="{CharValue}" size="1" maxlength="1"/></td>',TgWebUIBase.ToString('CharValue',FData));
+end;
+
+procedure TestTgWebUI.CheckBox;
+begin
+  CheckEquals('<td>Bool</td><td><input type="checkbox" id="Bool" name="Bool" checked="{if(Bool,''checked'','''')}"/></td>',TgWebUIBase.ToString('Bool',FData));
+end;
+
+procedure TestTgWebUI.CurrencyValue;
+begin
+   CheckEquals('<td>Currency Value</td><td><input type="text" id="CurrencyValue" name="CurrencyValue" value="{CurrencyValue}" size="26" maxlength="26"/></td>',TgWebUIBase.ToString('CurrencyValue',FData));
+end;
+
+procedure TestTgWebUI.DoubleValue;
+begin
+   CheckEquals('<td>Double Value</td><td><input type="text" id="DoubleValue" name="DoubleValue" value="{DoubleValue}" size="22" maxlength="22"/></td>',TgWebUIBase.ToString('DoubleValue',FData));
+end;
+
+procedure TestTgWebUI.ExtendedValue;
+begin
+   CheckEquals('<td>Extended Value</td><td><input type="text" id="ExtendedValue" name="ExtendedValue" value="{ExtendedValue}" size="26" maxlength="26"/></td>',TgWebUIBase.ToString('ExtendedValue',FData));
+end;
+
+procedure TestTgWebUI.Str10;
+begin
+   CheckEquals('<td>Str 10</td><td><input type="text" id="Str10" name="Str10" value="{Str10}" size="10" maxlength="10"/></td>',TgWebUIBase.ToString('Str10',FData));
+end;
+
+procedure TestTgWebUI.String50;
+begin
+  CheckEquals('<td>String 50</td><td><input type="text" id="String50" name="String50" value="{String50}" size="50" maxlength="50"/></td>',TgWebUIBase.ToString('String50',FData));
+end;
+
+procedure TestTgWebUI.String_;
+begin
+  CheckEquals('<td>Text</td><td><textarea id="Text" name="Text">{Text}</textarea></td>',TgWebUIBase.ToString('Text',FData));
+end;
+
+procedure TestTgWebUI.gHTMLString;
+begin
+  CheckEquals('<td>HTML Text</td><td><textarea class="HTMLEditor" id="HTMLText" name="HTMLText">{HTMLText}</textarea></td>',TgWebUIBase.ToString('HTMLText',FData));
+end;
+
+procedure TestTgWebUI.Int;
+begin
+  CheckEquals('<td>Int</td><td><input type="text" id="Int" name="Int" value="{Int}" size="11" maxlength="11"/></td>',TgWebUIBase.ToString('Int',FData));
+end;
+
+procedure TestTgWebUI.Method;
+begin
+  CheckEquals('<input type="submit" name="CheckIt" id="CheckIt" value="Check It" title="Check It" />',TgWebUIBase.ToString('CheckIt',FData));
+end;
+
+procedure TestTgWebUI.SetUp;
+begin
+  inherited;
+  FData := TMyClass.Create;
+
+end;
+
+procedure TestTgWebUI.SingleValue;
+begin
+   CheckEquals('<td>Single Value</td><td><input type="text" id="SingleValue" name="SingleValue" value="{SingleValue}" size="18" maxlength="18"/></td>',TgWebUIBase.ToString('SingleValue',FData));
+end;
+
+procedure TestTgWebUI.TearDown;
+begin
+  FreeAndNil(FData);
+  inherited;
+end;
+
+{ TestTgWebUI.TMyClass }
+
+procedure TestTgWebUI.TMyClass.CheckIt;
+begin
+  Int := 14;
 end;
 
 initialization

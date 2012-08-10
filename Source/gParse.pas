@@ -223,6 +223,8 @@ begin
 
     Repeat
 
+      while (AStringIndex+Counter < Length(AString)) and (AString[AStringIndex+Counter-1] in ['a'..'z','_','A'..'Z']) and  (AString[AStringIndex+Counter] in ['a'..'z','_','A'..'Z']) do
+        Inc(Counter);
       //Find the closest token
       Find(UpperCase(Copy(AString, AStringIndex, Counter)), TokenIndex);
 
