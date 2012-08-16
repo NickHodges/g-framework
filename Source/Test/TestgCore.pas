@@ -557,15 +557,19 @@ type
         FDoubleValue: Double;
         FEnum2: TEnum2;
         FExtendedValue: Extended;
+        FInvisible: String;
         FHTML: TgHTMLString;
         FInt: Integer;
         FSingleValue: Single;
         FString50: TString50;
+        FSingleDisplay: Single;
         FText: string;
         FStr10: TStr10;
       published
+        [Help('This is the help')]
         procedure CheckIt;
         property AnsiCharValue: AnsiChar read FAnsiCharValue write FAnsiCharValue;
+        property BoolRead: Boolean read FBool;
         property Bool: Boolean read FBool write FBool;
         property Bool2: Boolean read FBool2 write FBool2;
         property CharValue: Char read FCharValue write FCharValue;
@@ -576,26 +580,46 @@ type
         property HTMLText: TgHTMLString read FHTML write FHTML;
         property Int: Integer read FInt write FInt;
         property SingleValue: Single read FSingleValue write FSingleValue;
+        [DisplayOnly]
+        [FormatFloat(',.00')]
+        property SingleDisplay: Single read FSingleDisplay write FSingleDisplay;
         property String50: TString50 read FString50 write FString50;
+        [Caption('My Text')]
         property Text: string read FText write FText;
         property Str10: TStr10 read FStr10 write FStr10;
+        [NotVisible]
+        [Caption('Invisible Value')]
+        property Invisible: string read FInvisible write FInvisible;
       end;
+      TMyClass2 = class(TMyClass)
+        [Visible]
+        [Caption('Visible Value')]
+        property Invisible;
+      end;
+
   private
     FData: TMyClass;
+    FDocument: TgDocument;
   published
+    procedure Bool;
+    procedure ReadBool;
     procedure String_;
     procedure Method;
     procedure CheckBox;
     procedure Int;
+    procedure Enum2;
     procedure gHTMLString;
     procedure String50;
     procedure Str10;
     procedure AnsiChar;
     procedure Char;
     procedure SingleValue;
+    procedure SingleDisplay;
     procedure DoubleValue;
     procedure ExtendedValue;
     procedure CurrencyValue;
+    procedure Invisible;
+    procedure Invisible2;
   end;
 
 implementation
@@ -2918,6 +2942,21 @@ procedure TestTgWebUI.AnsiChar;
 begin
   CheckEquals('<td>Ansi Char Value</td><td><input type="text" id="AnsiCharValue" name="AnsiCharValue" value="{AnsiCharValue}" size="1" maxlength="1"/></td>',TgWebUIBase.ToString('AnsiCharValue',FData));
 end;
+procedure TestTgWebUI.Bool;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('Bool',FData);
+  CheckEquals('<label id="Bool" for="Bool">Bool</label><input type="checkbox" id="Bool" name="Bool"/>',S);
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+     '<html>'#$D#$A
+    +'  <label id="Bool" for="Bool">Bool</label>'#$D#$A
+    +'  <input type="checkbox" id="Bool" name="Bool"/>'#$D#$A
+    +'</html>'#$D#$A,S);
+
+end;
+
 procedure TestTgWebUI.Char;
 begin
   CheckEquals('<td>Char Value</td><td><input type="text" id="CharValue" name="CharValue" value="{CharValue}" size="1" maxlength="1"/></td>',TgWebUIBase.ToString('CharValue',FData));
@@ -2938,6 +2977,16 @@ begin
    CheckEquals('<td>Double Value</td><td><input type="text" id="DoubleValue" name="DoubleValue" value="{DoubleValue}" size="22" maxlength="22"/></td>',TgWebUIBase.ToString('DoubleValue',FData));
 end;
 
+procedure TestTgWebUI.Enum2;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('Enum2',FData);
+  CheckEquals('',S);
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals('',S);
+end;
+
 procedure TestTgWebUI.ExtendedValue;
 begin
    CheckEquals('<td>Extended Value</td><td><input type="text" id="ExtendedValue" name="ExtendedValue" value="{ExtendedValue}" size="26" maxlength="26"/></td>',TgWebUIBase.ToString('ExtendedValue',FData));
@@ -2954,8 +3003,21 @@ begin
 end;
 
 procedure TestTgWebUI.String_;
+var
+  S: String;
 begin
-  CheckEquals('<td>Text</td><td><textarea id="Text" name="Text">{Text}</textarea></td>',TgWebUIBase.ToString('Text',FData));
+  S := TgWebUIBase.ToString('Text',FData);
+
+  CheckEquals('<label id="Text" for="Text">My Text</label><textarea id="Text" name="Text"/>',S);
+
+  FData.Text := 'This is a Test';
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals('<html>'#$D#$A
+  +'  <label id="Text" for="Text">Text</label>'#$D#$A
+  +'  <textarea id="Text" name="Text">This is a Test</textarea>'#$D#$A
+  +'</html>'#$D#$A,S);
 end;
 
 procedure TestTgWebUI.gHTMLString;
@@ -2968,16 +3030,108 @@ begin
   CheckEquals('<td>Int</td><td><input type="text" id="Int" name="Int" value="{Int}" size="11" maxlength="11"/></td>',TgWebUIBase.ToString('Int',FData));
 end;
 
-procedure TestTgWebUI.Method;
+procedure TestTgWebUI.Invisible;
+var
+  S: String;
 begin
-  CheckEquals('<input type="submit" name="CheckIt" id="CheckIt" value="Check It" title="Check It" />',TgWebUIBase.ToString('CheckIt',FData));
+  FData.Invisible := 'Now you don''t';
+  S := TgWebUIBase.ToString('Invisible',FData);
+
+  CheckEquals('',S);
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals('<html>'#$D#$A
+  +'</html>'#$D#$A,S);
+end;
+
+procedure TestTgWebUI.Invisible2;
+var
+  S: String;
+  Data2: TMyClass2;
+begin
+  Data2 := TMyClass2.Create;
+  S := TgWebUIBase.ToString('Invisible',Data2);
+
+  CheckEquals('<label id="Invisible" for="Invisible">Visible Value</label><textarea id="Invisible" name="Invisible"/>',S);
+
+  Data2.Invisible:= 'Now you see me';
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,Data2);
+
+  CheckEquals('<html>'#$D#$A
+  +'  <label id="Invisible" for="Invisible">Text</label>'#$D#$A
+  +'  <textarea id="Invisible" name="Invisible">Now you see me</textarea>'#$D#$A
+  +'</html>'#$D#$A,S);
+
+  FreeAndNil(Data2);
+end;
+
+procedure TestTgWebUI.Method;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('CheckIt',FData);
+
+  CheckEquals('<input type="submit" name="CheckIt" id="CheckIt" value="Check It" title="This is the help" />',S);
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals('<html>'#$D#$A
+  +'  <label id="Text" for="Text">Text</label>'#$D#$A
+  +'  <textarea id="Text" name="Text">This is a Test</textarea>'#$D#$A
+  +'</html>'#$D#$A,S);
+
+end;
+
+procedure TestTgWebUI.ReadBool;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('Bool',FData);
+  CheckEquals('<label id="ReadBool" for="ReadBool">Read Bool</label><span id="ReadBool">{ReadBool}</span>',S);
+  FData.Bool := False;
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+     '<html>'#$D#$A
+    +'  <label id="ReadBool" for="ReadBool">Bool</label>'#$D#$A
+    +'  <span id="ReadBool">False</span>'#$D#$A
+    +'</html>'#$D#$A,S);
+
+  FData.Bool := True;
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+     '<html>'#$D#$A
+    +'  <label id="ReadBool" for="ReadBool">Bool</label>'#$D#$A
+    +'  <span id="ReadBool">True</span>'#$D#$A
+    +'</html>'#$D#$A,S);
 end;
 
 procedure TestTgWebUI.SetUp;
 begin
   inherited;
   FData := TMyClass.Create;
+  FDocument := TgDocument.Create(FData);
 
+end;
+
+procedure TestTgWebUI.SingleDisplay;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('SingleDisplay',FData);
+  FData.SingleDisplay := 13412.345;
+  CheckEquals('<label id="SingleDisplay" for="SingleDisplay">Single Display</label><span id="SingleDisplay">{SingleDisplay}</span>',S);
+
+  FData.Text := 'This is a Test';
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals('<html>'#$D#$A
+  +'  <label id="SingleDisplay" for="SingleDisplay">Single Display</label>'#$D#$A
+  +'  <span id="SingleDisplay">13,412.34</span>'#$D#$A
+  +'</html>'#$D#$A,S);
 end;
 
 procedure TestTgWebUI.SingleValue;
@@ -2987,6 +3141,7 @@ end;
 
 procedure TestTgWebUI.TearDown;
 begin
+  FreeAndNil(FDocument);
   FreeAndNil(FData);
   inherited;
 end;

@@ -13,6 +13,7 @@ Uses
   Xml.XMLDoc,
   Xml.XMLIntf,
   Contnrs,
+  RegularExpressions,
   System.Classes,
   gExpressionConstants,
   gExpressionLiterals,
@@ -67,6 +68,22 @@ const
     property RTTIProperty: TRTTIProperty read FRTTIProperty write FRTTIProperty;
   end;
 
+  Caption = class(TgPropertyAttribute)
+  public
+    Value: String;
+    constructor Create(const AValue: String);
+  end;
+  Help = class(TgPropertyAttribute)
+  public
+    Value: String;
+    constructor Create(const AValue: String);
+  end;
+
+  FormatFloat = class(TgPropertyAttribute)
+  public
+    Value: String;
+    constructor Create(const AValue: String);
+  end;
   DefaultValue = class(TgPropertyAttribute)
   Strict Private
     FValue : Variant;
@@ -91,6 +108,14 @@ const
   Validation = class(TCustomAttribute)
   public
     procedure Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty); virtual; abstract;
+  end;
+
+  ValidationRegEx = class(Validation)
+  public
+    RegExSearch: String;
+    RegExReplacement: String;
+    procedure Create(const ARegExSearch: String; const ARegExReplacement: String = '');
+    procedure Execute(AObject: TgObject; ARTTIProperty: TRTTIProperty); override;
   end;
 
   ///	<summary>
@@ -225,7 +250,7 @@ const
   ///	  &lt;textarea class="HTMLEditor" id="%1:s" name="%1:s"
   ///	  %3&gt;%2:s&lt;/textarea&gt;'
   ///	</remarks>
-  HTMLAttribute = class(TCustomAttribute)
+  HTMLControlAttribute = class(TCustomAttribute)
     HTML: String;
     constructor Create(const AHTML: String);
   end;
@@ -240,8 +265,8 @@ const
     property size: Integer read Fsize;
 
   end;
-//  [HTMLAttribute('<input type="textarea" class ="HTMLEditor" id="%1:s" name="%1:s" />')]
-  [HTMLAttribute('<textarea class="HTMLEditor" id="%1:s" name="%1:s"%3:s>{%2:s}</textarea>')]
+//  [HTMLControlAttribute('<input type="textarea" class ="HTMLEditor" id="%1:s" name="%1:s" />')]
+  [HTMLControlAttribute('<textarea class="HTMLEditor" id="%1:s" name="%1:s"%3:s>{%2:s}</textarea>')]
   TgHTMLString = Type String;
 
   TgSerializerClass = class of TgSerializer;
@@ -293,6 +318,9 @@ const
   /// create in <see cref="G" />
   /// </summary>
   TgBase = class(TObject)
+  private
+    function GetCaptions(const AName: String): String; overload;
+    function GetHelps(const AName: String): String; overload;
   protected
   public
     type
@@ -396,6 +424,8 @@ const
     function GetFriendlyClassName: String; virtual;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
     function OwnerProperty: TRTTIProperty;
+    function GetCaptions(const RTTIProperty: TRTTIProperty): String; overload;
+    function GetHelps(const RTTIProperty: TRTTIProperty): String; overload;
     /// <summary>TgBase.Owns determines if the object passed into  the ABase parameter
     /// has Self as its owner.
     /// </summary>
@@ -413,6 +443,7 @@ const
     ///	  This is really used to overcome a compiler error in XE2
     ///	</remarks>
     function AsPointer: Pointer; inline;
+    class function Captionize(const AValue: String): String; virtual;
     function DoGetMembers(const APath: String; out AValue: TRttiMember): boolean;
         virtual;
     function DoGetMethods(const APath: String; out AValue: TRttiMethod): Boolean; virtual;
@@ -421,6 +452,9 @@ const
         ATail: String = ''): Boolean; overload;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
     function GetPathIndexOf(const APath: String): Integer; virtual;
+    //1 This gets the display title for a property
+    property Captions[const AName: String]: String read GetCaptions;
+    property Helps[const AName: String]: String read GetHelps;
     property IsAutoCreating: Boolean read GetIsAutoCreating write SetIsAutoCreating;
     property IsInspecting: Boolean read GetIsInspecting write SetIsInspecting;
 
@@ -2223,6 +2257,29 @@ begin
   End;
 end;
 
+class function TgBase.Captionize(const AValue: String): String;
+var
+  Index: Integer;
+  Len: Integer;
+begin
+  Result := AValue;
+  // Remove lower case prefix
+  while (Length(Result) > 0) and (Result[1] in ['a'..'z']) do
+    Delete(Result,1,1);
+  Len := Length(Result);
+  for Index := Len-1 downto 1 do
+    // replace _ with space
+    if Result[Index] = '_' then
+      Result[Index] := ' '
+    // put space before capital letters that come after a lowercase letter
+    else if (Result[Index] in ['a'..'z']) and (Result[Index+1] in ['A'..'Z']) then
+      Insert(' ',Result,Index+1)
+    else if (Result[Index] in ['a'..'z']) and (Result[Index+1] in ['0'..'9']) then
+      Insert(' ',Result,Index+1)
+    else if (Index < Len-2) and (Result[Index] in ['A'..'Z']) and (Result[Index+1] in ['A'..'Z']) and (Result[Index+2] in ['a'..'z']) then
+      Insert(' ',Result,Index+1)
+end;
+
 procedure TgBase.Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
 var
   Serializer: TgSerializer;
@@ -2494,6 +2551,28 @@ Begin
   Result := ReplaceText(ReplaceText(Result, '<', '_'), '>', '_')
 End;
 
+function TgBase.GetCaptions(const AName: String): String;
+begin
+  // TODO -cMM: TgBase.GetCaptions default body inserted
+  Result := GetCaptions(GetProperties(AName));
+  if Result = '' then
+    Result := Captionize(AName);
+end;
+
+function TgBase.GetCaptions(const RTTIProperty: TRTTIProperty): String;
+var
+  Attributes: TArray<TCustomAttribute>;
+begin
+  // TODO -cMM: TgBase.GetCaptions default body inserted
+  Attributes := nil;
+  if Assigned(RTTIProperty) then
+    Attributes := G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(RTTIProperty,Caption));
+  if Assigned(Attributes) then
+    Result := (Attributes[0] as Caption).Value
+  else
+    Result := '';
+end;
+
 function TgBase.GetEnumerator: TEnumerator;
 begin
   Result.Init(Self);
@@ -2503,6 +2582,25 @@ function TgBase.GetFriendlyClassName: String;
 Begin
   Result := FriendlyName;
 End;
+
+function TgBase.GetHelps(const AName: String): String;
+begin
+  Result := GetHelps(GetProperties(AName));
+end;
+
+function TgBase.GetHelps(const RTTIProperty: TRTTIProperty): String;
+var
+  Attributes: TArray<TCustomAttribute>;
+begin
+  // TODO -cMM: TgBase.GetCaptions default body inserted
+  Attributes := nil;
+  if Assigned(RTTIProperty) then
+    Attributes := G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(RTTIProperty,Help));
+  if Assigned(Attributes) then
+    Result := (Attributes[0] as Caption).Value
+  else
+    Result := '';
+end;
 
 function TgBase.GetIsAutoCreating: Boolean;
 begin
@@ -8278,13 +8376,52 @@ begin
 
 end;
 
-{ HTMLAttribute }
+{ HTMLControlAttribute }
 
-constructor HTMLAttribute.Create(const AHTML: String);
+constructor HTMLControlAttribute.Create(const AHTML: String);
 begin
   inherited Create;
   HTML := AHTML;
 
+end;
+
+{ ValidationRegEx }
+
+procedure ValidationRegEx.Create(const ARegExSearch, ARegExReplacement: String);
+begin
+  inherited Create;
+  RegExSearch := ARegExSearch;
+  RegExReplacement := ARegExReplacement;
+end;
+
+procedure ValidationRegEx.Execute(AObject: TgObject;
+  ARTTIProperty: TRTTIProperty);
+begin
+{ TODO : Need to setup the regular expression Validation }
+end;
+
+{ Caption }
+
+constructor Caption.Create(const AValue: String);
+begin
+  inherited Create;
+  Value := AValue;
+end;
+
+{ Help }
+
+constructor Help.Create(const AValue: String);
+begin
+  inherited Create;
+  Value := AValue;
+end;
+
+{ FormatFloat }
+
+constructor FormatFloat.Create(const AValue: String);
+begin
+  inherited Create;
+  Value := AValue;
 end;
 
 Initialization
