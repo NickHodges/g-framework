@@ -546,7 +546,13 @@ type
   public
     type
       TEnum2 = (f,fCalifornia,fDallas,fAustin,fTexas,fAlisoViejo,fShreveport);
+      [BooleanLabel('Off','On')]
+      TOffOn = type boolean;
+      [BooleanLabel('Off','On')]
+      TX = type boolean;
       TStr10 = string[10];
+      TOtherObject = class(TgBase)
+      end;
       TMyClass = class(TgBase)
       private
         FAnsiCharValue: AnsiChar;
@@ -561,6 +567,7 @@ type
         FHTML: TgHTMLString;
         FInt: Integer;
         FSingleValue: Single;
+        FFileName: TgFileName;
         FString50: TString50;
         FSingleDisplay: Single;
         FText: string;
@@ -568,9 +575,27 @@ type
       published
         [Help('This is the help')]
         procedure CheckIt;
-        property AnsiCharValue: AnsiChar read FAnsiCharValue write FAnsiCharValue;
-        property BoolRead: Boolean read FBool;
+
         property Bool: Boolean read FBool write FBool;
+        property BoolRead: Boolean read FBool;
+        [NotVisible]
+        property NotVisibleBool: Boolean read FBool write FBool;
+        [DisplayOnly]
+        property DisplayOnlyBool: Boolean read FBool write FBool;
+        property OffOnBool: TOffOn read FOffOn;
+        [BooleanLabel('No','Yes')]
+        property NoYesBool: boolean read FBool;
+        property XBool: TX read FXBool;
+
+        property AnsiCharValue: AnsiChar read FAnsiCharValue write FAnsiCharValue;
+
+        property FileName: TgFileName read FFileName write FFileName;
+        property Image: TgImage read FImage write FImage;
+        property EmailAddress: TgEmailAddress read FEmailAddress write FEmailAddress;
+        property WebAddress: TgWebAddress read FWebAddress write FWebAddress;
+        property OtherObject: TOtherObject read FOtherObject; // Select
+        // Composite identity object
+
         property Bool2: Boolean read FBool2 write FBool2;
         property CharValue: Char read FCharValue write FCharValue;
         property CurrencyValue: Currency read FCurrencyValue write FCurrencyValue;
@@ -603,6 +628,9 @@ type
   published
     procedure Bool;
     procedure ReadBool;
+    procedure NotVisibleBool;
+    procedure NoYesBool;
+    procedure OffOnBool;
     procedure String_;
     procedure Method;
     procedure CheckBox;
@@ -2946,13 +2974,17 @@ procedure TestTgWebUI.Bool;
 var
   S: String;
 begin
+  // Generate Template
   S := TgWebUIBase.ToString('Bool',FData);
-  CheckEquals('<label id="Bool" for="Bool">Bool</label><input type="checkbox" id="Bool" name="Bool"/>',S);
+  CheckEquals('<label id="Bool" for="Bool">Bool</label><input type="checkbox" id="Bool" name="Bool" value="true" />',S);
+
+  // Run Template evaulator on text
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
   CheckEquals(
      '<html>'#$D#$A
     +'  <label id="Bool" for="Bool">Bool</label>'#$D#$A
-    +'  <input type="checkbox" id="Bool" name="Bool"/>'#$D#$A
+    +'  <input type="hidden" name="Bool" value=""/>'#$D#$A
+    +'  <input type="checkbox" id="Bool" name="Bool" value="true"/>'#$D#$A
     +'</html>'#$D#$A,S);
 
 end;
@@ -3021,8 +3053,20 @@ begin
 end;
 
 procedure TestTgWebUI.gHTMLString;
+var
+  S: String;
 begin
-  CheckEquals('<td>HTML Text</td><td><textarea class="HTMLEditor" id="HTMLText" name="HTMLText">{HTMLText}</textarea></td>',TgWebUIBase.ToString('HTMLText',FData));
+  FData.Invisible := 'This is <b>BOLD</B>!';
+  S := TgWebUIBase.ToString('HTMLText',FData);
+
+  CheckEquals('<label id="HTMLText" for="HTMLText">HTML Text</label><input id="HTMLText" name="HTMLText" />',S);
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals('<html>'#$D#$A
+  +'<label id="HTMLText" for="HTMLText">HTML Text</label>'#$D#$A
+  +'<textarea id="HTMLText" name="HTMLText" class="HTMLEditor">This is <b>BOLD</b>!</textarea>'
+  +'</html>'#$D#$A,S);
 end;
 
 procedure TestTgWebUI.Int;
@@ -3082,6 +3126,17 @@ begin
   +'  <textarea id="Text" name="Text">This is a Test</textarea>'#$D#$A
   +'</html>'#$D#$A,S);
 
+end;
+
+procedure TestTgWebUI.NotVisibleBool;
+var
+  S: String;
+begin
+  // Generate Template
+  S := TgWebUIBase.ToString('NotVisibleBool',FData);
+  CheckEquals('',S);
+
+  // Run Template evaulator on text
 end;
 
 procedure TestTgWebUI.ReadBool;
