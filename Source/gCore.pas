@@ -73,6 +73,10 @@ const
     Value: String;
     constructor Create(const AValue: String);
   end;
+
+  DisplayOnly = class(TgPropertyAttribute)
+  end;
+
   Help = class(TgPropertyAttribute)
   public
     Value: String;
@@ -255,6 +259,29 @@ const
     constructor Create(const AHTML: String);
   end;
 
+  HTMLAttribute= class(TCustomAttribute)
+  public
+    Name: String;
+    Value: Variant;
+    constructor Create(const AName: String; const AValue: String);
+    function AsText: String;
+  end;
+
+  THTMLAttributes = TArray<HTMLAttribute>;
+  HTMLText = class(HTMLAttribute)
+  public
+    constructor Create;
+  end;
+
+  LocalFileName = class(HTMLAttribute)
+  public
+    constructor Create;
+  end;
+  WebAddress = class(HTMLAttribute)
+  public
+    constructor Create;
+  end;
+
   MaxTextLength = class(TgPropertyAttribute)
   private
     Fmaxlength: Integer;
@@ -265,9 +292,17 @@ const
     property size: Integer read Fsize;
 
   end;
-//  [HTMLControlAttribute('<input type="textarea" class ="HTMLEditor" id="%1:s" name="%1:s" />')]
-  [HTMLControlAttribute('<textarea class="HTMLEditor" id="%1:s" name="%1:s"%3:s>{%2:s}</textarea>')]
+
+  [HTMLText]
   TgHTMLString = Type String;
+  [LocalFileName]
+  TgFileName = Type String;
+
+  TgImage = type string;
+
+  TgEmailAddress = type string;
+  [WebAddress]
+  TgWebAddress = type string;
 
   TgSerializerClass = class of TgSerializer;
 
@@ -389,7 +424,6 @@ const
     function GetPathCount: Integer; virtual;
     function GetPaths(AIndex: Integer): String; virtual;
     function GetPathValues(AIndex: Integer): TPathValue;
-    function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; overload; virtual;
     function DoGetObjects(const APath: String; out AValue: TgBase): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
     function GetIsInspecting: Boolean; virtual;
@@ -448,6 +482,7 @@ const
         virtual;
     function DoGetMethods(const APath: String; out AValue: TRttiMethod): Boolean; virtual;
     function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean; virtual;
+    function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; overload; virtual;
     function DoGetValues(ARttiProperty: TRttiProperty; out AValue: Variant; const
         ATail: String = ''): Boolean; overload;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
@@ -1660,6 +1695,7 @@ const
     class procedure Register(const TagName: String; AClass: TClassOf);
     constructor Create(Owner: TgBase = nil); override;
     procedure ProcessChildNodes(SourceChildNodes, TargetChildNodes: IXMLNodeList); virtual;
+    function CopyNode(Source: IXMLNode):IXMLNode;
     procedure ProcessNode(Source:IXMLNode; TargetChildNodes: IXMLNodeList); virtual;
     function GetValue(const Value: String): Variant;
     function ProcessValue(const Value: OleVariant): OleVariant; virtual;
@@ -1760,6 +1796,15 @@ const
   published
     property FileName: String read FFileName write FFileName;
     property SearchPath: String read FSearchPath write FSearchPath;
+  end;
+
+  TgElementSelect = class(TgElement)
+  private
+    FName: String;
+    FID: String;
+  published
+    property Name: String read FName write FName;
+    property ID: String read FID write FID;
   end;
 
   TgPersistenceManagerIBX = class(TgPersistenceManagerSQL)
@@ -3241,9 +3286,16 @@ begin
     for Attribute in RTTIProperty.GetAttributes do
     if Attribute.InheritsFrom(Validation) then
       AddAttribute;
-    for Attribute in RTTIProperty.PropertyType.GetAttributes do
-    if Attribute.InheritsFrom(Validation) then
-      AddAttribute;
+    try
+      for Attribute in RTTIProperty.PropertyType.GetAttributes do
+      if Attribute.InheritsFrom(Validation) then
+        AddAttribute;
+    except
+      on e: exception do begin
+        e.Message := format('%s: Attribute Error: RTTIProperty[%s] RTTIPropertyClass[%s] PropertyType[%s]',[e.Message,RTTIProperty.Name,RTTIProperty.ClassName,RTTIProperty.PropertyType.Name]);
+        raise;
+      end;
+    end;
     // Identity objects should be given the Required attribute unless it is specifically disabled
     if RTTIProperty.PropertyType.IsInstance and RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityObject) And (Length(PropertyAttributes(TgPropertyAttributeClassKey.Create(RTTIProperty, NotRequired))) = 0) then
     Begin
@@ -7006,7 +7058,36 @@ begin
   Register('if',TgElementIf);
   Register('with',TgElementWith);
   Register('include',TgElementInclude);
+  Register('select',TgElementSelect);
   Register('html',TgElementHTML);
+end;
+
+function TgElement.CopyNode(Source: IXMLNode): IXMLNode;
+var
+  AValue: OleVariant;
+  Index: Integer;
+  AName: String;
+  ANode: IXMLNode;
+  AgDocument: TgDocument;
+
+begin
+  if not GetgDocument(AgDocument) then
+    raise E.Create('No document');
+  Result := AgDocument.Target.CreateNode(Source.NodeName);
+  Index := Source.AttributeNodes.Count-1;
+  for Index := 0 to Index do begin
+    ANode := Source.AttributeNodes[Index];
+    AName := ANode.NodeName;
+    AValue := ANode.NodeValue;
+    if not VarIsNull(AValue) and not VarIsEmpty(AValue) then begin
+      if GetPropertyByName(AName) = nil then begin
+{ TODO : Should I drop any specific attributes }
+        AValue := ProcessValue(AValue);
+      end;
+      Result.Attributes[AName] := AValue;
+    end;
+  end;
+
 end;
 
 constructor TgElement.Create(Owner: TgBase);
@@ -7052,7 +7133,8 @@ begin
             Break;
           end;
         if not Handled then
-          Result[NodeName] := NodeValue;
+          if not Result.DoSetValues(NodeName,NodeValue) then
+            Result.DoSetValues(NodeName+'_',NodeValue);
       end;
   end;
 end;
@@ -7125,9 +7207,6 @@ end;
 procedure TgElement.ProcessNode(Source: IXMLNode; TargetChildNodes: IXMLNodeList);
 var
   Target: IXMLNode;
-  Temp: OleVariant;
-  Index: Integer;
-  AgDocument: TgDocument;
 begin
   if ConditionSelf then begin
     Target := nil;
@@ -7138,27 +7217,12 @@ begin
           exit;
         end;
       else begin
-        if not GetgDocument(AgDocument) then
-          raise E.Create('No document');
-        Target := AgDocument.Target.CreateNode(Source.NodeName);
-
+        Target := CopyNode(Source);
         TargetChildNodes.Add(Target);
       end;
     end;
 
     if not Assigned(Target) then exit;
-
-    Index := Source.AttributeNodes.Count-1;
-    for Index := 0 to Index do
-      with Source.AttributeNodes[Index] do
-        if not VarIsNull(NodeValue) and not VarIsEmpty(NodeValue) then
-          if GetPropertyByName(NodeName) = nil then begin
-  { TODO : Should I drop any specific attributes }
-            Temp := NodeValue;
-            Temp := ProcessValue(Temp);
-            if (NodeValue = Temp) or (not VarIsEmpty(Temp) and (Temp <> '')) then
-              Target.Attributes[NodeName] := Temp;
-           end;
     ProcessChildNodes(Source.ChildNodes,Target.ChildNodes);
   end
   else
@@ -8422,6 +8486,43 @@ constructor FormatFloat.Create(const AValue: String);
 begin
   inherited Create;
   Value := AValue;
+end;
+
+
+{ HTMLAttribute }
+
+function HTMLAttribute.AsText: String;
+begin
+  Result := Name+'="'+Value+'"';
+end;
+
+constructor HTMLAttribute.Create(const AName: String; const AValue: String);
+begin
+  inherited Create;
+  Name := AName;
+  Value := AValue;
+
+end;
+
+{ HTMLText }
+
+constructor HTMLText.Create;
+begin
+  inherited Create('class','HTMLEditor');
+end;
+
+{ LocalFileName }
+
+constructor LocalFileName.Create;
+begin
+  inherited Create('type','file');
+end;
+
+{ WebAddress }
+
+constructor WebAddress.Create;
+begin
+  inherited Create('type','text');
 end;
 
 Initialization

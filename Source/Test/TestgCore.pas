@@ -388,7 +388,7 @@ type
         FEnum1: TEnum1;
         FFirstName: TStr20;
         FLastName: TString50;
-        FWebAddress: String;
+        FWebAddress: TgWebAddress;
         FGoodCustomer: Boolean;
         FOtherCustomer: TCustomer;
         FWebContent: TgHTMLString;
@@ -399,6 +399,7 @@ type
         FIntValue: Integer;
         FMiddleInitial: Char;
         FSingleValue: Single;
+        FFileName: TgFileName;
         function GetFullName: String;
       published
         procedure ClickIt;
@@ -411,13 +412,14 @@ type
         property MiddleInitial: Char read FMiddleInitial write FMiddleInitial;
         property LastName: TString50 read FLastName write FLastName;
         property FullName: String read GetFullName;
-        property WebAddress: String read FWebAddress write FWebAddress;
+        property WebAddress: TgWebAddress read FWebAddress write FWebAddress;
         property Notes: String read FNotes write FNotes;
         property WebContent: TgHTMLString read FWebContent write FWebContent;
         property GoodCustomer: Boolean read FGoodCustomer write FGoodCustomer;
         property IntValue: Integer read FIntValue write FIntValue;
         property OtherCustomer: TCustomer read FOtherCustomer write FOtherCustomer;
         property SingleValue: Single read FSingleValue write FSingleValue;
+        property FileName: TgFileName read FFileName write FFileName;
       end;
 
       TCustomers = TgList<TCustomer>;
@@ -545,11 +547,15 @@ type
     procedure TearDown; override;
   public
     type
+      TEnum1 = (h,hPurse,hCar,hTelephone);
+      TEnumSet1 = set of TEnum1;
       TEnum2 = (f,fCalifornia,fDallas,fAustin,fTexas,fAlisoViejo,fShreveport);
-      [BooleanLabel('Off','On')]
-      TOffOn = type boolean;
-      [BooleanLabel('Off','On')]
-      TX = type boolean;
+//      [BooleanLabel('Off','On')] // Generated AV in RTTI unit
+//      TOffOn = type boolean;
+      TOffOn = boolean;
+//      [BooleanLabel('Off','On')]
+//      TX = type boolean;
+      TX = boolean;
       TStr10 = string[10];
       TOtherObject = class(TgBase)
       end;
@@ -571,13 +577,21 @@ type
         FString50: TString50;
         FSingleDisplay: Single;
         FText: string;
+        FXBool: TX;
+        FImage: TgImage;
+        FOffOn: TOffOn;
         FStr10: TStr10;
+        FEmailAddress: TgEmailAddress;
+        FWebAddress: TgWebAddress;
+        FOtherObject: TOtherObject;
+        FEnum1: TEnum1;
+        FEnumSet1: TEnumSet1;
       published
         [Help('This is the help')]
         procedure CheckIt;
 
         property Bool: Boolean read FBool write FBool;
-        property BoolRead: Boolean read FBool;
+        property ReadBool: Boolean read FBool;
         [NotVisible]
         property NotVisibleBool: Boolean read FBool write FBool;
         [DisplayOnly]
@@ -600,6 +614,8 @@ type
         property CharValue: Char read FCharValue write FCharValue;
         property CurrencyValue: Currency read FCurrencyValue write FCurrencyValue;
         property DoubleValue: Double read FDoubleValue write FDoubleValue;
+        property Enum1: TEnum1 read FEnum1 write FEnum1;
+        property EnumSet1: TEnumSet1 read FEnumSet1 write FEnumSet1;
         property Enum2: TEnum2 read FEnum2 write FEnum2;
         property ExtendedValue: Extended read FExtendedValue write FExtendedValue;
         property HTMLText: TgHTMLString read FHTML write FHTML;
@@ -627,14 +643,17 @@ type
     FDocument: TgDocument;
   published
     procedure Bool;
-    procedure ReadBool;
+    procedure ReadBool_True;
+    procedure ReadBool_False;
     procedure NotVisibleBool;
     procedure NoYesBool;
     procedure OffOnBool;
     procedure String_;
     procedure Method;
-    procedure CheckBox;
+    procedure CheckBox_True;
     procedure Int;
+    procedure Enum1;
+    procedure EnumSet1;
     procedure Enum2;
     procedure gHTMLString;
     procedure String50;
@@ -648,6 +667,8 @@ type
     procedure CurrencyValue;
     procedure Invisible;
     procedure Invisible2;
+    procedure FileName;
+    procedure WebAddress;
   end;
 
 implementation
@@ -2967,8 +2988,21 @@ end;
 { TestTgWebUI }
 
 procedure TestTgWebUI.AnsiChar;
+var
+  S: String;
 begin
-  CheckEquals('<td>Ansi Char Value</td><td><input type="text" id="AnsiCharValue" name="AnsiCharValue" value="{AnsiCharValue}" size="1" maxlength="1"/></td>',TgWebUIBase.ToString('AnsiCharValue',FData));
+  S := TgWebUIBase.ToString('AnsiCharValue',FData);
+  CheckEquals('<div name="grpAnsiCharValue"><label id="lblAnsiCharValue" for="AnsiCharValue">Ansi Char Value</label><input type="text" id="AnsiCharValue" name="AnsiCharValue" size="1" maxlength="1" /></div>',S);
+  FData.AnsiCharValue := 'F';
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpAnsiCharValue">'#$D#$A
+   +'    <label id="lblAnsiCharValue" for="AnsiCharValue">Ansi Char Value</label>'#$D#$A
+   +'    <input type="text" id="AnsiCharValue" name="AnsiCharValue" size="1" maxlength="1" value="F"/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+    ,S);
 end;
 procedure TestTgWebUI.Bool;
 var
@@ -2976,37 +3010,133 @@ var
 begin
   // Generate Template
   S := TgWebUIBase.ToString('Bool',FData);
-  CheckEquals('<label id="Bool" for="Bool">Bool</label><input type="checkbox" id="Bool" name="Bool" value="true" />',S);
+  CheckEquals('<div name="grpBool"><label id="lblBool" for="Bool">Bool</label><input type="checkbox" id="Bool" name="Bool" value="true" /></div>',S);
 
   // Run Template evaulator on text
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
   CheckEquals(
-     '<html>'#$D#$A
-    +'  <label id="Bool" for="Bool">Bool</label>'#$D#$A
-    +'  <input type="hidden" name="Bool" value=""/>'#$D#$A
-    +'  <input type="checkbox" id="Bool" name="Bool" value="true"/>'#$D#$A
-    +'</html>'#$D#$A,S);
+    '<html>'#$D#$A
+   +'  <div name="grpBool">'#$D#$A
+   +'    <label id="lblBool" for="Bool">Bool</label>'#$D#$A
+   +'    <input type="hidden" name="Bool" value=""/>'#$D#$A
+   +'    <input type="checkbox" id="Bool" name="Bool" value="true"/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+  ,S);
 
 end;
 
 procedure TestTgWebUI.Char;
+var
+  S: String;
 begin
-  CheckEquals('<td>Char Value</td><td><input type="text" id="CharValue" name="CharValue" value="{CharValue}" size="1" maxlength="1"/></td>',TgWebUIBase.ToString('CharValue',FData));
+  S := TgWebUIBase.ToString('CharValue',FData);
+  CheckEquals('<div name="grpCharValue"><label id="lblCharValue" for="CharValue">Char Value</label><input type="text" id="CharValue" name="CharValue" size="1" maxlength="1" /></div>',S);
+  FData.CharValue := 'Q';
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpCharValue">'#$D#$A
+   +'    <label id="lblCharValue" for="CharValue">Char Value</label>'#$D#$A
+   +'    <input type="text" id="CharValue" name="CharValue" size="1" maxlength="1" value="Q"/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+    ,S);
 end;
 
-procedure TestTgWebUI.CheckBox;
+procedure TestTgWebUI.CheckBox_true;
+var
+  AStr,S: String;
 begin
-  CheckEquals('<td>Bool</td><td><input type="checkbox" id="Bool" name="Bool" checked="{if(Bool,''checked'','''')}"/></td>',TgWebUIBase.ToString('Bool',FData));
+  AStr := TgWebUIBase.ToString('Bool',FData);
+
+  CheckEquals('<div name="grpBool"><label id="lblBool" for="Bool">Bool</label><input type="checkbox" id="Bool" name="Bool" value="true" /></div>',AStr);
+
+  FData.Bool := true;
+
+  FDocument.ProcessText('<html>'+AStr+'</html>',S,FData);
+
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpBool">'#$D#$A
+   +'    <label id="lblBool" for="Bool">Bool</label>'#$D#$A
+   +'    <input type="hidden" name="Bool" value=""/>'#$D#$A
+   +'    <input type="checkbox" id="Bool" name="Bool" value="true" checked="checked"/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+  ,S);
+
 end;
 
 procedure TestTgWebUI.CurrencyValue;
+var
+  S: String;
 begin
-   CheckEquals('<td>Currency Value</td><td><input type="text" id="CurrencyValue" name="CurrencyValue" value="{CurrencyValue}" size="26" maxlength="26"/></td>',TgWebUIBase.ToString('CurrencyValue',FData));
+  S := TgWebUIBase.ToString('CurrencyValue',FData);
+
+  CheckEquals('<div name="grpCurrencyValue"><label id="lblCurrencyValue" for="CurrencyValue">Currency Value</label><input type="text" id="CurrencyValue" name="CurrencyValue" size="26" maxlength="26" /></div>',S);
+  FData.CurrencyValue:= 19.95;
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpCurrencyValue">'#$D#$A
+   +'    <label id="lblCurrencyValue" for="CurrencyValue">Currency Value</label>'#$D#$A
+   +'    <input type="text" id="CurrencyValue" name="CurrencyValue" size="26" maxlength="26" value="19.95"/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+  ,S);
 end;
 
 procedure TestTgWebUI.DoubleValue;
+var
+  S: String;
 begin
-   CheckEquals('<td>Double Value</td><td><input type="text" id="DoubleValue" name="DoubleValue" value="{DoubleValue}" size="22" maxlength="22"/></td>',TgWebUIBase.ToString('DoubleValue',FData));
+  S := TgWebUIBase.ToString('DoubleValue',FData);
+  CheckEquals('<div name="grpDoubleValue"><label id="lblDoubleValue" for="DoubleValue">Double Value</label><input type="text" id="DoubleValue" name="DoubleValue" size="22" maxlength="22" /></div>',S);
+  FData.DoubleValue:= 1.2;
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpDoubleValue">'#$D#$A
+   +'    <label id="lblDoubleValue" for="DoubleValue">Double Value</label>'#$D#$A
+   +'    <input type="text" id="DoubleValue" name="DoubleValue" size="22" maxlength="22" value="1.2"/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+    ,S);
+end;
+
+procedure TestTgWebUI.Enum1;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('Enum1',FData);
+  CheckEquals(
+   '<div name="grpEnum1">'
+  +'<label id="lblEnum1" for="Enum1">Enum 1</label><input type="radio" name="Enum1" id="Enum1_h" value="h" title="(none)"/>'
+  +'<label id="lblEnum1_h" for="Enum1_h">(none)</label><input type="radio" name="Enum1" id="Enum1_hPurse" value="hPurse" title="Purse"/>'
+  +'<label id="lblEnum1_hPurse" for="Enum1_hPurse">Purse</label><input type="radio" name="Enum1" id="Enum1_hCar" value="hCar" title="Car"/>'
+  +'<label id="lblEnum1_hCar" for="Enum1_hCar">Car</label><input type="radio" name="Enum1" id="Enum1_hTelephone" value="hTelephone" title="Telephone"/>'
+  +'<label id="lblEnum1_hTelephone" for="Enum1_hTelephone">Telephone</label>'
+  +'</div>'  ,S);
+
+  FData.Enum1 := hPurse;
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+    '<html>'#$D#$A
+    +'  <div name="grpEnum1">'#$D#$A
+    +'    <label id="lblEnum1" for="Enum1">Enum 1</label>'#$D#$A
+    +'    <input type="radio" name="Enum1" id="Enum1_h" value="h" title="(none)"/>'#$D#$A
+    +'    <label id="lblEnum1_h" for="Enum1_h">(none)</label>'#$D#$A
+    +'    <input type="radio" name="Enum1" id="Enum1_hPurse" value="hPurse" title="Purse" checked="checked"/>'#$D#$A
+    +'    <label id="lblEnum1_hPurse" for="Enum1_hPurse">Purse</label>'#$D#$A
+    +'    <input type="radio" name="Enum1" id="Enum1_hCar" value="hCar" title="Car"/>'#$D#$A
+    +'    <label id="lblEnum1_hCar" for="Enum1_hCar">Car</label>'#$D#$A
+    +'    <input type="radio" name="Enum1" id="Enum1_hTelephone" value="hTelephone" title="Telephone"/>'#$D#$A
+    +'    <label id="lblEnum1_hTelephone" for="Enum1_hTelephone">Telephone</label>'#$D#$A
+    +'  </div>'#$D#$A
+    +'</html>'#$D#$A
+    ,S);
 end;
 
 procedure TestTgWebUI.Enum2;
@@ -3014,24 +3144,165 @@ var
   S: String;
 begin
   S := TgWebUIBase.ToString('Enum2',FData);
-  CheckEquals('',S);
+  CheckEquals(
+    '<div name="grpEnum2">'
+   +'<label id="lblEnum2" for="Enum2">Enum 2</label>'
+   +'<select id="Enum2" Name="Enum2">'
+   +'<option value="f" title="(none)">(none)</option>'
+   +'<option value="fCalifornia" title="California">California</option>'
+   +'<option value="fDallas" title="Dallas">Dallas</option>'
+   +'<option value="fAustin" title="Austin">Austin</option>'
+   +'<option value="fTexas" title="Texas">Texas</option>'
+   +'<option value="fAlisoViejo" title="Aliso Viejo">Aliso Viejo</option>'
+   +'<option value="fShreveport" title="Shreveport">Shreveport</option>'
+   +'</select>'
+   +'</div>'
+  ,S);
+
+  FData.Enum2 := fTexas;
+
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
-  CheckEquals('',S);
+  CheckEquals(
+   '<html>'#$D#$A
+  +'  <div name="grpEnum2">'#$D#$A
+  +'    <label id="lblEnum2" for="Enum2">Enum 2</label>'#$D#$A
+  +'    <select id="Enum2" Name="Enum2">'#$D#$A
+  +'      <option value="f" title="(none)">(none)</option>'#$D#$A
+  +'      <option value="fCalifornia" title="California">California</option>'#$D#$A
+  +'      <option value="fDallas" title="Dallas">Dallas</option>'#$D#$A
+  +'      <option value="fAustin" title="Austin">Austin</option>'#$D#$A
+  +'      <option value="fTexas" title="Texas" selected="true">Texas</option>'#$D#$A
+  +'      <option value="fAlisoViejo" title="Aliso Viejo">Aliso Viejo</option>'#$D#$A
+  +'      <option value="fShreveport" title="Shreveport">Shreveport</option>'#$D#$A
+  +'    </select>'#$D#$A
+  +'  </div>'#$D#$A
+  +'</html>'#$D#$A
+  ,S);
+end;
+
+procedure TestTgWebUI.EnumSet1;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('EnumSet1',FData);
+  CheckEquals(
+    '<div name="grpEnumSet1">'
+    +'<label id="lblEnumSet1" for="EnumSet1">Enum Set 1</label><input type="checkbox" name="EnumSet1" id="EnumSet1_h" value="h" />'
+    +'<label id="lblEnumSet1_h" for="EnumSet1_h">(none)</label><input type="checkbox" name="EnumSet1" id="EnumSet1_hPurse" value="hPurse" />'
+    +'<label id="lblEnumSet1_hPurse" for="EnumSet1_hPurse">Purse</label><input type="checkbox" name="EnumSet1" id="EnumSet1_hCar" value="hCar" />'
+    +'<label id="lblEnumSet1_hCar" for="EnumSet1_hCar">Car</label><input type="checkbox" name="EnumSet1" id="EnumSet1_hTelephone" value="hTelephone" />'
+    +'<label id="lblEnumSet1_hTelephone" for="EnumSet1_hTelephone">Telephone</label>'
+    +'</div>'  ,S);
+  FData.Enum1 := hPurse;
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+   '<html>'#$D#$A
+   +'  <div name="grpEnumSet1">'#$D#$A
+   +'    <label id="lblEnumSet1" for="EnumSet1">Enum Set 1</label>'#$D#$A
+   +'    <input type="hidden" name="EnumSet1" value=""/>'#$D#$A
+   +'    <input type="checkbox" name="EnumSet1" id="EnumSet1_h" value="h"/>'#$D#$A
+   +'    <label id="lblEnumSet1_h" for="EnumSet1_h">(none)</label>'#$D#$A
+   +'    <input type="hidden" name="EnumSet1" value=""/>'#$D#$A
+   +'    <input type="checkbox" name="EnumSet1" id="EnumSet1_hPurse" value="hPurse"/>'#$D#$A
+   +'    <label id="lblEnumSet1_hPurse" for="EnumSet1_hPurse">Purse</label>'#$D#$A
+   +'    <input type="hidden" name="EnumSet1" value=""/>'#$D#$A
+   +'    <input type="checkbox" name="EnumSet1" id="EnumSet1_hCar" value="hCar"/>'#$D#$A
+   +'    <label id="lblEnumSet1_hCar" for="EnumSet1_hCar">Car</label>'#$D#$A
+   +'    <input type="hidden" name="EnumSet1" value=""/>'#$D#$A
+   +'    <input type="checkbox" name="EnumSet1" id="EnumSet1_hTelephone" value="hTelephone"/>'#$D#$A
+   +'    <label id="lblEnumSet1_hTelephone" for="EnumSet1_hTelephone">Telephone</label>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+   ,S);
 end;
 
 procedure TestTgWebUI.ExtendedValue;
+var
+  S: String;
 begin
-   CheckEquals('<td>Extended Value</td><td><input type="text" id="ExtendedValue" name="ExtendedValue" value="{ExtendedValue}" size="26" maxlength="26"/></td>',TgWebUIBase.ToString('ExtendedValue',FData));
+  S := TgWebUIBase.ToString('ExtendedValue',FData);
+
+  CheckEquals('<div name="grpExtendedValue"><label id="lblExtendedValue" for="ExtendedValue">Extended Value</label><input type="text" id="ExtendedValue" name="ExtendedValue" size="26" maxlength="26" /></div>',S);
+  FData.ExtendedValue := 1.3;
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+    '<html>'#$D#$A
+    +'  <div name="grpExtendedValue">'#$D#$A
+    +'    <label id="lblExtendedValue" for="ExtendedValue">Extended Value</label>'#$D#$A
+    +'    <input type="text" id="ExtendedValue" name="ExtendedValue" size="26" maxlength="26" value="1.3"/>'#$D#$A
+    +'  </div>'#$D#$A
+    +'</html>'#$D#$A
+    ,S);
+end;
+
+procedure TestTgWebUI.FileName;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('FileName',FData);
+
+  CheckEquals('<div name="grpFileName"><label id="lblFileName" for="FileName">File Name</label><input id="FileName" name="FileName" type="file" /></div>',S);
+
+  FData.FileName := 'This is a Test';
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals(
+     '<html>'#$D#$A
+    +'  <div name="grpFileName">'#$D#$A
+    +'    <label id="lblFileName" for="FileName">File Name</label>'#$D#$A
+    +'    <input id="FileName" name="FileName" type="file" value="This is a Test"/>'#$D#$A
+    +'  </div>'#$D#$A
+    +'</html>'#$D#$A
+  ,S);
 end;
 
 procedure TestTgWebUI.Str10;
+var S: String;
 begin
-   CheckEquals('<td>Str 10</td><td><input type="text" id="Str10" name="Str10" value="{Str10}" size="10" maxlength="10"/></td>',TgWebUIBase.ToString('Str10',FData));
+  S := TgWebUIBase.ToString('Str10',FData);
+
+  CheckEquals('<div name="grpStr10"><label id="lblStr10" for="Str10">Str 10</label><input type="text" id="Str10" name="Str10" size="10" maxlength="10" /></div>',S);
+
+  FData.Str10 := 'abcdef123456';
+
+  CheckEquals('abcdef1234',FData.Str10);
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpStr10">'#$D#$A
+   +'    <label id="lblStr10" for="Str10">Str 10</label>'#$D#$A
+   +'    <input type="text" id="Str10" name="Str10" size="10" maxlength="10" value="abcdef12"/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+  ,S);
 end;
 
 procedure TestTgWebUI.String50;
+var
+  S: String;
 begin
-  CheckEquals('<td>String 50</td><td><input type="text" id="String50" name="String50" value="{String50}" size="50" maxlength="50"/></td>',TgWebUIBase.ToString('String50',FData));
+  S := TgWebUIBase.ToString('String50',FData);
+//  CheckEquals('<td>String 50</td><td><input type="text" id="String50" name="String50" value="{String50}" size="50" maxlength="50"/></td>',S);
+  CheckEquals('<div name="grpString50"><label id="lblString50" for="String50">String 50</label><input type="text" id="String50" name="String50" size="50" maxlength="50" /></div>',S);
+
+  FData.String50 := 'abcd1234';
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpString50">'#$D#$A
+   +'    <label id="lblString50" for="String50">String 50</label>'#$D#$A
+   +'    <input type="text" id="String50" name="String50" size="50" maxlength="50" value="abcd1234"/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+   ,S);
+
 end;
 
 procedure TestTgWebUI.String_;
@@ -3040,38 +3311,64 @@ var
 begin
   S := TgWebUIBase.ToString('Text',FData);
 
-  CheckEquals('<label id="Text" for="Text">My Text</label><textarea id="Text" name="Text"/>',S);
+  CheckEquals('<div name="grpText"><label id="lblText" for="Text">My Text</label><textarea id="Text" name="Text"></textarea></div>',S);
 
   FData.Text := 'This is a Test';
 
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
 
-  CheckEquals('<html>'#$D#$A
-  +'  <label id="Text" for="Text">Text</label>'#$D#$A
-  +'  <textarea id="Text" name="Text">This is a Test</textarea>'#$D#$A
-  +'</html>'#$D#$A,S);
+  CheckEquals(
+   '<html>'#$D#$A
+  +'  <div name="grpText">'#$D#$A
+  +'    <label id="lblText" for="Text">My Text</label>'#$D#$A
+  +'    <textarea id="Text" name="Text">This is a Test</textarea>'#$D#$A
+  +'  </div>'#$D#$A
+  +'</html>'#$D#$A
+  ,S);
 end;
 
 procedure TestTgWebUI.gHTMLString;
 var
   S: String;
 begin
-  FData.Invisible := 'This is <b>BOLD</B>!';
+  FData.HTMLText:= 'This is <b>BOLD</B>!';
   S := TgWebUIBase.ToString('HTMLText',FData);
 
-  CheckEquals('<label id="HTMLText" for="HTMLText">HTML Text</label><input id="HTMLText" name="HTMLText" />',S);
+  CheckEquals('<div name="grpHTMLText"><label id="lblHTMLText" for="HTMLText">HTML Text</label><textarea id="HTMLText" name="HTMLText" class="HTMLEditor"></textarea></div>',S);
+
+
 
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
 
-  CheckEquals('<html>'#$D#$A
-  +'<label id="HTMLText" for="HTMLText">HTML Text</label>'#$D#$A
-  +'<textarea id="HTMLText" name="HTMLText" class="HTMLEditor">This is <b>BOLD</b>!</textarea>'
-  +'</html>'#$D#$A,S);
+  CheckEquals(
+  '<html>'#$D#$A
+ +'  <div name="grpHTMLText">'#$D#$A
+ +'    <label id="lblHTMLText" for="HTMLText">HTML Text</label>'#$D#$A
+ +'    <textarea id="HTMLText" name="HTMLText" class="HTMLEditor">This is &lt;b&gt;BOLD&lt;/B&gt;!</textarea>'#$D#$A
+ +'  </div>'#$D#$A
+ +'</html>'#$D#$A
+ ,S);
 end;
 
 procedure TestTgWebUI.Int;
+var
+  S: String;
 begin
-  CheckEquals('<td>Int</td><td><input type="text" id="Int" name="Int" value="{Int}" size="11" maxlength="11"/></td>',TgWebUIBase.ToString('Int',FData));
+  S := TgWebUIBase.ToString('Int',FData);
+  CheckEquals('<div name="grpInt"><label id="lblInt" for="Int">Int</label><input type="text" id="Int" name="Int" size="11" maxlength="11" /></div>',S);
+
+  FData.Int := 1234;
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals(
+   '<html>'#$D#$A
+  +'  <div name="grpInt">'#$D#$A
+  +'    <label id="lblInt" for="Int">Int</label>'#$D#$A
+  +'    <input type="text" id="Int" name="Int" size="11" maxlength="11" value="1234"/>'#$D#$A
+  +'  </div>'#$D#$A
+  +'</html>'#$D#$A
+  ,S);
 end;
 
 procedure TestTgWebUI.Invisible;
@@ -3085,8 +3382,7 @@ begin
 
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
 
-  CheckEquals('<html>'#$D#$A
-  +'</html>'#$D#$A,S);
+  CheckEquals('<html/>'#$D#$A,S);
 end;
 
 procedure TestTgWebUI.Invisible2;
@@ -3097,16 +3393,20 @@ begin
   Data2 := TMyClass2.Create;
   S := TgWebUIBase.ToString('Invisible',Data2);
 
-  CheckEquals('<label id="Invisible" for="Invisible">Visible Value</label><textarea id="Invisible" name="Invisible"/>',S);
+  CheckEquals('<div name="grpInvisible"><label id="lblInvisible" for="Invisible">Visible Value</label><textarea id="Invisible" name="Invisible"></textarea></div>',S);
 
   Data2.Invisible:= 'Now you see me';
 
   FDocument.ProcessText('<html>'+S+'</html>',S,Data2);
 
-  CheckEquals('<html>'#$D#$A
-  +'  <label id="Invisible" for="Invisible">Text</label>'#$D#$A
-  +'  <textarea id="Invisible" name="Invisible">Now you see me</textarea>'#$D#$A
-  +'</html>'#$D#$A,S);
+  CheckEquals(
+   '<html>'#$D#$A
+  +'  <div name="grpInvisible">'#$D#$A
+  +'    <label id="lblInvisible" for="Invisible">Visible Value</label>'#$D#$A
+  +'    <textarea id="Invisible" name="Invisible">Now you see me</textarea>'#$D#$A
+  +'  </div>'#$D#$A
+  +'</html>'#$D#$A
+  ,S);
 
   FreeAndNil(Data2);
 end;
@@ -3122,8 +3422,7 @@ begin
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
 
   CheckEquals('<html>'#$D#$A
-  +'  <label id="Text" for="Text">Text</label>'#$D#$A
-  +'  <textarea id="Text" name="Text">This is a Test</textarea>'#$D#$A
+  +'  <input type="submit" name="CheckIt" id="CheckIt" value="Check It" title="This is the help"/>'#$D#$A
   +'</html>'#$D#$A,S);
 
 end;
@@ -3139,28 +3438,63 @@ begin
   // Run Template evaulator on text
 end;
 
-procedure TestTgWebUI.ReadBool;
+procedure TestTgWebUI.NoYesBool;
 var
-  S: String;
+  S,AStr: String;
 begin
-  S := TgWebUIBase.ToString('Bool',FData);
-  CheckEquals('<label id="ReadBool" for="ReadBool">Read Bool</label><span id="ReadBool">{ReadBool}</span>',S);
-  FData.Bool := False;
-  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
-  CheckEquals(
-     '<html>'#$D#$A
-    +'  <label id="ReadBool" for="ReadBool">Bool</label>'#$D#$A
-    +'  <span id="ReadBool">False</span>'#$D#$A
-    +'</html>'#$D#$A,S);
-
+  AStr := TgWebUIBase.ToString('NoYesBool',FData);
+  CheckEquals('<div name="grpNoYesBool"><label id="lblNoYesBool" for="NoYesBool">No Yes Bool</label><span id="NoYesBool">{NoYesBool}</span></div>',AStr);
   FData.Bool := True;
-
-  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  FDocument.ProcessText('<html>'+AStr+'</html>',S,FData);
   CheckEquals(
-     '<html>'#$D#$A
-    +'  <label id="ReadBool" for="ReadBool">Bool</label>'#$D#$A
-    +'  <span id="ReadBool">True</span>'#$D#$A
-    +'</html>'#$D#$A,S);
+   '<html>'#$D#$A
+  +'  <div name="grpNoYesBool">'#$D#$A
+  +'    <label id="lblNoYesBool" for="NoYesBool">No Yes Bool</label>'#$D#$A
+  +'    <span id="NoYesBool">True</span>'#$D#$A
+  +'  </div>'#$D#$A
+  +'</html>'#$D#$A
+  ,S);
+end;
+
+procedure TestTgWebUI.OffOnBool;
+begin
+
+end;
+
+procedure TestTgWebUI.ReadBool_True;
+var
+  S,AStr: String;
+begin
+  AStr := TgWebUIBase.ToString('ReadBool',FData);
+  CheckEquals('<div name="grpReadBool"><label id="lblReadBool" for="ReadBool">Read Bool</label><span id="ReadBool">{ReadBool}</span></div>',AStr);
+  FData.Bool := True;
+  FDocument.ProcessText('<html>'+AStr+'</html>',S,FData);
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpReadBool">'#$D#$A
+   +'    <label id="lblReadBool" for="ReadBool">Read Bool</label>'#$D#$A
+   +'    <span id="ReadBool">True</span>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+    ,S);
+end;
+
+procedure TestTgWebUI.ReadBool_False;
+var
+  S,AStr: String;
+begin
+  AStr := TgWebUIBase.ToString('ReadBool',FData);
+  CheckEquals('<div name="grpReadBool"><label id="lblReadBool" for="ReadBool">Read Bool</label><span id="ReadBool">{ReadBool}</span></div>',AStr);
+  FData.Bool := False;
+  FDocument.ProcessText('<html>'+AStr+'</html>',S,FData);
+  CheckEquals(
+   '<html>'#$D#$A
+   +'  <div name="grpReadBool">'#$D#$A
+   +'    <label id="lblReadBool" for="ReadBool">Read Bool</label>'#$D#$A
+   +'    <span id="ReadBool">False</span>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+ ,S);
 end;
 
 procedure TestTgWebUI.SetUp;
@@ -3177,21 +3511,38 @@ var
 begin
   S := TgWebUIBase.ToString('SingleDisplay',FData);
   FData.SingleDisplay := 13412.345;
-  CheckEquals('<label id="SingleDisplay" for="SingleDisplay">Single Display</label><span id="SingleDisplay">{SingleDisplay}</span>',S);
+  CheckEquals('<div name="grpSingleDisplay"><label id="lblSingleDisplay" for="SingleDisplay">Single Display</label><span id="SingleDisplay">{SingleDisplay}</span></div>',S);
 
   FData.Text := 'This is a Test';
 
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
 
-  CheckEquals('<html>'#$D#$A
-  +'  <label id="SingleDisplay" for="SingleDisplay">Single Display</label>'#$D#$A
-  +'  <span id="SingleDisplay">13,412.34</span>'#$D#$A
-  +'</html>'#$D#$A,S);
+  CheckEquals(
+    '<html>'#$D#$A
+    +'  <div name="grpSingleDisplay">'#$D#$A
+    +'    <label id="lblSingleDisplay" for="SingleDisplay">Single Display</label>'#$D#$A
+    +'    <span id="SingleDisplay">13412.3447265625</span>'#$D#$A
+    +'  </div>'#$D#$A
+    +'</html>'#$D#$A
+  ,S);
 end;
 
 procedure TestTgWebUI.SingleValue;
+var
+  S: String;
 begin
-   CheckEquals('<td>Single Value</td><td><input type="text" id="SingleValue" name="SingleValue" value="{SingleValue}" size="18" maxlength="18"/></td>',TgWebUIBase.ToString('SingleValue',FData));
+  S := TgWebUIBase.ToString('SingleValue',FData);
+  CheckEquals('<div name="grpSingleValue"><label id="lblSingleValue" for="SingleValue">Single Value</label><input type="text" id="SingleValue" name="SingleValue" size="18" maxlength="18" /></div>',S);
+  FData.SingleValue:= 1.2;
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+  CheckEquals(
+   '<html>'#$D#$A
+  +'  <div name="grpSingleValue">'#$D#$A
+  +'    <label id="lblSingleValue" for="SingleValue">Single Value</label>'#$D#$A
+  +'    <input type="text" id="SingleValue" name="SingleValue" size="18" maxlength="18" value="1.20000004768372"/>'#$D#$A
+  +'  </div>'#$D#$A
+  +'</html>'#$D#$A
+   ,S);
 end;
 
 procedure TestTgWebUI.TearDown;
@@ -3199,6 +3550,28 @@ begin
   FreeAndNil(FDocument);
   FreeAndNil(FData);
   inherited;
+end;
+
+procedure TestTgWebUI.WebAddress;
+var
+  S: String;
+begin
+  S := TgWebUIBase.ToString('WebAddress',FData);
+
+  CheckEquals('<div name="grpWebAddress"><label id="lblWebAddress" for="WebAddress">Web Address</label><input id="WebAddress" name="WebAddress" type="text" /></div>',S);
+
+  FData.FileName := 'This is a Test';
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FData);
+
+  CheckEquals(
+    '<html>'#$D#$A
+   +'  <div name="grpWebAddress">'#$D#$A
+   +'    <label id="lblWebAddress" for="WebAddress">Web Address</label>'#$D#$A
+   +'    <input id="WebAddress" name="WebAddress" type="text" value=""/>'#$D#$A
+   +'  </div>'#$D#$A
+   +'</html>'#$D#$A
+  ,S);
 end;
 
 { TestTgWebUI.TMyClass }
