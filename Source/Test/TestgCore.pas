@@ -637,9 +637,88 @@ type
         [Caption('Visible Value')]
         property Invisible;
       end;
+      TMyModel = class(TgModel)
+      public
+        type
+          TCustomer = class(TgIDObject)
+          private
+            FFirstName: string;
+            FLastName: string;
+          published
+            [ListColumn(1)] // Default takes the first non object property
+            property FirstName: string read FFirstName write FFirstName;
+            [ListColumn(0)]
+            property LastName: string read FLastName write FLastName;
+          end;
+          TCustomer2 = class(TgIDObject)
+          private
+            FFirstName: string;
+            FLastName: string;
+          published
+            // Default takes the first non object property
+            property FirstName: string read FFirstName write FFirstName;
+            property LastName: string read FLastName write FLastName;
+          end;
+
+          TObjectProperty = class(TgIDObject)
+          private
+            FMyObject: TCustomer2;
+          published
+            property MyObject: TCustomer2 read FMyObject;
+          end;
+
+          TExhibitor = class;
+          TShow = class;
+          TExhibitorShow = class(TgIDObject)
+          private
+            FExhibitor: TExhibitor;
+            FShow: TShow;
+          published
+            property Exhibitor: TExhibitor read FExhibitor;
+            property Show: TShow read FShow;
+          end;
+
+          TShow = class(TgIDObject)
+          private
+            FExhibitors: TgIdentityList<TExhibitorShow>;
+            FName: string;
+          published
+            property Name: string read FName write FName;
+            property Exhibitors: TgIdentityList<TExhibitorShow> read FExhibitors;
+          end;
+
+          TExhibitor = class(TgIDObject)
+          private
+            FName: string;
+            FShows: TgIdentityList<TExhibitorShow>;
+          published
+            property Name: string read FName write FName;
+            property Shows: TgIdentityList<TExhibitorShow> read FShows;
+          end;
+
+
+      private
+        FCustomer: TCustomer;
+        FList1: TgList<TCustomer>;
+        FList2: TgList<TCustomer>;
+        FList3: TgList<TCustomer2>;
+        FList4: TgList<TObjectProperty>;
+        FShows: TgIdentityList<TShow>;
+        FExhibitors: TgIdentityList<TExhibitor>;
+        FName: String;
+      published
+        [Columns('LastName,FirstName')]
+        property List1: TgList<TCustomer> read FList1;
+        property List2: TgList<TCustomer> read FList2;
+        property List3: TgList<TCustomer2> read FList3;
+        property List4: TgList<TObjectProperty> read FList4;
+        property Customer: TCustomer read FCustomer;
+        property Name: String read FName write FName;
+      end;
 
   private
     FData: TMyClass;
+    FDataClass: TgBaseClass;
     FDocument: TgDocument;
   published
     procedure Bool;
@@ -669,6 +748,7 @@ type
     procedure Invisible2;
     procedure FileName;
     procedure WebAddress;
+    procedure Model1;
   end;
 
 implementation
@@ -2991,7 +3071,7 @@ procedure TestTgWebUI.AnsiChar;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('AnsiCharValue',FData);
+  S := TgWebUIBase.ToString('AnsiCharValue',FDataClass);
   CheckEquals('<div name="grpAnsiCharValue"><label id="lblAnsiCharValue" for="AnsiCharValue">Ansi Char Value</label><input type="text" id="AnsiCharValue" name="AnsiCharValue" size="1" maxlength="1" /></div>',S);
   FData.AnsiCharValue := 'F';
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
@@ -3009,7 +3089,7 @@ var
   S: String;
 begin
   // Generate Template
-  S := TgWebUIBase.ToString('Bool',FData);
+  S := TgWebUIBase.ToString('Bool',FDataClass);
   CheckEquals('<div name="grpBool"><label id="lblBool" for="Bool">Bool</label><input type="checkbox" id="Bool" name="Bool" value="true" /></div>',S);
 
   // Run Template evaulator on text
@@ -3030,7 +3110,7 @@ procedure TestTgWebUI.Char;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('CharValue',FData);
+  S := TgWebUIBase.ToString('CharValue',FDataClass);
   CheckEquals('<div name="grpCharValue"><label id="lblCharValue" for="CharValue">Char Value</label><input type="text" id="CharValue" name="CharValue" size="1" maxlength="1" /></div>',S);
   FData.CharValue := 'Q';
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
@@ -3048,7 +3128,7 @@ procedure TestTgWebUI.CheckBox_true;
 var
   AStr,S: String;
 begin
-  AStr := TgWebUIBase.ToString('Bool',FData);
+  AStr := TgWebUIBase.ToString('Bool',FDataClass);
 
   CheckEquals('<div name="grpBool"><label id="lblBool" for="Bool">Bool</label><input type="checkbox" id="Bool" name="Bool" value="true" /></div>',AStr);
 
@@ -3072,7 +3152,7 @@ procedure TestTgWebUI.CurrencyValue;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('CurrencyValue',FData);
+  S := TgWebUIBase.ToString('CurrencyValue',FDataClass);
 
   CheckEquals('<div name="grpCurrencyValue"><label id="lblCurrencyValue" for="CurrencyValue">Currency Value</label><input type="text" id="CurrencyValue" name="CurrencyValue" size="26" maxlength="26" /></div>',S);
   FData.CurrencyValue:= 19.95;
@@ -3091,7 +3171,7 @@ procedure TestTgWebUI.DoubleValue;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('DoubleValue',FData);
+  S := TgWebUIBase.ToString('DoubleValue',FDataClass);
   CheckEquals('<div name="grpDoubleValue"><label id="lblDoubleValue" for="DoubleValue">Double Value</label><input type="text" id="DoubleValue" name="DoubleValue" size="22" maxlength="22" /></div>',S);
   FData.DoubleValue:= 1.2;
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
@@ -3109,7 +3189,7 @@ procedure TestTgWebUI.Enum1;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('Enum1',FData);
+  S := TgWebUIBase.ToString('Enum1',FDataClass);
   CheckEquals(
    '<div name="grpEnum1">'
   +'<label id="lblEnum1" for="Enum1">Enum 1</label><input type="radio" name="Enum1" id="Enum1_h" value="h" title="(none)"/>'
@@ -3143,7 +3223,7 @@ procedure TestTgWebUI.Enum2;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('Enum2',FData);
+  S := TgWebUIBase.ToString('Enum2',FDataClass);
   CheckEquals(
     '<div name="grpEnum2">'
    +'<label id="lblEnum2" for="Enum2">Enum 2</label>'
@@ -3184,7 +3264,7 @@ procedure TestTgWebUI.EnumSet1;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('EnumSet1',FData);
+  S := TgWebUIBase.ToString('EnumSet1',FDataClass);
   CheckEquals(
     '<div name="grpEnumSet1">'
     +'<label id="lblEnumSet1" for="EnumSet1">Enum Set 1</label><input type="checkbox" name="EnumSet1" id="EnumSet1_h" value="h" />'
@@ -3221,7 +3301,7 @@ procedure TestTgWebUI.ExtendedValue;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('ExtendedValue',FData);
+  S := TgWebUIBase.ToString('ExtendedValue',FDataClass);
 
   CheckEquals('<div name="grpExtendedValue"><label id="lblExtendedValue" for="ExtendedValue">Extended Value</label><input type="text" id="ExtendedValue" name="ExtendedValue" size="26" maxlength="26" /></div>',S);
   FData.ExtendedValue := 1.3;
@@ -3240,7 +3320,7 @@ procedure TestTgWebUI.FileName;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('FileName',FData);
+  S := TgWebUIBase.ToString('FileName',FDataClass);
 
   CheckEquals('<div name="grpFileName"><label id="lblFileName" for="FileName">File Name</label><input id="FileName" name="FileName" type="file" /></div>',S);
 
@@ -3261,7 +3341,7 @@ end;
 procedure TestTgWebUI.Str10;
 var S: String;
 begin
-  S := TgWebUIBase.ToString('Str10',FData);
+  S := TgWebUIBase.ToString('Str10',FDataClass);
 
   CheckEquals('<div name="grpStr10"><label id="lblStr10" for="Str10">Str 10</label><input type="text" id="Str10" name="Str10" size="10" maxlength="10" /></div>',S);
 
@@ -3285,7 +3365,7 @@ procedure TestTgWebUI.String50;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('String50',FData);
+  S := TgWebUIBase.ToString('String50',FDataClass);
 //  CheckEquals('<td>String 50</td><td><input type="text" id="String50" name="String50" value="{String50}" size="50" maxlength="50"/></td>',S);
   CheckEquals('<div name="grpString50"><label id="lblString50" for="String50">String 50</label><input type="text" id="String50" name="String50" size="50" maxlength="50" /></div>',S);
 
@@ -3309,7 +3389,7 @@ procedure TestTgWebUI.String_;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('Text',FData);
+  S := TgWebUIBase.ToString('Text',FDataClass);
 
   CheckEquals('<div name="grpText"><label id="lblText" for="Text">My Text</label><textarea id="Text" name="Text"></textarea></div>',S);
 
@@ -3332,7 +3412,7 @@ var
   S: String;
 begin
   FData.HTMLText:= 'This is <b>BOLD</B>!';
-  S := TgWebUIBase.ToString('HTMLText',FData);
+  S := TgWebUIBase.ToString('HTMLText',FDataClass);
 
   CheckEquals('<div name="grpHTMLText"><label id="lblHTMLText" for="HTMLText">HTML Text</label><textarea id="HTMLText" name="HTMLText" class="HTMLEditor"></textarea></div>',S);
 
@@ -3354,7 +3434,7 @@ procedure TestTgWebUI.Int;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('Int',FData);
+  S := TgWebUIBase.ToString('Int',FDataClass);
   CheckEquals('<div name="grpInt"><label id="lblInt" for="Int">Int</label><input type="text" id="Int" name="Int" size="11" maxlength="11" /></div>',S);
 
   FData.Int := 1234;
@@ -3376,7 +3456,7 @@ var
   S: String;
 begin
   FData.Invisible := 'Now you don''t';
-  S := TgWebUIBase.ToString('Invisible',FData);
+  S := TgWebUIBase.ToString('Invisible',FDataClass);
 
   CheckEquals('',S);
 
@@ -3391,7 +3471,7 @@ var
   Data2: TMyClass2;
 begin
   Data2 := TMyClass2.Create;
-  S := TgWebUIBase.ToString('Invisible',Data2);
+  S := TgWebUIBase.ToString('Invisible',FDataClass);
 
   CheckEquals('<div name="grpInvisible"><label id="lblInvisible" for="Invisible">Visible Value</label><textarea id="Invisible" name="Invisible"></textarea></div>',S);
 
@@ -3415,16 +3495,131 @@ procedure TestTgWebUI.Method;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('CheckIt',FData);
+  S := TgWebUIBase.ToString('CheckIt',FDataClass);
+//  <input type="hidden" name="controller.actions.checkit" value="CheckIt=,save=,model.controller.response.redirect=checkitlist.html" />
+//  <input type="submit" name="controller.action" value="CheckIt" />
 
-  CheckEquals('<input type="submit" name="CheckIt" id="CheckIt" value="Check It" title="This is the help" />',S);
+  CheckEquals('<input type="submit" value="CheckIt" title="This is the help" />',S);
 
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
 
   CheckEquals('<html>'#$D#$A
-  +'  <input type="submit" name="CheckIt" id="CheckIt" value="Check It" title="This is the help"/>'#$D#$A
+  +'<input type="hidden" name="controller.actions.checkit" value="CheckIt=,save=,model.controller.response.redirect=checkitlist.html" />'
+  +'<input type="submit" name="controller.action" value="CheckIt" />'
+//  +'  <input type="submit" name="CheckIt" id="CheckIt" value="Check It" title="This is the help"/>'#$D#$A
   +'</html>'#$D#$A,S);
 
+end;
+
+procedure TestTgWebUI.Model1;
+var
+  Model: TMyModel;
+  RTTIProperty: TRttiProperty;
+  Text: String;
+begin
+  Model := TMyModel.Create;
+  try
+    Model.Name := 'Hello world!';
+    Model.Customer.FirstName := 'David';
+    Model.Customer.LastName := 'Harper';
+    Model.List1.Add;
+    Model.List1.Current.FirstName := 'Jerry';
+    Model.List1.Current.LastName := 'Devorak';
+    Model.List1.Add;
+    Model.List1.Current.FirstName := 'Leo';
+    Model.List1.Current.LastName := 'Laport';
+//    Text := '<gForm/>';
+//    Text := TgDocument._ProcessText(Text,Model);
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'',False); // True generates sub structure support files
+(*
+    CheckEquals(
+     '<ul id="mnuMyModel">' // friendly name of the model
+    +'<li id="List1"><a href="List1List.html">List1</a></li>'
+    +'<li id="List2"><a href="List2List.html">List2</a></li>'
+    +'<li id="Customer"><a href="CustomerForm.html">Customer</a></li>'
+    +'</ul>'
+      ,Text);
+*)
+    CheckEquals(
+     '<ul id="mnuModel">'
+      +'<li id="List1"><a href="List1List.html">List1</a></li>'
+      +'<li id="List2"><a href="List2List.html">List2</a></li>'
+      +'<li id="List3"><a href="List3List.html">List3</a></li>'
+      +'<li id="List4"><a href="List4List.html">List4</a></li>'
+      +'<li id="Customer"><a href="CustomerForm.html">Customer</a></li>'
+    +'</ul>'
+      ,Text);
+
+    // List
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List1',False); // True generates sub structure support files
+    CheckEquals(
+       '<table id="lstList1">'
+        +'<th>'
+          +'<td>First Name</td>'
+          +'<td>Last Name</td>'
+        +'</th>'
+        +'<tr foreach="List1">'
+          +'<td><a href="List1-estTgWebUI.TMyModel.TCustomerform.html?List1.currentkey={ID}">{FirstName}</a></td>'
+          +'<td><a href="List1-estTgWebUI.TMyModel.TCustomerform.html?List1.currentkey={ID}">{LastName}</a></td>'
+        +'</tr>'
+      +'</table>'
+      ,Text);
+
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List2',False); // True generates sub structure support files
+    CheckEquals(
+     '<table id="lstList2">'
+      +'<th>'
+        +'<td>First Name</td>'
+        +'<td>Last Name</td>'
+      +'</th>'
+      +'<tr foreach="List2">'
+        +'<td><a href="list2-customerform.html?list2.currentkey={ID}">{FistName}</a></td>'
+        +'<td><a href="list2-customerform.html?list2.currentkey={ID}">{LastName}</a></td>'
+      +'</tr>'
+    +'</table>'
+      ,Text);
+
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List3',False); // True generates sub structure support files
+    CheckEquals(
+     '<table id="lstList1">'
+      +'<th>'
+        +'<td>First Name</td>'
+        +'<td>Last Name</td>'
+      +'</th>'
+      +'<tr foreach="List1">'
+        +'<td><a href="list1-customerform.html?list1.currentkey={ID}">{LastName}</a></td>'
+        +'<td><a href="list1-customerform.html?list1.currentkey={ID}">{FistName}</a></td>'
+      +'</tr>'
+    +'</table>'
+      ,Text);
+
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List4',False); // True generates sub structure support files
+    CheckEquals(
+     '<table id="lstList4">'
+      +'<th>'
+        +'<td>First Name</td>'
+      +'</th>'
+      +'<tr foreach="List4">'
+        +'<td><a href="list1-customerform.html?list1.currentkey={ID}">{FistName}</a></td>'
+      +'</tr>'
+    +'</table>'
+      ,Text);
+
+    // Customer Property
+
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'Customer',False);
+    CheckEquals(
+     '<form object="Customer">'
+    +'<input name="FirstName" id="FirstName" />'
+    +'<input name="LastName" id="LastName" />'
+    +'<input type="Submit" value="Cancel />'
+    +'<input condition="CanDelete" type="Submit" value="Delete" />'
+    +'<input type="Submit" value="Save" />'
+    +'</form>'
+      ,Text);
+  finally
+    FreeAndNil(Model);
+  end;
 end;
 
 procedure TestTgWebUI.NotVisibleBool;
@@ -3432,7 +3627,7 @@ var
   S: String;
 begin
   // Generate Template
-  S := TgWebUIBase.ToString('NotVisibleBool',FData);
+  S := TgWebUIBase.ToString('NotVisibleBool',FDataClass);
   CheckEquals('',S);
 
   // Run Template evaulator on text
@@ -3442,7 +3637,7 @@ procedure TestTgWebUI.NoYesBool;
 var
   S,AStr: String;
 begin
-  AStr := TgWebUIBase.ToString('NoYesBool',FData);
+  AStr := TgWebUIBase.ToString('NoYesBool',FDataClass);
   CheckEquals('<div name="grpNoYesBool"><label id="lblNoYesBool" for="NoYesBool">No Yes Bool</label><span id="NoYesBool">{NoYesBool}</span></div>',AStr);
   FData.Bool := True;
   FDocument.ProcessText('<html>'+AStr+'</html>',S,FData);
@@ -3465,7 +3660,7 @@ procedure TestTgWebUI.ReadBool_True;
 var
   S,AStr: String;
 begin
-  AStr := TgWebUIBase.ToString('ReadBool',FData);
+  AStr := TgWebUIBase.ToString('ReadBool',FDataClass);
   CheckEquals('<div name="grpReadBool"><label id="lblReadBool" for="ReadBool">Read Bool</label><span id="ReadBool">{ReadBool}</span></div>',AStr);
   FData.Bool := True;
   FDocument.ProcessText('<html>'+AStr+'</html>',S,FData);
@@ -3483,7 +3678,7 @@ procedure TestTgWebUI.ReadBool_False;
 var
   S,AStr: String;
 begin
-  AStr := TgWebUIBase.ToString('ReadBool',FData);
+  AStr := TgWebUIBase.ToString('ReadBool',FDataClass);
   CheckEquals('<div name="grpReadBool"><label id="lblReadBool" for="ReadBool">Read Bool</label><span id="ReadBool">{ReadBool}</span></div>',AStr);
   FData.Bool := False;
   FDocument.ProcessText('<html>'+AStr+'</html>',S,FData);
@@ -3501,6 +3696,7 @@ procedure TestTgWebUI.SetUp;
 begin
   inherited;
   FData := TMyClass.Create;
+  FDataClass := TMyClass;
   FDocument := TgDocument.Create(FData);
 
 end;
@@ -3509,9 +3705,9 @@ procedure TestTgWebUI.SingleDisplay;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('SingleDisplay',FData);
+  S := TgWebUIBase.ToString('SingleDisplay',FDataClass);
   FData.SingleDisplay := 13412.345;
-  CheckEquals('<div name="grpSingleDisplay"><label id="lblSingleDisplay" for="SingleDisplay">Single Display</label><span id="SingleDisplay">{SingleDisplay}</span></div>',S);
+  CheckEquals('<div name="grpSingleDisplay"><label id="lblSingleDisplay" for="SingleDisplay">Single Display</label><span id="SingleDisplay">{FormatFloat('',.00'',SingleDisplay)}</span></div>',S);
 
   FData.Text := 'This is a Test';
 
@@ -3531,7 +3727,7 @@ procedure TestTgWebUI.SingleValue;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('SingleValue',FData);
+  S := TgWebUIBase.ToString('SingleValue',FDataClass);
   CheckEquals('<div name="grpSingleValue"><label id="lblSingleValue" for="SingleValue">Single Value</label><input type="text" id="SingleValue" name="SingleValue" size="18" maxlength="18" /></div>',S);
   FData.SingleValue:= 1.2;
   FDocument.ProcessText('<html>'+S+'</html>',S,FData);
@@ -3556,7 +3752,7 @@ procedure TestTgWebUI.WebAddress;
 var
   S: String;
 begin
-  S := TgWebUIBase.ToString('WebAddress',FData);
+  S := TgWebUIBase.ToString('WebAddress',FDataClass);
 
   CheckEquals('<div name="grpWebAddress"><label id="lblWebAddress" for="WebAddress">Web Address</label><input id="WebAddress" name="WebAddress" type="text" /></div>',S);
 
@@ -3606,4 +3802,16 @@ initialization
   RegisterRuntimeClasses([TFirebirdObject]);
 
 end.
+
+(*
+    CheckEquals(
+     '<a href="CustomerForm.html">New</a>'
+    +'<label>First Name</label><label>Last Name</label>'
+    +'<ul object="">' // if it has object for each
+    +'<li ><a href="CustomerForm.html?id={ID}">{FirstName} {LastName}</a></li>'
+    +'</ul>'
+      ,Text);
+*)
+
+
 

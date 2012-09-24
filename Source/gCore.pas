@@ -74,6 +74,12 @@ const
     constructor Create(const AValue: String);
   end;
 
+  Columns = class(TgPropertyAttribute)
+  public
+    Names: TArray<String>;
+    constructor Create(const PropertyNames: String);
+  end;
+
   DisplayOnly = class(TgPropertyAttribute)
   end;
 
@@ -295,12 +301,14 @@ const
 
   [HTMLText]
   TgHTMLString = Type String;
+
   [LocalFileName]
   TgFileName = Type String;
 
   TgImage = type string;
 
   TgEmailAddress = type string;
+
   [WebAddress]
   TgWebAddress = type string;
 
@@ -375,7 +383,10 @@ const
       TPathValue = record
         Path: String;
         Value: Variant;
+        RTTIProperty: TRttiProperty;
         class operator Implicit(const Value: TPathValue): Variant;
+        function IsClass(AClass: TClass): Boolean; overload;
+        function IsClass(const AClasses: array of TClass): Integer; overload;
         function Empty: Boolean;
         function IsDefault(ARttiInstanceProperty: TRttiInstanceProperty): Boolean;
         function Text: String;
@@ -478,10 +489,10 @@ const
     ///	</remarks>
     function AsPointer: Pointer; inline;
     class function Captionize(const AValue: String): String; virtual;
-    function DoGetMembers(const APath: String; out AValue: TRttiMember): boolean;
+    class function DoGetMembers(const APath: String; out AValue: TRttiMember): boolean;
         virtual;
-    function DoGetMethods(const APath: String; out AValue: TRttiMethod): Boolean; virtual;
-    function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean; virtual;
+    class function DoGetMethods(const APath: String; out AValue: TRttiMethod): Boolean; virtual;
+    class function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean; virtual;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; overload; virtual;
     function DoGetValues(ARttiProperty: TRttiProperty; out AValue: Variant; const
         ATail: String = ''): Boolean; overload;
@@ -739,7 +750,7 @@ const
  ///  <seealso cref="gCore|TgList{T}" />
   TgList = class(TgBase)
     Type
-
+      TClassOf = class of TgList;
       TgOrderByItem = class(TObject)
       public
         type
@@ -814,6 +825,7 @@ const
       /// <summary> This is the general exception for a <see cref="TgList" />
       /// </summary>
       EgList = class(Exception);
+    class function _ItemClass: TgBaseClass; virtual;
     constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
     procedure Assign(ASource: TgBase); override;
@@ -921,6 +933,7 @@ const
     function GetEnumerator: TgEnumerator;
     class function AddAttributes(ARTTIProperty: TRttiProperty): System.TArray<TSystemCustomAttribute>; override;
     constructor Create(AOwner: TgBase = nil); override;
+    class function _ItemClass: TgBaseClass; override;
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   Published
     property Current: T read GetCurrent;
@@ -1078,6 +1091,7 @@ const
     [NotVisible]
     function Load: Boolean; virtual;
     procedure Save; virtual;
+    [NotVisible]
     property ID: Variant read GetID write SetID;
     [NotVisible]
     property CanDelete: Boolean read GetCanDelete;
@@ -1110,6 +1124,7 @@ const
     ///	  class in the Persistance Manager so the classes properties can be
     ///	  saved and retrived
     ///	</summary>
+    [NotVisible]
     property ID: T read GetID write SetID;
   end;
 
@@ -2337,13 +2352,12 @@ begin
   end;
 end;
 
-function TgBase.DoGetMembers(const APath: String; out AValue: TRttiMember):
-    boolean;
+class function TgBase.DoGetMembers(const APath: String; out AValue: TRttiMember): boolean;
 begin
   Result := DoGetProperties(APath,TRttiProperty(AValue)) or DoGetMethods(APath,TRttiMethod(AValue));
 end;
 
-function TgBase.DoGetMethods(const APath: String; out AValue: TRttiMethod):
+class function TgBase.DoGetMethods(const APath: String; out AValue: TRttiMethod):
     Boolean;
 begin
   AValue := G.MethodByName(Self,APath);
@@ -2386,7 +2400,7 @@ Begin
   end;
 End;
 
-function TgBase.DoGetProperties(const APath: String; out ARTTIProperty:
+class function TgBase.DoGetProperties(const APath: String; out ARTTIProperty:
     TRTTIProperty): Boolean;
 Var
   Head : String;
@@ -2435,7 +2449,8 @@ begin
       Result := ObjectProperty.DoGetValues(ATail, AValue);
     End
     Else
-      raise EgValue.CreateFmt('Can''t return %s.%s, because it''s an object property', [ClassName, ARTTIProperty.Name]);
+      Result := False;
+//      raise EgValue.CreateFmt('Can''t return %s.%s, because it''s an object property', [ClassName, ARTTIProperty.Name]);
   end
   Else if ARTTIProperty.PropertyType.IsRecord Then
   Begin
@@ -2678,7 +2693,9 @@ function TgBase.GetPathValues(AIndex: Integer): TPathValue;
 begin
   Result.Path := GetPaths(AIndex);
   if not DoGetValues(Result.Path,Result.Value) then
-    Result.Value := varNull;
+    Result.Value := varError;
+  if not DoGetProperties(Result.Path,Result.RTTIProperty) then
+    Result.RTTIProperty := nil;
 end;
 
 function TgBase.GetModel: TgModel;
@@ -3414,7 +3431,8 @@ var
   Key : String;
 begin
   Key := AClass.ClassName + '.' + UpperCase(AName);
-  FPropertyByName.TryGetValue(Key, Result);
+  if not FPropertyByName.TryGetValue(Key, Result) then
+    Result := nil;
 end;
 
 class function G.PropertyByName(ABase: TgBase; const AName: String): TRTTIProperty;
@@ -4310,6 +4328,11 @@ Begin
   Inherited SetItems(AIndex, AValue);
 End;
 
+class function TgList<T>._ItemClass: TgBaseClass;
+begin
+  Result := T;
+end;
+
 function TgList<T>.GetEnumerator: TgEnumerator;
 Begin
   Result.Init(Self);
@@ -4641,6 +4664,11 @@ begin
     end;
     IsOrdered := True;
   End;
+end;
+
+class function TgList._ItemClass: TgBaseClass;
+begin
+  Result := nil
 end;
 
 { TgList.TgEnumerator }
@@ -8410,6 +8438,22 @@ begin
   Result := varIsEmpty(Value) or varIsNull(Value) or varIsClear(Value) or (varIsStr(Value) and (Value = ''));
 end;
 
+function TgBase.TPathValue.IsClass(AClass: TClass): Boolean;
+begin
+  Result := Assigned(RTTIProperty) and RTTIProperty.PropertyType.IsInstance and RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(AClass)
+
+
+end;
+
+function TgBase.TPathValue.IsClass(const AClasses: array of TClass): Integer;
+var Index: Integer;
+begin
+  for Index := Low(AClasses) to High(AClasses) do
+    if IsClass(AClasses[Index]) then
+      exit(Index);
+  Result := -1;
+end;
+
 function TgBase.TPathValue.IsDefault(ARttiInstanceProperty: TRttiInstanceProperty): Boolean;
 begin
   Result := False;
@@ -8523,6 +8567,18 @@ end;
 constructor WebAddress.Create;
 begin
   inherited Create('type','text');
+end;
+
+{ Columns }
+
+constructor Columns.Create(const PropertyNames: array of String);
+var Index: Integer;
+begin
+  Split
+  SetLength(Names,Length(PropertyNames));
+  for Index := Low(PropertyNames) to High(PropertyNames) do
+    Names[Index] := PropertyNames[Index];
+
 end;
 
 Initialization
