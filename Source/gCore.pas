@@ -6,6 +6,7 @@ Uses
 
   Generics.Collections,
   Generics.Defaults,
+  System.Types,
   System.RTTI,
   System.SysUtils,
   Data.DBXJSON,
@@ -76,7 +77,7 @@ const
 
   Columns = class(TgPropertyAttribute)
   public
-    Names: TArray<String>;
+    Names: TStringDynArray;
     constructor Create(const PropertyNames: String);
   end;
 
@@ -219,6 +220,12 @@ const
   ///	  rendered
   ///	</summary>
   NotVisible = class(TCustomAttribute)
+  end;
+
+  Condition = class(TCustomAttribute)
+  public
+    Value: String;
+    constructor Create(const AValue: String);
   end;
 
 { TODO -oJim -cDefinations : Needs more work }
@@ -431,7 +438,6 @@ const
     /// its behavior.
     /// </summary>
     procedure AutoCreate; virtual;
-    class function RTTIValueProperties: TArray<TRTTIProperty>; virtual;
     function GetPathCount: Integer; virtual;
     function GetPaths(AIndex: Integer): String; virtual;
     function GetPathValues(AIndex: Integer): TPathValue;
@@ -498,6 +504,7 @@ const
         ATail: String = ''): Boolean; overload;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
     function GetPathIndexOf(const APath: String): Integer; virtual;
+    class function RTTIValueProperties: TArray<TRTTIProperty>; virtual;
     //1 This gets the display title for a property
     property Captions[const AName: String]: String read GetCaptions;
     property Helps[const AName: String]: String read GetHelps;
@@ -1087,16 +1094,18 @@ const
     property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
     property IsSaving: Boolean read GetIsSaving write SetIsSaving;
   published
-    procedure Delete; virtual;
-    [NotVisible]
-    function Load: Boolean; virtual;
-    procedure Save; virtual;
     [NotVisible]
     property ID: Variant read GetID write SetID;
     [NotVisible]
     property CanDelete: Boolean read GetCanDelete;
     [NotVisible]
     property CanSave: Boolean read GetCanSave;
+    [Condition('CanDelete')]
+    procedure Delete; virtual;
+    [NotVisible]
+    function Load: Boolean; virtual;
+    [Condition('CanSave')]
+    procedure Save; virtual;
     [NotAutoCreate] [NotComposite] [NotSerializable] [NotAssignable] [NotVisible]
     property OriginalValues: TgBase read GetOriginalValues;
   end;
@@ -1961,8 +1970,7 @@ Uses
   XML.XMLDOM,
   Math,
   gExpressionEvaluator,
-  StrUtils,
-  System.Types,
+  System.StrUtils,
   Windows,
   Data.DBXCommon,
   ibDatabase,
@@ -8571,14 +8579,17 @@ end;
 
 { Columns }
 
-constructor Columns.Create(const PropertyNames: array of String);
-var Index: Integer;
+constructor Columns.Create(const PropertyNames: String);
 begin
-  Split
-  SetLength(Names,Length(PropertyNames));
-  for Index := Low(PropertyNames) to High(PropertyNames) do
-    Names[Index] := PropertyNames[Index];
+  Names := SplitString(PropertyNames,',');
+end;
 
+{ Condition }
+
+constructor Condition.Create(const AValue: String);
+begin
+  inherited Create;
+  Value := AValue;
 end;
 
 Initialization

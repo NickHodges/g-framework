@@ -3554,13 +3554,13 @@ begin
     Text := TgWebUIBase.CreateUITemplate(TMyModel,'List1',False); // True generates sub structure support files
     CheckEquals(
        '<table id="lstList1">'
-        +'<th>'
-          +'<td>First Name</td>'
-          +'<td>Last Name</td>'
-        +'</th>'
+        +'<tr>'
+          +'<th>Last Name</th>'
+          +'<th>First Name</th>'
+        +'</tr>'
         +'<tr foreach="List1">'
-          +'<td><a href="List1-estTgWebUI.TMyModel.TCustomerform.html?List1.currentkey={ID}">{FirstName}</a></td>'
           +'<td><a href="List1-estTgWebUI.TMyModel.TCustomerform.html?List1.currentkey={ID}">{LastName}</a></td>'
+          +'<td><a href="List1-estTgWebUI.TMyModel.TCustomerform.html?List1.currentkey={ID}">{FirstName}</a></td>'
         +'</tr>'
       +'</table>'
       ,Text);
@@ -3568,27 +3568,27 @@ begin
     Text := TgWebUIBase.CreateUITemplate(TMyModel,'List2',False); // True generates sub structure support files
     CheckEquals(
      '<table id="lstList2">'
-      +'<th>'
-        +'<td>First Name</td>'
-        +'<td>Last Name</td>'
-      +'</th>'
+      +'<tr>'
+        +'<th>First Name</th>'
+        +'<th>Last Name</th>'
+      +'</tr>'
       +'<tr foreach="List2">'
-        +'<td><a href="list2-customerform.html?list2.currentkey={ID}">{FistName}</a></td>'
-        +'<td><a href="list2-customerform.html?list2.currentkey={ID}">{LastName}</a></td>'
+        +'<td><a href="List2-estTgWebUI.TMyModel.TCustomerform.html?List2.currentkey={ID}">{FirstName}</a></td>'
+        +'<td><a href="List2-estTgWebUI.TMyModel.TCustomerform.html?List2.currentkey={ID}">{LastName}</a></td>'
       +'</tr>'
     +'</table>'
       ,Text);
 
     Text := TgWebUIBase.CreateUITemplate(TMyModel,'List3',False); // True generates sub structure support files
     CheckEquals(
-     '<table id="lstList1">'
-      +'<th>'
-        +'<td>First Name</td>'
-        +'<td>Last Name</td>'
-      +'</th>'
-      +'<tr foreach="List1">'
-        +'<td><a href="list1-customerform.html?list1.currentkey={ID}">{LastName}</a></td>'
-        +'<td><a href="list1-customerform.html?list1.currentkey={ID}">{FistName}</a></td>'
+     '<table id="lstList3">'
+      +'<tr>'
+        +'<th>First Name</th>'
+        +'<th>Last Name</th>'
+      +'</tr>'
+      +'<tr foreach="List3">'
+        +'<td><a href="List3-estTgWebUI.TMyModel.TCustomer2form.html?List3.currentkey={ID}">{FirstName}</a></td>'
+        +'<td><a href="List3-estTgWebUI.TMyModel.TCustomer2form.html?List3.currentkey={ID}">{LastName}</a></td>'
       +'</tr>'
     +'</table>'
       ,Text);
@@ -3596,11 +3596,11 @@ begin
     Text := TgWebUIBase.CreateUITemplate(TMyModel,'List4',False); // True generates sub structure support files
     CheckEquals(
      '<table id="lstList4">'
-      +'<th>'
-        +'<td>First Name</td>'
-      +'</th>'
+      +'<tr>'
+        +'<th>My Object</th>'
+      +'</tr>'
       +'<tr foreach="List4">'
-        +'<td><a href="list1-customerform.html?list1.currentkey={ID}">{FistName}</a></td>'
+        +'<td><a href="List4-estTgWebUI.TMyModel.TObjectPropertyform.html?List4.currentkey={ID}">{MyObject}</a></td>'
       +'</tr>'
     +'</table>'
       ,Text);
@@ -3609,14 +3609,13 @@ begin
 
     Text := TgWebUIBase.CreateUITemplate(TMyModel,'Customer',False);
     CheckEquals(
-     '<form object="Customer">'
-    +'<input name="FirstName" id="FirstName" />'
-    +'<input name="LastName" id="LastName" />'
-    +'<input type="Submit" value="Cancel />'
-    +'<input condition="CanDelete" type="Submit" value="Delete" />'
-    +'<input type="Submit" value="Save" />'
-    +'</form>'
-      ,Text);
+      '<form object="Customer">'
+       +'<div name="grpFirstName"><label id="lblFirstName" for="FirstName">First Name</label><textarea id="FirstName" name="FirstName"></textarea></div>'
+       +'<div name="grpLastName"><label id="lblLastName" for="LastName">Last Name</label><textarea id="LastName" name="LastName"></textarea></div>'
+       +'<input type="submit" value="Delete" condition="CanDelete" />'
+       +'<input type="submit" value="Save" condition="CanSave" />'
+       +'</form>'
+       ,Text);
   finally
     FreeAndNil(Model);
   end;
