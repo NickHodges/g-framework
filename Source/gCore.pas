@@ -6,6 +6,7 @@ Uses
 
   Generics.Collections,
   Generics.Defaults,
+  System.TypInfo,
   System.Types,
   System.RTTI,
   System.SysUtils,
@@ -222,11 +223,6 @@ const
   NotVisible = class(TCustomAttribute)
   end;
 
-  Condition = class(TCustomAttribute)
-  public
-    Value: String;
-    constructor Create(const AValue: String);
-  end;
 
 { TODO -oJim -cDefinations : Needs more work }
   ///	<summary>
@@ -281,6 +277,7 @@ const
   end;
 
   THTMLAttributes = TArray<HTMLAttribute>;
+
   HTMLText = class(HTMLAttribute)
   public
     constructor Create;
@@ -372,6 +369,19 @@ const
     function GetCaptions(const AName: String): String; overload;
     function GetHelps(const AName: String): String; overload;
   protected
+    type
+      TState =
+        (
+          // TgBase
+          osAutoCreating, osInspecting,
+          // TgIdentityObject
+          osCreatingOriginalValues, osOriginalValues, osLoaded, osLoading, osSaving, osDeleting,
+          // TgList
+          osOrdered, osFiltered, osSorted, osActivating, osActive
+        );
+      TStates = Set of TState;
+
+    function GetObjectChildPathName(AChild: TgBase = nil): String; virtual;
   public
     type
       /// <summary>
@@ -400,23 +410,9 @@ const
       end;
 
   strict private
-    function GetIsAutoCreating: Boolean;
     function GetModel: TgModel;
-    procedure SetIsAutoCreating(const AValue: Boolean);
   strict protected
     type
-      TState =
-        (
-          // TgBase
-          osAutoCreating, osInspecting,
-          // TgIdentityObject
-          osCreatingOriginalValues, osOriginalValues, osLoaded, osLoading, osSaving, osDeleting,
-          // TgList
-          osOrdered, osFiltered, osSorted, osActivating, osActive
-        );
-      TStates = Set of TState;
-
-
       TEnumerator = record
       private
         FCurrentIndex: Integer;
@@ -431,6 +427,7 @@ const
 
     var
     FOwner: TgBase;
+    FOwnerProperty: TRTTIProperty;
     FStates: TStates;
 
     /// <summary>TgBase.AutoCreate gets called by the Create constructor to instantiate
@@ -443,11 +440,10 @@ const
     function GetPathValues(AIndex: Integer): TPathValue;
     function DoGetObjects(const APath: String; out AValue: TgBase): Boolean; virtual;
     function DoSetValues(Const APath : String; AValue : Variant): Boolean; virtual;
-    function GetIsInspecting: Boolean; virtual;
-    function GetPathName: String; virtual;
     function GetValues(Const APath : String): Variant; virtual;
     function GetObjects(Const APath : String): TgBase; virtual;
     function GetProperties(Const APath : String): TRTTIProperty; virtual;
+    function GetStates(Index: TgBase.TState): Boolean;
     /// <summary>TgBase.OwnerByClass walks up the Owner path looking for an owner whose
     /// class type matches the AClass parameter. This method gets used by the
     /// AutoCreate method to determine if an object property should get created, or
@@ -457,7 +453,8 @@ const
     /// </returns>
     /// <param name="AClass"> (TgBaseClass) </param>
     function OwnerByClass(AClass: TgBaseClass): TgBase; virtual;
-    procedure SetIsInspecting(const AValue: Boolean); virtual;
+    procedure SetStates(const AIndex: TgBase.TState; const AValue: Boolean);
+        virtual;
     procedure SetValues(Const APath : String; AValue : Variant); virtual;
   public
     /// <summary>TgBase.Create instantiates a new G object, sets its owner and
@@ -495,22 +492,33 @@ const
     ///	</remarks>
     function AsPointer: Pointer; inline;
     class function Captionize(const AValue: String): String; virtual;
+    function DoGetInValues(const APath: String; const Name: String): Boolean; virtual;
     class function DoGetMembers(const APath: String; out AValue: TRttiMember): boolean;
         virtual;
     class function DoGetMethods(const APath: String; out AValue: TRttiMethod): Boolean; virtual;
-    class function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty): Boolean; virtual;
+    class function DoGetProperties(const APath: String; out ARTTIProperty: TRTTIProperty; AgBase: TgBase = nil): Boolean; virtual;
     function DoGetValues(Const APath : String; Out AValue : Variant): Boolean; overload; virtual;
     function DoGetValues(ARttiProperty: TRttiProperty; out AValue: Variant; const
-        ATail: String = ''): Boolean; overload;
+        ATail: String = ''): Boolean; overload; virtual;
+    class function GetAttribute<T>(ARttiNamedObject: TRttiNamedObject): T; overload;
+    class function GetAttribute<T>(ARttiNamedObject: TRttiNamedObject; out
+        Attribute: T): boolean; overload;
+    class function GetAttribute<T>(ARttiType: TRttiType): T; overload;
+    class function GetAttribute<T>(ARttiType: TRttiType; out Attribute: T):
+        boolean; overload;
+    class function GetAttributes<T>(ARttiNamedObject: TRttiNamedObject; var
+        Attributes: TArray<T>): boolean; overload;
+    class function GetAttributes<T>(ARttiType: TRttiType; var Attributes:
+        TArray<T>): boolean; overload;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
     function GetPathIndexOf(const APath: String): Integer; virtual;
     class function RTTIValueProperties: TArray<TRTTIProperty>; virtual;
     //1 This gets the display title for a property
     property Captions[const AName: String]: String read GetCaptions;
     property Helps[const AName: String]: String read GetHelps;
-    property IsAutoCreating: Boolean read GetIsAutoCreating write SetIsAutoCreating;
-    property IsInspecting: Boolean read GetIsInspecting write SetIsInspecting;
-
+    property IsAutoCreating: Boolean index osAutoCreating read GetStates write SetStates;
+    property IsInspecting: Boolean index osInspecting read GetStates write SetStates;
+    property IsLoaded: Boolean index osLoaded read GetStates write SetStates;
     ///	<summary>
     ///	  This property is used to get and set values for any published
     ///	  property on this structure or any <see cref="TgBase" /> structure
@@ -549,13 +557,12 @@ const
     property FriendlyClassName: String read GetFriendlyClassName;
     [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible] [NotAssignable]
     property Model: TgModel read GetModel;
+
     /// <summary>TgBase.Owner represents the object passed in the constructor. You may
     /// use the Owner object to "walk up" the model.
     /// </summary> type:TgBase
     [NotAutoCreate] [NotComposite] [NotSerializable] [NotVisible] [NotAssignable]
     property Owner: TgBase read FOwner;
-    [NotSerializable] [NotVisible]
-    property PathName: String read GetPathName;
   end;
 
   TgList<T: TgBase> = class;
@@ -827,6 +834,10 @@ const
     procedure SetItems(AIndex : Integer; const AValue: TgBase); virtual;
     procedure SetOrderBy(const AValue: String); virtual;
     procedure SetWhere(const AValue: String); virtual;
+    function DoGetObjects(const APath: string; out AValue: TgBase): Boolean;
+      override;
+  protected
+    function GetObjectChildPathName(AChild: TgBase = nil): string; override;
   public
     type
       /// <summary> This is the general exception for a <see cref="TgList" />
@@ -930,8 +941,8 @@ const
         function MoveNext: Boolean;
         property Current: T read GetCurrent;
       End;
-
-  strict protected
+  strict
+  private
     procedure SetItemClass(const Value: TgBaseClass); override;
     function GetCurrent: T; reintroduce; virtual;
     function GetItems(AIndex : Integer): T; reintroduce; virtual;
@@ -946,6 +957,13 @@ const
     property Current: T read GetCurrent;
   End;
 
+  TgOriginalValues = class(TgBase)
+  private
+    FValues: array of Variant;
+  public
+    procedure Load;
+    function DoGetValues(const APath: string; out AValue: Variant): Boolean; overload; override;
+  end;
 
   TgObjectClass = class of TgObject;
   TgObject = class(TgBase)
@@ -975,6 +993,8 @@ const
       end;
   strict private
     FValidationErrors: TgValidationErrors;
+    FOriginalValues: TgOriginalValues;
+    function GetOriginalValues: TgOriginalValues; overload;
     function GetValidationErrors: TgValidationErrors;
     procedure PopulateDefaultValues;
   strict protected
@@ -987,7 +1007,11 @@ const
     function AllValidationErrors: String;
     class function DisplayPropertyNames: TArray<String>; inline;
     function HasValidationErrors: Boolean;
-
+    procedure InitializeOriginalValues; virtual;
+    property IsCreatingOriginalValues: Boolean index osCreatingOriginalValues read
+        GetStates write SetStates;
+    property IsOriginalValues: Boolean index osOriginalValues read GetStates write
+        SetStates;
     ///	<summary>
     ///	  When the value of this property is requested it will run all
     ///	  properties through their <see cref="Validation" /> attributes to ensure they properties are valid
@@ -996,6 +1020,23 @@ const
   published
     [NotVisible]
     property DisplayName: String read GetDisplayName;
+    ///	<summary>
+    ///	  The purpose of the OriginalValues is to determine the values that have
+    /// changed since the object was loaded for the purposes of updating just the
+    /// values that have changed.  Its the job of the load to clone values in
+    /// original values.
+    ///  In saving, it should compare original values to know what changed and only
+    /// write the diffrerce
+    ///  example: in code, i loaded a object, modified and hit save. in the save
+    /// process, it should load the original structure, and only change the
+    /// values from the original structure that where changed from original values.
+    ///  In SQL you wouldn't have to load the original stucture.
+    ///
+    ///  Load the object, it disappears, post the change. durring the post the
+    /// original values will be loaded from the post
+    ///	</summary>
+    [NotAutoCreate] [NotComposite] [NotSerializable] [NotAssignable] [NotVisible]
+    property OriginalValues: TgOriginalValues read GetOriginalValues;
     [NotAutoCreate] [NotComposite] [NotSerializable] [NotAssignable] [NotVisible]
     property ValidationErrors: TgValidationErrors read GetValidationErrors;
   end;
@@ -1050,20 +1091,6 @@ const
 
   strict private
     FID: Variant;
-    FOriginalValues: TgIdentityObject;
-    function GetIsDeleting: Boolean;
-    function GetIsCreatingOriginalValues: Boolean;
-    function GetIsLoaded: Boolean;
-    function GetIsLoading: Boolean;
-    function GetIsOriginalValues: Boolean;
-    function GetIsSaving: Boolean;
-    function GetOriginalValues: TgBase;
-    procedure SetIsDeleting(const AValue: Boolean);
-    procedure SetIsCreatingOriginalValues(const AValue: Boolean);
-    procedure SetIsLoaded(const AValue: Boolean);
-    procedure SetIsLoading(const AValue: Boolean);
-    procedure SetIsOriginalValues(const AValue: Boolean);
-    procedure SetIsSaving(const AValue: Boolean);
   strict protected
     procedure DoDelete; virtual;
     procedure DoLoad; virtual;
@@ -1073,10 +1100,12 @@ const
     function GetID: Variant;
     function GetIsModified: Boolean; virtual;
     procedure SetID(const AValue: Variant);
+    procedure SetStates(const AIndex: TgBase.TState; const AValue: Boolean);
+      override;
+  protected
+    function GetObjectChildPathName(AChild: TgBase = nil): string; override;
   public
-    destructor Destroy; override;
     procedure Commit;
-    procedure InitializeOriginalValues; virtual;
     function IsPropertyModified(const APropertyName: string): Boolean; overload;
     function IsPropertyModified(ARTTIProperty: TRttiProperty): Boolean; overload;
     class function PersistenceManager: TgPersistenceManager;
@@ -1086,13 +1115,10 @@ const
     function HasIdentity: Boolean; virtual;
     procedure RemoveIdentity;
     constructor Create(AOwner: TgBase = nil); override;
-    property IsDeleting: Boolean read GetIsDeleting write SetIsDeleting;
-    property IsCreatingOriginalValues: Boolean read GetIsCreatingOriginalValues write SetIsCreatingOriginalValues;
-    property IsLoaded: Boolean read GetIsLoaded write SetIsLoaded;
-    property IsLoading: Boolean read GetIsLoading write SetIsLoading;
+    property IsDeleting: Boolean index osDeleting read GetStates write SetStates;
+    property IsLoading: Boolean index osLoading read GetStates write SetStates;
     property IsModified: Boolean read GetIsModified;
-    property IsOriginalValues: Boolean read GetIsOriginalValues write SetIsOriginalValues;
-    property IsSaving: Boolean read GetIsSaving write SetIsSaving;
+    property IsSaving: Boolean index osSaving read GetStates write SetStates;
   published
     [NotVisible]
     property ID: Variant read GetID write SetID;
@@ -1100,14 +1126,11 @@ const
     property CanDelete: Boolean read GetCanDelete;
     [NotVisible]
     property CanSave: Boolean read GetCanSave;
-    [Condition('CanDelete')]
     procedure Delete; virtual;
     [NotVisible]
     function Load: Boolean; virtual;
-    [Condition('CanSave')]
     procedure Save; virtual;
-    [NotAutoCreate] [NotComposite] [NotSerializable] [NotAssignable] [NotVisible]
-    property OriginalValues: TgBase read GetOriginalValues;
+
   end;
 
   ///	<summary>
@@ -1127,6 +1150,9 @@ const
   strict protected
     function GetID: T;
     procedure SetID(const AValue: T);
+    class var T_TypeInfo: pTypeInfo;
+    class constructor Create;
+  protected
   published
     ///	<summary>
     ///	  Defined as a simple type this property is used to uniquely identify a
@@ -1211,8 +1237,6 @@ const
     FCurrentKey: String;
     FBuffered: Boolean;
     procedure EnsureActive;
-    function GetIsActivating: Boolean;
-    procedure SetIsActivating(const AValue: Boolean);
   strict protected
     procedure SetActive(const AValue: Boolean); virtual;
     function GetActive: Boolean; virtual;
@@ -1229,6 +1253,7 @@ const
     function GetIndexString: string; override;
     procedure SetIndexString(const AValue: String); override;
     procedure SetWhere(const AValue: string); override;
+    procedure SetCurrentIndex(const AIndex: Integer); override;
   public
     procedure Assign(ASource: TgBase); override;
     procedure AssignActive(const AValue: Boolean);
@@ -1238,7 +1263,7 @@ const
     function IndexOf(const AKey: String): Integer;
     property Active: Boolean read GetActive write SetActive;
     property Buffered: Boolean read FBuffered write FBuffered;
-    property IsActivating: Boolean read GetIsActivating write SetIsActivating;
+    property IsActivating: Boolean index osActivating read GetStates write SetStates;
     property ItemClass: TgIdentityObjectClass read GetItemClass write SetItemClass;
     property Items[AIndex : Integer]: TgIdentityObject read GetItems write SetItems; default;
   published
@@ -1256,6 +1281,8 @@ const
   TgIdentityList<T: TgIdentityObject> = class(TgIdentityList)
   type
     TgEnumerator = record
+    strict private
+      function GetCurrentOriginalValues: T;
     private
       FCurrentIndex: Integer;
       FList: TgIdentityList<T>;
@@ -1264,6 +1291,7 @@ const
       procedure Init(AList: TgIdentityList<T>);
       function MoveNext: Boolean;
       property Current: T read GetCurrent;
+      property CurrentOriginalValues: T read GetCurrentOriginalValues;
     End;
 
   strict protected
@@ -1278,6 +1306,14 @@ const
     property Items[AIndex : Integer]: T read GetItems write SetItems; default;
   published
     property Current: T read GetCurrent;
+  end;
+
+  [DenyDelete]
+  TgIdentityListDenyDelete<T: TgIdentityObject> = class(TgIdentityList<T>)
+  end;
+
+  [CascadeDelete]
+  TgIdentityListCascadeDelete<T: TgIdentityObject> = class(TgIdentityList<T>)
   end;
 
   TgSerializerStackBase<T> = class(TgSerializer)
@@ -1503,6 +1539,9 @@ const
   CascadeDelete = class(TCustomAttribute)
   end;
 
+  DenyDelete = class(TCustomAttribute)
+  end;
+
   TgWithQueryProcedure = reference to procedure(AQuery: TObject);
 
   TgConnection = class(TObject)
@@ -1699,18 +1738,32 @@ const
       E = class(Exception);
       TClassOf = class of TgElement;
       TProcessText = reference to procedure(const Text: String);
+      [NotVisible]
+      [ImpliedExpressionEvaulator]
+      TObjectRef = record
+        Base: TgBase;
+        Name: String;
+        class function New(const AName: String; AgBase: TgBase): TObjectRef; static;
+        class function NewValue(const AName: String; AgBase: TgBase): TValue; static;
+      end;
 
   { TODO : Handle Conditions }
   { TODO : ConditionSelf says don't do the outer tag, but do the inner tags }
   private
     FTagName: String;
+    FNodeAttributes: TStringList;
     FgBase: TgBase;
+    FPath: String;
     FCondition: Boolean;
     FConditionSelf: Boolean;
+    FObject: TObjectRef;
     function GetgBase: TgBase;
     function GetModel: TgBase;
     class var _Tags: TDictionary<String, TClassOf>;
     function GetgDocument: TgDocument; overload;
+  protected
+    procedure SetObject(const Value: TObjectRef); virtual;
+    function ExpandPath(const AName: String; const APrefix: String = ''): String; virtual;
   public
     class constructor Create;
     class destructor Destroy;
@@ -1727,14 +1780,19 @@ const
     procedure ProcessText(const Source: String; ProcessText: TProcessTExt; ProcessHTML: TProcessText); overload;
     function GetgDocument(out Value: TgDocument): Boolean; overload; virtual;
     function Skip: Boolean; virtual;
+    destructor Destroy; override;
     property TagName: String read FTagName write FTagName;
     property gBase: TgBase read GetgBase write FgBase;
     property gDocument: TgDocument read GetgDocument;
+    property NodeAttributes: TStringList read FNodeAttributes;
   published
+    [NotVisible]
     [ImpliedExpressionEvaulator]
     property Condition: Boolean read FCondition write FCondition default True;
+    [NotVisible]
     [ImpliedExpressionEvaulator]
     property ConditionSelf: Boolean read FConditionSelf write FConditionSelf default True;
+    property Object_: TObjectRef read FObject write SetObject;
   end;
 
   TgDocument = class(TgElement)
@@ -1745,6 +1803,8 @@ const
     FAliasPath: String;
     FTargetDocument: TXMLDocument;
     FTargetDocumentInterface: IXMLDocument;
+    FActive: Boolean;
+    procedure SetActive(const Value: Boolean);
   public
     constructor Create(Owner: TgBase = nil); override;
     destructor Destroy; override;
@@ -1757,7 +1817,9 @@ const
     function ProcessText(const Source: String; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean; overload;
     function ProcessDocument(SourceDocument: IXMLDocument; TargetChildNodes: IXMLNodeList; AgBase: TgBase = nil): Boolean;
     function GetgDocument(out Value: TgDocument): Boolean; override;
+    procedure Clear;
     property Target: TXMLDocument read FTargetDocument;
+    property Active: Boolean read FActive write SetActive;
   published
     property SearchPath: String read FSearchPath write FSearchPath;
     property AliasPath: String read FAliasPath write FAliasPath;
@@ -1928,6 +1990,8 @@ type
 
 procedure SplitPath(Const APath : String; Out AHead, ATail : String);
 
+procedure SplitPathLast(const APath: String; Out AHead, ATail : String);
+
 Function FileToString(AFileName : String) : String;
 
 Procedure StringToFile(const AString, AFileName : String);
@@ -1965,7 +2029,6 @@ var
 implementation
 
 Uses
-  System.TypInfo,
   System.Variants,
   XML.XMLDOM,
   Math,
@@ -2069,6 +2132,24 @@ Begin
     ATail := '';
   End;
 End;
+
+procedure SplitPathLast(const APath: String; Out AHead, ATail : String);
+var
+  PeriodPosition: Integer;
+begin
+  PeriodPosition := Length(APath);
+  while (PeriodPosition > 0) and (APath[PeriodPosition] <> '.') do
+   Dec(PeriodPosition);
+  if PeriodPosition = 0 then begin
+    AHead := APath;
+    ATail := '';
+  end
+  else begin
+    AHead := Copy(APath,PeriodPosition+1,Length(APath)-PeriodPosition);
+    ATail := Copy(APath,1,PeriodPosition-1);
+  end;
+
+end;
 
 Function FileToString(AFileName : String) : String;
 Var
@@ -2317,6 +2398,7 @@ begin
     begin
       IsAutoCreating := True;
       ObjectProperty := ObjectPropertyClass.Create(Self);
+      ObjectProperty.FOwnerProperty := RTTIProperty;
       IsAutoCreating := False;
     end;
     Value := ObjectProperty;
@@ -2358,6 +2440,27 @@ begin
   finally
     Serializer.Free;
   end;
+end;
+
+function TgBase.DoGetInValues(const APath, Name: String): Boolean;
+var
+  RTTIProperty: TRttiProperty;
+  RttiEnumerationType: TRttiEnumerationType;
+  Value: TValue;
+  I: Integer;
+  ISet: set of 0..31;
+begin
+  Result := False;
+  if not DoGetProperties(APath,RTTIProperty) then exit;
+  Value := RTTIProperty.GetValue(Self);
+  if RTTIProperty.PropertyType.IsSet then begin
+    RttiEnumerationType := TRTTISetType(RTTIProperty.PropertyType).ElementType as TRTTIEnumerationType;
+    I := GetEnumValue(RttiEnumerationType.Handle,Name);
+    Integer(ISet) := GetOrdProp(Self,TRttiInstanceProperty(RTTIProperty).PropInfo);
+    Result := (I >= 0) and (I in ISet);
+  end
+  else
+    Result := GetEnumValue(RttiEnumerationType.Handle,Name) = Value.AsOrdinal;
 end;
 
 class function TgBase.DoGetMembers(const APath: String; out AValue: TRttiMember): boolean;
@@ -2409,7 +2512,7 @@ Begin
 End;
 
 class function TgBase.DoGetProperties(const APath: String; out ARTTIProperty:
-    TRTTIProperty): Boolean;
+    TRTTIProperty; AgBase: TgBase = nil): Boolean;
 Var
   Head : String;
   ObjectProperty: TgBase;
@@ -2426,8 +2529,8 @@ Begin
     begin
       if Tail > '' then
       Begin
-        ObjectProperty := TgBase(ARTTIProperty.GetValue(Self).AsObject);
-        Result := ObjectProperty.DoGetProperties(Tail, ARTTIProperty);
+        ObjectProperty := TgBase(ARTTIProperty.GetValue(AgBase).AsObject);
+        Result := ObjectProperty.DoGetProperties(Tail, ARTTIProperty,ObjectProperty);
       End
     end
     Else
@@ -2494,6 +2597,11 @@ begin
           else begin
             AValue := ARTTIProperty.GetValue(Self).ToString;
 //              AValue := GetEnumName(ARTTIProperty.PropertyType.Handle,AValue);
+            Result := True;
+          end;
+        tkUString
+        : begin
+            AValue := ARTTIProperty.GetValue(Self).ToString;
             Result := True;
           end;
         TkSet
@@ -2579,6 +2687,8 @@ Begin
             Value := TValue.FromVariant(AValue);
           TkUString :
             Value := TValue.FromVariant(VarAsType(AValue, VarUString));
+          TkString :
+            Value := TValue.FromVariant(VarAsType(AValue, VarString));
           TkClassRef :
             if AValue = '' then
               Value := TClass(nil)
@@ -2618,6 +2728,110 @@ Begin
     Result := Copy(ClassName, 2, MaxInt);
   Result := ReplaceText(ReplaceText(Result, '<', '_'), '>', '_')
 End;
+
+class function TgBase.GetAttribute<T>(ARttiNamedObject: TRttiNamedObject): T;
+begin
+  if not GetAttribute<T>(ARttiNamedObject,Result) then
+    Result := Default(T);
+end;
+
+class function TgBase.GetAttribute<T>(ARttiNamedObject: TRttiNamedObject; out
+    Attribute: T): boolean;
+var
+  CustomAttribute: TCustomAttribute;
+  CustomAttributeClass: TCustomAttributeClass;
+  ATypeInfo: pTypeInfo;
+  ATypeData: PTypeData;
+begin
+  Result := False;
+  if not Assigned(ARttiNamedObject) then exit;
+  ATypeInfo := TypeInfo(T);
+  if (ATypeInfo.Kind <> tkClass) then exit;
+
+  ATypeData := GetTypeData(ATypeInfo);
+  CustomAttributeClass  := Pointer(ATypeData.ClassType);
+  for CustomAttribute in ARttiNamedObject.GetAttributes do
+    if CustomAttribute is CustomAttributeClass then begin
+      pPointer(@Attribute)^ := CustomAttribute;
+      Exit(True);
+    end;
+  Result := (ARttiNamedObject is TRttiProperty) and  GetAttribute<T>((ARttiNamedObject as TRttiProperty).PropertyType,Attribute);
+end;
+
+class function TgBase.GetAttribute<T>(ARttiType: TRttiType): T;
+begin
+  if not GetAttribute<T>(ARttiType,Result) then
+    Result := Default(T);
+end;
+
+class function TgBase.GetAttribute<T>(ARttiType: TRttiType; out Attribute: T):
+    boolean;
+var
+  CustomAttribute: TCustomAttribute;
+  CustomAttributeClass: TCustomAttributeClass;
+  ATypeInfo: pTypeInfo;
+  ATypeData: PTypeData;
+begin
+  ATypeInfo := TypeInfo(T);
+  if (ATypeInfo.Kind <> tkClass) then exit;
+  ATypeData := GetTypeData(ATypeInfo);
+  CustomAttributeClass  := Pointer(ATypeData.ClassType);
+  for CustomAttribute in ARttiType.GetAttributes do
+    if CustomAttribute is CustomAttributeClass then begin
+      pPointer(@Attribute)^ := CustomAttribute;
+      Exit(True);
+    end;
+  Result := False;
+end;
+
+class function TgBase.GetAttributes<T>(ARttiNamedObject: TRttiNamedObject; var
+    Attributes: TArray<T>): boolean;
+var
+  CustomAttribute: TCustomAttribute;
+  CustomAttributeClass: TCustomAttributeClass;
+  Item: T;
+  ATypeInfo: pTypeInfo;
+  ATypeData: PTypeData;
+begin
+  Result := False;
+  if not Assigned(ARttiNamedObject) then exit;
+
+  ATypeInfo := TypeInfo(T);
+  if (ATypeInfo.Kind <> tkClass) then exit;
+  ATypeData := GetTypeData(ATypeInfo);
+  CustomAttributeClass  := Pointer(ATypeData.ClassType);
+  for CustomAttribute in ARttiNamedObject.GetAttributes do
+    if CustomAttribute is CustomAttributeClass then begin
+      pPointer(@Item)^ := CustomAttribute;
+      SetLength(Attributes,Length(Attributes)+1);
+      Attributes[High(Attributes)] := Item;
+    end;
+  if (ARttiNamedObject is TRttiProperty) then
+    GetAttributes<T>((ARttiNamedObject as TRttiProperty).PropertyType,Attributes);
+  Result := Length(Attributes) > 0;
+end;
+
+class function TgBase.GetAttributes<T>(ARttiType: TRttiType; var Attributes:
+    TArray<T>): boolean;
+var
+  CustomAttribute: TCustomAttribute;
+  CustomAttributeClass: TCustomAttributeClass;
+  Item: T;
+  ATypeInfo: pTypeInfo;
+  ATypeData: PTypeData;
+begin
+  ATypeInfo := TypeInfo(T);
+  if (ATypeInfo.Kind <> tkClass) then exit;
+  ATypeData := GetTypeData(ATypeInfo);
+  CustomAttributeClass  := Pointer(ATypeData.ClassType);
+  for CustomAttribute in ARttiType.GetAttributes do
+    if CustomAttribute is CustomAttributeClass then begin
+      pPointer(@Item)^ := CustomAttribute;
+      SetLength(Attributes,Length(Attributes)+1);
+      Attributes[High(Attributes)] := Item;
+    end;
+  Result := Length(Attributes) > 0;
+end;
 
 function TgBase.GetCaptions(const AName: String): String;
 begin
@@ -2670,16 +2884,6 @@ begin
     Result := '';
 end;
 
-function TgBase.GetIsAutoCreating: Boolean;
-begin
-  Result := osAutoCreating in FStates;
-end;
-
-function TgBase.GetIsInspecting: Boolean;
-begin
-  Result := osInspecting in FStates;
-end;
-
 function TgBase.GetPathCount: Integer;
 begin
   Result := Length(RTTIValueProperties);
@@ -2716,22 +2920,11 @@ begin
     Result := Nil;
 end;
 
-function TgBase.GetPathName: String;
+function TgBase.GetObjectChildPathName(AChild: TgBase): String;
 begin
-  if Assigned(Owner) And (OwnerProperty <> Nil) then
-  Begin
-    Result := Owner.PathName;
-    if Owner.InheritsFrom(TgList) And SameText('Current', OwnerProperty.Name) then
-      Result := Result + '[' + TgList(Owner).IndexString + ']'
-    Else
-    Begin
-      If Result > '' Then
-        Result := Result + '.';
-      Result := Result + OwnerProperty.Name;
-    End;
-  End
-  else
-    Result := '';
+  Result := '';
+  if Assigned(Owner) then
+    Result := Result+Owner.GetObjectChildPathName(Self);
 end;
 
 function TgBase.GetValues(Const APath : String): Variant;
@@ -2752,6 +2945,11 @@ Begin
     Raise EgValue.CreateFmt('Path ''%s'' not found.', [APath]);
 End;
 
+function TgBase.GetStates(Index: TgBase.TState): Boolean;
+begin
+  Result := Index in FStates;
+end;
+
 function TgBase.Inspect(ARTTIProperty: TRttiProperty): TObject;
 begin
   IsInspecting := True;
@@ -2763,12 +2961,13 @@ function TgBase.OwnerProperty: TRTTIProperty;
 var
   RTTIProperty: TRTTIProperty;
 begin
+  if Assigned(FOwnerProperty) then Exit(FOwnerProperty);
   Result := Nil;
   if Not Assigned(Owner) then
     Exit;
   for RTTIProperty in G.ObjectProperties(Owner) do
-  if Owner.Inspect(RTTIProperty) = Self then
-    Exit(RTTIProperty);
+    if Owner.Inspect(RTTIProperty) = Self then
+      Exit(RTTIProperty);
 end;
 
 function TgBase.Owns(ABase : TgBase): Boolean;
@@ -2793,20 +2992,12 @@ begin
   end;
 end;
 
-procedure TgBase.SetIsAutoCreating(const AValue: Boolean);
+procedure TgBase.SetStates(const AIndex: TgBase.TState; const AValue: Boolean);
 begin
   if AValue then
-    Include(FStates, osAutoCreating)
-  else
-    Exclude(FStates, osAutoCreating);
-end;
-
-procedure TgBase.SetIsInspecting(const AValue: Boolean);
-begin
-  if AValue then
-    Include(FStates, osInspecting)
-  else
-    Exclude(FStates, osInspecting)
+    Include(FStates, AIndex)
+  Else
+    Exclude(FStates, AIndex);
 end;
 
 procedure TgBase.SetValues(Const APath : String; AValue : Variant);
@@ -3125,7 +3316,8 @@ begin
   FAssignableProperties.TryGetValue(ABaseClass, Result);
 end;
 
-class function G.AssignableProperties(ABase: TgBase): TArray<TRTTIProperty>;
+class function G.AssignableProperties(ABase: TgBase): TArray<TRTTIProperty>
+;
 begin
   Result := AssignableProperties(TgBaseClass(ABase.ClassType));
 end;
@@ -3236,16 +3428,18 @@ end;
 
 class procedure G.InitializeProperties(ARTTIType: TRTTIType);
 var
+  Temp,
   RTTIProperties: TArray<TRTTIProperty>;
   BaseClass: TgBaseClass;
   RTTIProperty: TRTTIProperty;
   Counter: Integer;
   Replaced: Boolean;
+  Index: Integer;
+  IsParents: Boolean;
 begin
   BaseClass := TgBaseClass(ARTTIType.AsInstance.MetaclassType);
   //Include all the ancestor properties
-  If BaseClass <> TgBase Then
-    FProperties.TryGetValue(TgBaseClass(BaseClass.ClassParent), RTTIProperties);
+  IsParents := (BaseClass <> TgBase) and FProperties.TryGetValue(TgBaseClass(BaseClass.ClassParent), RTTIProperties);
   //For each new property
   for RTTIProperty in ARTTIType.GetDeclaredProperties do
   if RTTIProperty.Visibility = mvPublished then
@@ -3257,6 +3451,14 @@ begin
       if SameText(RTTIProperty.Name, RTTIProperties[Counter].Name) then
       Begin
         //Substitute the ancestor property with the declared one
+         if IsParents then begin
+           IsParents := False;
+           // Copy the array
+           SetLength(Temp,Length(RTTIProperties));
+           for Index := 0 to High(Temp) do
+             Temp[Index] := RTTIProperties[Index];
+           RTTIProperties := Temp;
+        end;
         RTTIProperties[Counter] := RTTIProperty;
         Replaced := True;
         Break;
@@ -3644,6 +3846,7 @@ Begin
     PropertyAttributeClassKey.AttributeClass := NotSerializable;
     if (RTTIProperty.Visibility = mvPublished) And RTTIProperty.IsReadable
       And (Length(PropertyAttributes(PropertyAttributeClassKey)) = 0)
+      And (Not RTTIProperty.PropertyType.IsInstance or Not RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityList))
       And
         (
             (RTTIProperty.PropertyType.IsInstance And RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgBase))
@@ -3796,7 +3999,9 @@ var
 begin
   TemporaryCurrentNode(CurrentNode.AddChild(ARTTIProperty.Name),procedure
     begin
-      CurrentNode.Attributes['classname'] := AObject.QualifiedClassName;
+      if ARTTIProperty.PropertyType.IsInstance then
+        if ARTTIProperty.PropertyType.AsInstance.MetaclassType <> AObject.ClassType then
+          CurrentNode.Attributes['classname'] := AObject.QualifiedClassName;
       HelperClass := G.SerializationHelpers(TgSerializerXML, AObject);
       HelperClass.Serialize(AObject, Self, ARTTIProperty);
     end);
@@ -3877,9 +4082,11 @@ var
   RTTIProperty: TRTTIProperty;
   HelperClass: TgSerializationHelperClass;
   AXMLNode: IXMLNode;
+  ClassName: String;
 begin
   AXMLNode := ASerializer.CurrentNode;
-  if Not SameText(AXMLNode.Attributes['classname'], AObject.QualifiedClassName) then
+  ClassName := AXMLNode.Attributes['classname'];
+  if (ClassName <> '') and Not SameText(ClassName, AObject.QualifiedClassName) then
     Raise EgParse.CreateFmt('Expected: %s, Parsed: %s', [AObject.QualifiedClassName, AXMLNode.Attributes['classname']]);
   for Counter := 0 to AXMLNode.ChildNodes.Count - 1 do
   begin
@@ -4408,6 +4615,27 @@ Begin
     raise EgList.Create('There is no item to delete.');
 End;
 
+function TgList.DoGetObjects(const APath: string; out AValue: TgBase): Boolean;
+var
+  Position: Integer;
+begin
+  Result := inherited;
+  If Not Result Then
+  Begin
+    If (Length(APath) > 0) And (APath[1] = '[') Then
+    Begin
+      Position := Pos(']', APath);
+      If Position > 0 Then
+      Begin
+        IndexString := Trim(Copy(APath, 2, Position - 2));
+        Result := True;
+        AValue := Current;
+      End;
+    End;
+  End;
+
+end;
+
 function TgList.DoGetValues(Const APath : String; Out AValue : Variant): Boolean;
 Var
   Position : Integer;
@@ -4541,8 +4769,10 @@ end;
 
 function TgList.GetItems(AIndex : Integer): TgBase;
 Begin
-  if InRange(AIndex, 0, FList.Count - 1) then
-    Result := FList[AIndex]
+  if InRange(AIndex, 0, FList.Count - 1) then begin
+    CurrentIndex := AIndex;
+    Result := FList[AIndex];
+  end
   Else
     Raise EgList.CreateFmt('Failed to get the item at index %d, because the valid range is between 0 and %d.', [AIndex, FList.Count - 1]);
 End;
@@ -4557,6 +4787,14 @@ end;
 function TgList.GetIndexString: String;
 begin
   Result := IntToStr(CurrentIndex);
+end;
+
+function TgList.GetObjectChildPathName(AChild: TgBase = nil): string;
+begin
+  if AChild = Current then
+    Result := Format('%sCurrent',[inherited,CurrentIndex])
+  else
+    Result := Format('%s[%d]',[inherited,CurrentIndex]);
 end;
 
 procedure TgList.Last;
@@ -4582,6 +4820,7 @@ End;
 
 procedure TgList.SetCurrentIndex(const AIndex: Integer);
 Begin
+  if FCurrentIndex = AIndex then exit;
   If (FList.Count > 0) And InRange(AIndex, 0, FList.Count - 1) Then
     FCurrentIndex := AIndex
   Else
@@ -4862,6 +5101,8 @@ begin
     if Owns(ObjectProperty) then
       ObjectProperty.Free;
   End;
+  if Assigned(FOriginalValues) then
+    FreeAndNil(FOriginalValues);
   Inherited Destroy;
 end;
 
@@ -4935,6 +5176,17 @@ begin
     PropertyValidationAttribute.Execute(Self);
 end;
 
+function TgObject.GetOriginalValues: TgOriginalValues;
+begin
+  if Not IsInspecting And Not IsOriginalValues And Not Assigned(FOriginalValues) then
+  Begin
+    IsCreatingOriginalValues := True;
+    FOriginalValues := TgOriginalValues.Create(Self);
+    IsCreatingOriginalValues := False;
+  End;
+  Result := FOriginalValues;
+end;
+
 function TgObject.GetValidationErrors: TgValidationErrors;
 begin
   if Not IsInspecting And Not Assigned(FValidationErrors) then
@@ -4961,6 +5213,12 @@ begin
       End;
     end;
   End;
+end;
+
+procedure TgObject.InitializeOriginalValues;
+begin
+  if Assigned(OriginalValues) then
+    OriginalValues.Load;
 end;
 
 procedure TgObject.PopulateDefaultValues;
@@ -5128,13 +5386,21 @@ end;
 
 { TgIdentityObject<T> }
 
+class constructor TgIdentityObject<T>.Create;
+begin
+  T_TypeInfo := TypeInfo(T);
+end;
+
 function TgIdentityObject<T>.GetID: T;
+var
+  Value: TValue;
 begin
 //  Result := Inherited GetID;
 {$IFDEF DEBUG}
   try
 {$ENDIF}
-    Result := TValue.FromVariant(inherited ID).AsType<T>;
+    Value := TValue.FromVariant(inherited ID);
+    Result := Value.AsType<T>;
 {$IFDEF DEBUG}
   except
     raise;
@@ -5170,15 +5436,13 @@ end;
 
 { TgIdentityObject }
 
-destructor TgIdentityObject.Destroy;
-begin
-  FreeAndNil(FOriginalValues);
-  inherited Destroy;
-end;
-
 procedure TgIdentityObject.Assign(ASource: TgBase);
 begin
   inherited Assign(ASource);
+  if ASource is TgIdentityObject then
+    ID := TgIdentityObject(ASource).ID;
+
+
   IsLoaded := TgIdentityObject(ASource).IsLoaded;
 end;
 
@@ -5313,26 +5577,6 @@ begin
   Result := FID;
 end;
 
-function TgIdentityObject.GetIsDeleting: Boolean;
-begin
-  Result := osDeleting in FStates;
-end;
-
-function TgIdentityObject.GetIsCreatingOriginalValues: Boolean;
-begin
-  Result := osCreatingOriginalValues in FStates;
-end;
-
-function TgIdentityObject.GetIsLoaded: Boolean;
-begin
-  Result := osLoaded in FStates;
-end;
-
-function TgIdentityObject.GetIsLoading: Boolean;
-begin
-  Result := osLoading in FStates;
-end;
-
 function TgIdentityObject.GetIsModified: Boolean;
 var
   RTTIProperty: TRTTIProperty;
@@ -5343,25 +5587,10 @@ begin
       Exit(True);
 end;
 
-function TgIdentityObject.GetIsOriginalValues: Boolean;
-begin
-  Result := osOriginalValues in FStates;
-end;
 
-function TgIdentityObject.GetIsSaving: Boolean;
+function TgIdentityObject.GetObjectChildPathName(AChild: TgBase = nil): string;
 begin
-  Result := osSaving in FStates;
-end;
-
-function TgIdentityObject.GetOriginalValues: TgBase;
-begin
-  if Not IsInspecting And Not IsOriginalValues And Not Assigned(FOriginalValues) then
-  Begin
-    IsCreatingOriginalValues := True;
-    FOriginalValues := TgIdentityObjectClass(Self.ClassType).Create(Self);
-    IsCreatingOriginalValues := False;
-  End;
-  Result := FOriginalValues;
+  Result := Format('%s[%s]',[Inherited,ID]);
 end;
 
 function TgIdentityObject.HasIdentity: Boolean;
@@ -5383,12 +5612,6 @@ begin
   Result := G.PersistenceManager(Self);
   if Not Assigned(Result) then
     raise E.CreateFmt('%s has no persistence manager.', [ClassName]);
-end;
-
-procedure TgIdentityObject.InitializeOriginalValues;
-begin
-  if Assigned(OriginalValues) then
-    OriginalValues.Assign(Self);
 end;
 
 function TgIdentityObject.IsPropertyModified(const APropertyName: string): Boolean;
@@ -5462,58 +5685,29 @@ begin
   End;
 end;
 
-procedure TgIdentityObject.SetIsDeleting(const AValue: Boolean);
+procedure TgIdentityObject.SetStates(const AIndex: TgBase.TState;
+  const AValue: Boolean);
+var
+  OldStates: TStates;
 begin
-  if AValue then
-    Include(FStates, osDeleting)
-  Else
-    Exclude(FStates, osDeleting);
-end;
-
-procedure TgIdentityObject.SetIsCreatingOriginalValues(const AValue: Boolean);
-begin
-  if AValue then
-    Include(FStates, osCreatingOriginalValues)
-  else
-    Exclude(FStates, osCreatingOriginalValues);
-end;
-
-procedure TgIdentityObject.SetIsLoaded(const AValue: Boolean);
-begin
-  if AValue And Not (osLoaded in FStates) then
-  Begin
-    Include(FStates, osLoaded);
-    InitializeOriginalValues;
-  End
-  else if (osLoaded in FStates) then
-    Exclude(FStates, osLoaded);
-end;
-
-procedure TgIdentityObject.SetIsLoading(const AValue: Boolean);
-begin
-  if AValue And Not (osLoading in FStates) then
-  Begin
-    Include(FStates, osLoading);
-    InitializeOriginalValues;
-  End
-  else if (osLoading in FStates) then
-    Exclude(FStates, osLoading);
-end;
-
-procedure TgIdentityObject.SetIsOriginalValues(const AValue: Boolean);
-begin
-  If AValue Then
-    Include(FStates, osOriginalValues)
-  Else
-    Exclude(FStates, osOriginalValues);
-end;
-
-procedure TgIdentityObject.SetIsSaving(const AValue: Boolean);
-begin
-  if AValue then
-    Include(FStates, osSaving)
-  else
-    Exclude(FStates, osSaving);
+  OldStates := FStates;
+  inherited;
+  case AIndex of
+    osAutoCreating: ;
+    osInspecting: ;
+    osCreatingOriginalValues: ;
+    osOriginalValues: ;
+    osLoaded,osLoading
+    : if AValue And Not (AIndex in OldStates) then
+        InitializeOriginalValues;
+    osSaving: ;
+    osDeleting: ;
+    osOrdered: ;
+    osFiltered: ;
+    osSorted: ;
+    osActivating: ;
+    osActive: ;
+  end;
 end;
 
 procedure TgIdentityObject.StartTransaction(ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted);
@@ -5847,11 +6041,6 @@ begin
   Result := Current.ID;
 end;
 
-function TgIdentityList.GetIsActivating: Boolean;
-begin
-  Result := osActivating in FStates;
-end;
-
 function TgIdentityList.GetItemClass: TgIdentityObjectClass;
 begin
   Result := TgIdentityObjectClass(Inherited GetItemClass);
@@ -5925,6 +6114,11 @@ begin
   End;
 end;
 
+procedure TgIdentityList.SetCurrentIndex(const AIndex: Integer);
+begin
+  inherited;
+end;
+
 procedure TgIdentityList.SetCurrentKey(const AValue: String);
 begin
   If Buffered Then
@@ -5945,14 +6139,6 @@ end;
 procedure TgIdentityList.SetIndexString(const AValue: String);
 begin
   CurrentKey := AValue;
-end;
-
-procedure TgIdentityList.SetIsActivating(const AValue: Boolean);
-begin
-  if AValue then
-    Include(FStates, osActivating)
-  Else
-    Exclude(FStates, osActivating);
 end;
 
 procedure TgIdentityList.SetItemClass(const Value: TgIdentityObjectClass);
@@ -6027,6 +6213,14 @@ function TgIdentityList<T>.TgEnumerator.GetCurrent: T;
 begin
   FList.CurrentIndex := FCurrentIndex;
   Result := FList.Current;
+end;
+
+function TgIdentityList<T>.TgEnumerator.GetCurrentOriginalValues: T;
+begin
+  if Assigned(Current) then
+    Result := TgIdentityObject(Current).OriginalValues as T
+  else
+    Result := nil;
 end;
 
 procedure TgIdentityList<T>.TgEnumerator.Init(AList: TgIdentityList<T>);
@@ -7100,7 +7294,6 @@ end;
 
 function TgElement.CopyNode(Source: IXMLNode): IXMLNode;
 var
-  AValue: OleVariant;
   Index: Integer;
   AName: String;
   ANode: IXMLNode;
@@ -7110,18 +7303,10 @@ begin
   if not GetgDocument(AgDocument) then
     raise E.Create('No document');
   Result := AgDocument.Target.CreateNode(Source.NodeName);
-  Index := Source.AttributeNodes.Count-1;
+  Index := NodeAttributes.Count-1;
   for Index := 0 to Index do begin
-    ANode := Source.AttributeNodes[Index];
-    AName := ANode.NodeName;
-    AValue := ANode.NodeValue;
-    if not VarIsNull(AValue) and not VarIsEmpty(AValue) then begin
-      if GetPropertyByName(AName) = nil then begin
-{ TODO : Should I drop any specific attributes }
-        AValue := ProcessValue(AValue);
-      end;
-      Result.Attributes[AName] := AValue;
-    end;
+    AName := NodeAttributes.Names[Index];
+    Result.Attributes[AName] := NodeAttributes.Values[AName];
   end;
 
 end;
@@ -7131,6 +7316,7 @@ begin
   inherited;
   FCondition := True;
   FConditionSelf := True;
+  FNodeAttributes := TStringList.Create;
 end;
 
 class function TgElement.CreateFromTag(Owner: TgElement;
@@ -7142,6 +7328,7 @@ var
   Index: Integer;
   Handled: Boolean;
   A: TCustomAttribute;
+  ANotVisible: NotVisible;
   RTTIProperty: TRTTIProperty;
 begin
   NodeName := Node.NodeName;
@@ -7153,11 +7340,15 @@ begin
   for Index := 0 to Index do begin
     NodeName := Node.AttributeNodes[Index].NodeName;
     RTTIProperty :=  Result.GetPropertyByName(NodeName);
-    NodeValue := Node.AttributeNodes[Index].NodeValue;
-    if varIsNull(NodeValue) then
+    NodeValue := Result.ProcessValue(Node.AttributeNodes[Index].NodeValue);
+    if NodeValue = null then
       NodeValue := '';
+    if not GetAttribute<NotVisible>(RTTIProperty,ANotVisible) then
+      Result.NodeAttributes.Values[NodeName] := NodeValue;
     if Assigned(RTTIProperty) and RTTIProperty.IsWritable then
-      if RTTIProperty.PropertyType.IsInstance then
+      if RTTIProperty.PropertyType.Handle = TypeInfo(TObjectRef) then
+        RTTIProperty.SetValue(Result,TObjectRef.NewValue(NodeValue,AgBase))
+      else if RTTIProperty.PropertyType.IsInstance then
         RTTIProperty.SetValue(Result,AgBase.Objects[NodeValue])
       else begin
         Handled := False;
@@ -7174,10 +7365,30 @@ begin
       end;
   end;
 end;
+destructor TgElement.Destroy;
+begin
+  FreeAndNil(FNodeAttributes);
+  inherited;
+end;
+
 class destructor TgElement.Destroy;
 begin
   FreeAndNil(_Tags);
   inherited;
+end;
+
+function TgElement.ExpandPath(const AName: String; const APrefix: String = ''): String;
+begin
+  Result := '';
+  if Pos('.',AName) > 0 then Exit(AName);
+  if Assigned(Owner) and (Owner is TgElement) then
+    Result := TgElement(Owner).ExpandPath(Object_.Name,'');
+  if APrefix <> '' then
+    Result := Result + '.' + APrefix;
+  if (Result = '') then
+    Result := AName
+  else if (AName <> '') then
+    Result := Result + '.' + AName;
 end;
 
 function TgElement.GetgBase: TgBase;
@@ -7386,6 +7597,14 @@ begin
 end;
 
 
+procedure TgElement.SetObject(const Value: TObjectRef);
+begin
+  FObject := Value;
+  if Assigned(FObject.Base)  then
+    FgBase := FObject.Base;
+
+end;
+
 function TgElement.Skip: Boolean;
 begin
   Result := not Condition;
@@ -7400,20 +7619,21 @@ begin
     Result := '';
 end;
 
+procedure TgDocument.Clear;
+begin
+  Active := False;
+  Active := True;
+end;
+
 constructor TgDocument.Create(Owner: TgBase);
 begin
   inherited;
-  FTargetDocument := TXMLDocument.Create(Nil);
-  FTargetDocumentInterface := FTargetDocument;
-  FTargetDocument.DOMVendor := GetDOMVendor('MSXML');
-  FTargetDocument.Options := [doNodeAutoIndent,doAttrNull];
-  FTargetDocument.Active := True;
+  Active := True;
 end;
 
 destructor TgDocument.Destroy;
 begin
-  FTargetDocumentInterface := nil;
-  FTargetDocument := nil;
+  Active := False;
   inherited;
 end;
 
@@ -7498,6 +7718,23 @@ begin
     SourceDocumentInterface := nil;
     SourceDocument := nil;
 //      SourceDocument.Free;
+  end;
+end;
+
+procedure TgDocument.SetActive(const Value: Boolean);
+begin
+  if FActive = Value then exit;
+  FActive := Value;
+  if FActive then begin
+    FTargetDocument := TXMLDocument.Create(Nil);
+    FTargetDocumentInterface := FTargetDocument;
+    FTargetDocument.DOMVendor := GetDOMVendor('MSXML');
+    FTargetDocument.Options := [doNodeAutoIndent,doAttrNull];
+    FTargetDocument.Active := True;
+  end
+  else begin
+    FTargetDocumentInterface := nil;
+    FTargetDocument := nil;
   end;
 end;
 
@@ -8584,12 +8821,60 @@ begin
   Names := SplitString(PropertyNames,',');
 end;
 
-{ Condition }
+{ TgElement.TObjectRef }
 
-constructor Condition.Create(const AValue: String);
+class function TgElement.TObjectRef.New(const AName: String;
+  AgBase: TgBase): TObjectRef;
 begin
-  inherited Create;
-  Value := AValue;
+  Result.Name := AName;
+  Result.Base := AgBase.Objects[AName];
+end;
+
+class function TgElement.TObjectRef.NewValue(const AName: String;
+  AgBase: TgBase): TValue;
+begin
+  Result := TValue.From<TObjectRef>(New(AName,AgBase));
+end;
+
+{ TOriginalValues }
+
+procedure TgOriginalValues.Load;
+var
+  RttiProperties: TArray<TRTTIProperty>;
+  RttiInstanceProperty: TRttiInstanceProperty;
+  Highest: Integer;
+  Source: TgBase;
+  Index: Integer;
+begin
+  Highest := -1;
+  Source := Owner;
+  RttiProperties := G.AssignableProperties(Source);
+  for Index := 0 to High(RttiProperties) do
+  begin
+    RttiInstanceProperty := RttiProperties[Index] as TRttiInstanceProperty;
+    Highest := Max(RttiInstanceProperty.PropInfo.NameIndex,Highest);
+  end;
+  SetLength(FValues,Highest+1);
+  for Index := 0 to High(FValues) do
+    FValues[Index] := Null;
+  for Index := 0 to High(RttiProperties) do
+  begin
+    RttiInstanceProperty := RttiProperties[Index] as TRttiInstanceProperty;
+    Source.DoGetValues(RttiInstanceProperty,FValues[RttiInstanceProperty.PropInfo^.NameIndex]);
+  end;
+end;
+
+function TgOriginalValues.DoGetValues(const APath: string;
+  out AValue: Variant): Boolean;
+var
+  Source: TgBase;
+  RttiProperty: TRttiProperty;
+begin
+  Source := Owner;
+  Result := Assigned(Source) and Source.DoGetProperties(APath,RTTIProperty,Source);
+  Result := Result and (RttiProperty is TRttiInstanceProperty) and (TRttiInstanceProperty(RttiProperty).PropInfo.NameIndex <= High(FValues));
+  if Result then
+    AValue := FValues[TRttiInstanceProperty(RttiProperty).PropInfo.NameIndex];
 end;
 
 Initialization

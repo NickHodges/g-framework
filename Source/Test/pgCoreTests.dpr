@@ -25,8 +25,8 @@ uses
   gWebUI in '..\gWebUI.pas';
 
 {$R *.RES}
-
 begin
+
   Application.Initialize;
   if IsConsole then
     with TextTestRunner.RunRegisteredTests do

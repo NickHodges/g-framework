@@ -84,8 +84,25 @@ type
     property List: TBase2List read FList;
   End;
 
-  TBase = class(TgObject)
+  TBase4 = class(TgBase)
+  public
+    type
+      TBase = class(TgIDObject)
+      end;
   strict private
+    FBase2: TBase2;
+    FBase: TBase;
+  published
+    property Base2: TBase2 read FBase2;
+    property Base: TBase read FBase;
+  end;
+
+  TBase = class(TgObject)
+  public
+    type
+      TEnum = (be,beLast,beHello);
+  strict private
+    FEnum: TEnum;
     FBooleanProperty: Boolean;
     FDateProperty: TDate;
     FDateTimeProperty: TDateTime;
@@ -108,6 +125,7 @@ type
     property DateProperty: TDate read FDateProperty write FDateProperty;
     [Required]
     property DateTimeProperty: TDateTime read FDateTimeProperty write FDateTimeProperty;
+    property Enum: TEnum read FEnum write FEnum;
     [DefaultValue(5)] [Required]
     property IntegerProperty: Integer read FIntegerProperty write FIntegerProperty;
     property ManuallyConstructedObjectProperty: TBase read GetManuallyConstructedObjectProperty;
@@ -145,7 +163,6 @@ type
     procedure DeserializeXML;
     procedure DeserializeJSON;
     procedure DeserializeCSV;
-    procedure PathName;
     procedure SerializeXML;
     procedure SerializeJSON;
     procedure SerializeCSV;
@@ -154,11 +171,38 @@ type
     procedure PathValue;
   end;
 
+  TestTBase4 = class(TTestCase)
+  protected
+    FBase4: TBase4;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+  end;
+
   TestTgString5 = class(TTestCase)
   published
     procedure TestLength;
   end;
-
+  TestTgOriginalValues = class(TTestCase)
+  public
+    type
+      TItem = class(TgBase)
+      private
+        FBool: Boolean;
+        FInt: Integer;
+        FName: String;
+      published
+        property Bool: Boolean read FBool write FBool;
+        property Int: Integer read FInt write FInt;
+        property Name: String read FName write FName;
+      end;
+  protected
+    FOriginalValues: TgOriginalValues;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure Test;
+  end;
   TestTBase2List = class(TTestCase)
   strict private
     FBase2List: TBase2List;
@@ -270,7 +314,6 @@ type
     procedure SerializeCSV;
     procedure DeserializeXML;
     procedure DeserializeCSV;
-    procedure PathName;
   end;
 
   TIDObject = class(TgIDObject)
@@ -533,7 +576,6 @@ type
     const DefaulthtmlContent = '<html><body>hello!</body></html>';
     const DefaulthtmContent = '<html><body>{Name}, hello!</body></html>';
     const WebConfigurationDataContent = '';
-    class constructor Create;
     procedure SetUp; override;
     procedure TearDown; override;
   published
@@ -643,22 +685,53 @@ type
           TCustomer = class(TgIDObject)
           private
             FFirstName: string;
+            FGoodCustomer: Boolean;
+            FInt: Integer;
             FLastName: string;
+            FTitle: String;
           published
             [ListColumn(1)] // Default takes the first non object property
             property FirstName: string read FFirstName write FFirstName;
             [ListColumn(0)]
             property LastName: string read FLastName write FLastName;
+            property GoodCustomer: Boolean read FGoodCustomer write FGoodCustomer;
+            property Int: Integer read FInt write FInt;
+            [DefaultValue('Salesperson')]
+            property Title: String read FTitle write FTitle;
           end;
+          TCustomers = TgIdentityList<TCustomer>;
+
+          TBillingAddress = class(TgObject)
+          private
+            FAddress: String;
+          published
+            property Address: String read FAddress write FAddress;
+          end;
+
+          TShippingAddress = class(TgIDObject)
+          private
+            FAddress: String;
+          published
+            property Address: String read FAddress write FAddress;
+          end;
+
           TCustomer2 = class(TgIDObject)
           private
+            FBillingAddress: TBillingAddress;
             FFirstName: string;
             FLastName: string;
+            FShippingAddress: TShippingAddress;
+            function GetOriginalValues: TCustomer2; {$IFNDEF DEBUG}inline;{$ENDIF}
           published
+            property BillingAddress: TBillingAddress read FBillingAddress;
             // Default takes the first non object property
             property FirstName: string read FFirstName write FFirstName;
             property LastName: string read FLastName write FLastName;
+            property ShippingAddress: TShippingAddress read FShippingAddress;
+            [NotAutoCreate] [NotComposite] [NotSerializable] [NotAssignable] [NotVisible]
+            property OriginalValues: TCustomer2 read GetOriginalValues;
           end;
+
 
           TObjectProperty = class(TgIDObject)
           private
@@ -699,6 +772,8 @@ type
 
       private
         FCustomer: TCustomer;
+        FCustomer2: TCustomer2;
+        FCustomers: TCustomers;
         FList1: TgList<TCustomer>;
         FList2: TgList<TCustomer>;
         FList3: TgList<TCustomer2>;
@@ -713,14 +788,27 @@ type
         property List3: TgList<TCustomer2> read FList3;
         property List4: TgList<TObjectProperty> read FList4;
         property Customer: TCustomer read FCustomer;
+        property Customer2: TCustomer2 read FCustomer2;
+        property Customers: TCustomers read FCustomers;
         property Name: String read FName write FName;
       end;
 
   private
     FData: TMyClass;
+    FModel: TMyModel;
     FDataClass: TgBaseClass;
     FDocument: TgDocument;
   published
+    procedure InputTagBoolean;
+    procedure InputTagInt;
+    procedure InputTagList1_0Int;
+    procedure gListItem;
+    procedure gListAdd;
+    procedure CurrentKeyPathNameAdd;
+    procedure CurrentObjectPathName;
+    procedure Composite;
+    procedure CompositeIdentity;
+//    procedure CurrentKeyPathName;
     procedure Bool;
     procedure ReadBool_True;
     procedure ReadBool_False;
@@ -789,6 +877,8 @@ begin
   Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
   CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base['DateTimeProperty'], 'DateTime as TDateTime');
   CheckEquals(FloatToStr(StrToDateTime('1/1/12 12:34 am')), Base['DateTimeProperty'], 'DateTime as String');
+  Base.Enum := beLast;
+  CheckEquals('beLast',Base['Enum']);
 end;
 
 procedure TestTBase.PathEndsWithAnObjectProperty;
@@ -827,20 +917,21 @@ var
   ACount: Integer;
   Item: TgBase.TPathValue;
 begin
-  CheckEquals(9,Base.PathCount);
+  CheckEquals(10,Base.PathCount);
   ACount := 0;
   for Item in Base do
     Inc(ACount);
-  CheckEquals(9,ACount);
+  CheckEquals(10,ACount);
   CheckEquals('BooleanProperty',Base.Paths[0]);
   CheckEquals('DateProperty',Base.Paths[1]);
   CheckEquals('DateTimeProperty',Base.Paths[2]);
-  CheckEquals('IntegerProperty',Base.Paths[3]);
-  CheckEquals('ManuallyConstructedObjectProperty',Base.Paths[4]);
-  CheckEquals('ObjectProperty',Base.Paths[5]);
-  CheckEquals('UnconstructedObjectProperty',Base.Paths[6]);
-  CheckEquals('String5',Base.Paths[7]);
-  CheckEquals('Phone',Base.Paths[8]);
+  CheckEquals('Enum',Base.Paths[3]);
+  CheckEquals('IntegerProperty',Base.Paths[4]);
+  CheckEquals('ManuallyConstructedObjectProperty',Base.Paths[5]);
+  CheckEquals('ObjectProperty',Base.Paths[6]);
+  CheckEquals('UnconstructedObjectProperty',Base.Paths[7]);
+  CheckEquals('String5',Base.Paths[8]);
+  CheckEquals('Phone',Base.Paths[9]);
 
   Base.BooleanProperty := True;
   CheckTrue(Base.PathValues[0]);
@@ -1022,15 +1113,10 @@ begin
   CheckEquals(StrToDateTime('1/1/12 12:34 am'), Base.DateTimeProperty);
 end;
 
-procedure TestTBase.PathName;
-begin
-  CheckEquals('', Base.PathName);
-  CheckEquals('ManuallyConstructedObjectProperty', Base.ManuallyConstructedObjectProperty.PathName);
-end;
-
 procedure TestTBase.SerializeXML;
 var
   XMLString: string;
+  S: string;
 begin
   Base.String5 := '123456789';
   Base.Phone := '5555555555';
@@ -1046,11 +1132,13 @@ begin
     '    <BooleanProperty>True</BooleanProperty>'#13#10 + //2
     '    <DateProperty>1/1/2012</DateProperty>'#13#10 + //3
     '    <DateTimeProperty>1/1/2012 00:34:00</DateTimeProperty>'#13#10 + //4
+    '    <Enum>be</Enum>'#13#10 +
     '    <IntegerProperty>5</IntegerProperty>'#13#10 + //5
     '    <ManuallyConstructedObjectProperty classname="TestgCore.TBase">'#13#10 + //6
     '      <BooleanProperty>False</BooleanProperty>'#13#10 + //7
     '      <DateProperty>12/30/1899</DateProperty>'#13#10 + //8
     '      <DateTimeProperty>12/30/1899 00:00:00</DateTimeProperty>'#13#10 + //9
+    '      <Enum>be</Enum>'#13#10 +
     '      <IntegerProperty>6</IntegerProperty>'#13#10 + //10
     '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
     '        <IntegerProperty>2</IntegerProperty>'#13#10 + //12
@@ -1067,7 +1155,8 @@ begin
     '    <Phone>(555) 555-5555</Phone>'#13#10 + //23
     '  </Base>'#13#10 + //24
     '</xml>'#13#10; //25
-  CheckEquals(XMLString, Base.Serialize(TgSerializerXML));
+  S := Base.Serialize(TgSerializerXML);
+  CheckEquals(XMLString, S);
 end;
 
 procedure TestTBase.SerializeCSV;
@@ -1084,18 +1173,19 @@ begin
   Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
   CSVString1 := Base.Serialize(TgSerializerCSV);
   CSVString :=
-    'BooleanProperty,DateProperty,DateTimeProperty,IntegerProperty,StringProperty,String5,Phone,ManuallyConstructedObjectProperty.BooleanProperty,ManuallyConstructedObjectProperty.DateProperty,ManuallyConstructedObjectProperty.DateTimeProperty,'
-       +'ManuallyConstructedObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.StringProperty,ManuallyConstructedObjectProperty.String5,'
-       +'ManuallyConstructedObjectProperty.Phone,ObjectProperty.IntegerProperty,ObjectProperty.StringProperty'#$D#$A
-    +'True,1/1/2012,"1/1/2012 00:34:00",5,,,,False,12/30/1899,"12/30/1899 00:00:00",6,2,12345,98765,"(444) 444-4444"'#$D#$A
-    +',,,,,,,,,,,,,,,2,12345'#$D#$A
-    +',,,,,12345,"(555) 555-5555"'#$D#$A;
+    'BooleanProperty,DateProperty,DateTimeProperty,Enum,IntegerProperty,StringProperty,String5,Phone,ManuallyConstructedObjectProperty.BooleanProperty,ManuallyConstructedObjectProperty.DateProperty,ManuallyConstructedObjectProperty.DateTimeProperty,'
+    +'ManuallyConstructedObjectProperty.Enum,ManuallyConstructedObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.IntegerProperty,ManuallyConstructedObjectProperty.ObjectProperty.StringProperty,'
+    +'ManuallyConstructedObjectProperty.String5,ManuallyConstructedObjectProperty.Phone,ObjectProperty.IntegerProperty,ObjectProperty.StringProperty'#$D#$A
+   +'True,1/1/2012,"1/1/2012 00:34:00",be,5,,,,False,12/30/1899,"12/30/1899 00:00:00",be,6,2,12345,98765,"(444) 444-4444"'#$D#$A
+   +',,,,,,,,,,,,,,,,,2,12345'#$D#$A
+   +',,,,,,12345,"(555) 555-5555"'#$D#$A;
   CheckEquals(CSVString,CSVString1);
 end;
 
 procedure TestTBase.SerializeJSON;
 var
   JSONString: string;
+  S: string;
 begin
   Base.String5 := '123456789';
   Base.Phone := '5555555555';
@@ -1106,16 +1196,17 @@ begin
   Base.DateProperty := StrToDate('1/1/12');
   Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
   JSONString :=
-    '{"ClassName":"TestgCore.TBase","BooleanProperty":"True","DateProperty":"1/'+
-    '1/2012","DateTimeProperty":"1/1/2012 00:34:00","IntegerProperty":"5","Manu'+
-    'allyConstructedObjectProperty":{"ClassName":"TestgCore.TBase","BooleanProp'+
-    'erty":"False","DateProperty":"12/30/1899","DateTimeProperty":"12/30/1899 0'+
-    '0:00:00","IntegerProperty":"6","ObjectProperty":{"ClassName":"TestgCore.TB'+
-    'ase2","IntegerProperty":"2","StringProperty":"12345"},"String5":"98765","P'+
-    'hone":"(444) 444-4444"},"ObjectProperty":{"ClassName":"TestgCore.TBase2","'+
-    'IntegerProperty":"2","StringProperty":"12345"},"String5":"12345","Phone":"'+
-    '(555) 555-5555"}';
-  CheckEquals(JSONString, Base.Serialize(TgSerializerJSON));
+   '{"ClassName":"TestgCore.TBase","BooleanProperty":"True","DateProperty":'
+  +'"1/1/2012","DateTimeProperty":"1/1/2012 00:34:00","Enum":"be","IntegerP'
+  +'roperty":"5","ManuallyConstructedObjectProperty":{"ClassName":"TestgCor'
+  +'e.TBase","BooleanProperty":"False","DateProperty":"12/30/1899","DateTim'
+  +'eProperty":"12/30/1899 00:00:00","Enum":"be","IntegerProperty":"6","Obj'
+  +'ectProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2","Str'
+  +'ingProperty":"12345"},"String5":"98765","Phone":"(444) 444-4444"},"Obje'
+  +'ctProperty":{"ClassName":"TestgCore.TBase2","IntegerProperty":"2","Stri'
+  +'ngProperty":"12345"},"String5":"12345","Phone":"(555) 555-5555"}';
+  S := Base.Serialize(TgSerializerJSON);
+  CheckEquals(JSONString, S);
 end;
 
 procedure TestTBase.TestCreate;
@@ -2090,15 +2181,6 @@ begin
   CheckEquals('C', Base3.List[2].StringProperty);
 end;
 
-procedure TestTBase3.PathName;
-begin
-  Base3.Name := 'One';
-  Add3;
-  Base3.List.Previous;
-  CheckEquals('List[1]', Base3.List.Current.PathName);
-  CheckEquals(2, Base3[Base3.List.Current.PathName + '.IntegerProperty']);
-end;
-
 procedure TestTBase3.SetUp;
 begin
   inherited;
@@ -2182,19 +2264,27 @@ begin
   FIDObject2.Name := 'One';
   FIDObject2.IDObject.ID := 1;
   FIDObject2.Save;
+  CheckEquals(1,FIDObject2.ID);
   Add3Items;
+  CheckTrue(FIDObject2.IDObjects.Current.IDObject2 = FIDObject2);
+
   FIDObject2.RemoveIdentity;
+  CheckEquals(0,FIDObject2.ID);
   FIDObject2.Name := 'Two';
   FIDObject2.IDObject.ID := 2;
+  CheckEquals(0, FIDObject2.IDObjects.Count);
   FIDObject2.Save;
+  CheckEquals(2,FIDObject2.ID);
   Add3Items;
   FIDObject2.ID := 1;
   FIDObject2.Load;
+  CheckEquals('One',FIDObject2.Name);
   FIDObject2.IDObjects.First;
   CheckEquals(3, FIDObject2.IDObjects.Count);
   CheckEquals(1, FIDObject2.IDObjects.Current.ID);
   FIDObject2.ID := 2;
   FIDObject2.Load;
+  CheckEquals('Two',FIDObject2.Name);
   FIDObject2.IDObjects.First;
   CheckEquals(3, FIDObject2.IDObjects.Count);
   CheckEquals(4, FIDObject2.IDObjects.Current.ID);
@@ -2449,10 +2539,32 @@ begin
       '  </body>'#$D#$A+
       '</html>'#$D#$A;
     gCustomer.GoodCustomer := False;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'    <title>Untitled     <b>Document</b>'#$D#$A'    '#$D#$A'    S</title>'#$D#$A'  </head>'#$D#$A'  <body xmlns=""/>'#$D#$A'</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+    CheckEquals(
+      '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+     +'  <head xmlns="">'#$D#$A
+     +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+     +'    <title>Untitled     <b>Document</b>'#$D#$A
+     +'    '#$D#$A
+     +'    S</title>'#$D#$A
+     +'  </head>'#$D#$A
+     +'  <body xmlns=""/>'#$D#$A
+     +'</html>'#$D#$A
+     ,TgDocument._ProcessText(Text,gCustomer));
     CheckEquals('',gCustomer.FirstName);
     gCustomer.GoodCustomer := True;
-    CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A'  <head xmlns="">'#$D#$A'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A'    <title>Untitled     <b>Document</b>'#$D#$A'    '#$D#$A'    S</title>'#$D#$A'  </head>'#$D#$A'  <body xmlns=""/>'#$D#$A'</html>'#$D#$A,TgDocument._ProcessText(Text,gCustomer));
+    CheckEquals('',gCustomer['FirstName']);
+    Text := TgDocument._ProcessText(Text,gCustomer);
+    CheckEquals(
+     '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
+    +'  <head xmlns="">'#$D#$A
+    +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
+    +'    <title>Untitled     <b>Document</b>'#$D#$A
+    +'    '#$D#$A
+    +'    S</title>'#$D#$A
+    +'  </head>'#$D#$A
+    +'  <body xmlns=""/>'#$D#$A
+    +'</html>'#$D#$A
+    ,Text);
     CheckEquals('DeadMeat',gCustomer.FirstName);
   finally
     gCustomer.Free;
@@ -2476,6 +2588,7 @@ begin
     '  <body xmlns=""/>'#$D#$A+
     '</html>'#$D#$A;
 
+  Text := TgDocument._ProcessText(Text);
   CheckEquals(
     '<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
    +'  <head xmlns="">'#$D#$A
@@ -2486,7 +2599,7 @@ begin
    +'  </head>'#$D#$A
    +'  <body xmlns=""/>'#$D#$A
    +'</html>'#$D#$A
-  ,TgDocument._ProcessText(Text));
+  ,Text);
 end;
 
 procedure TestHTMLParser.gForm;
@@ -2740,7 +2853,7 @@ begin
       +'  </list>'#13#10
       +'</body>'#13#10
       +'</html>'#13#10;
-
+    Text := TgDocument._ProcessText(Text,Model);
     CheckEquals('<html xmlns="http://www.w3.org/1999/xhtml">'#$D#$A
       +'  <head xmlns="">'#$D#$A
       +'    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'#$D#$A
@@ -2753,7 +2866,7 @@ begin
       +'    <br/>'#$D#$A
       +'  </body>'#$D#$A
       +'</html>'#$D#$A
-    ,TgDocument._ProcessText(Text,Model));
+    ,Text);
   //  TargetDocument.SaveToXML(TextResult);
   finally
     Model.Free;
@@ -2969,13 +3082,6 @@ end;
 
 { TestTgWebServerController }
 
-class constructor TestTgWebServerController.Create;
-begin
-  asm
-      nop
-  end;
-end;
-
 procedure TestTgWebServerController.DefaultConfig;
 begin
   FWebServerController.ReadConfigurationData
@@ -3165,6 +3271,91 @@ begin
    +'  </div>'#$D#$A
    +'</html>'#$D#$A
   ,S);
+end;
+
+procedure TestTgWebUI.CurrentKeyPathNameAdd;
+var
+  S: String;
+begin
+  S :=
+    '<form object="Customers.Current">'
+     +'<label id="lblTitle" for="inpTitle">Titie</label>'
+     +'<input type="text" id="inpTitle" name="Title" />'
+   +'</form>';
+  // if it has a value then it knows it needs to put a hidden input for current key
+  // Look to the current and see if it has idenity if it doesn't then its new
+  FModel.Customers.Active := True; // ToDo: Should I have to do this
+  FModel.Customers.Buffered := True;
+  FModel.Customers.Add;
+  CheckEquals(0,FModel.Customers.CurrentIndex);
+
+  FModel.Customers.Add;
+  CheckEquals(0,FModel.Customers.Current.ID);
+  FModel.Customers.Current.ID := 1;
+  FModel.Customers.Current.IsLoaded := True;
+  CheckEquals(1,FModel.Customers.Current.ID);
+  CheckEquals(1,FModel.Customers.CurrentIndex);
+  CheckEquals('',FMOdel.Customers.CurrentKey);
+
+  FModel.Customers.Add;
+  CheckEquals(0,FModel.Customers.Current.ID);
+  FModel.Customers.Current.ID := 2;
+  FModel.Customers.Current.IsLoaded := True;
+  CheckEquals(2,FModel.Customers.Current.ID);
+  CheckEquals(2,FModel.Customers.CurrentIndex);
+  FModel.Customers.CurrentKey := '1';
+  CheckEquals(1,FModel.Customers.Current.ID);
+  CheckEquals('1',  FModel.Customers.CurrentKey);
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FModel);
+   CheckEquals(
+     '<html>'#$D#$A
+    +'  <form>'#$D#$A
+//     <input type="hidden" value="2" name="List1.CurrentIndex">
+    +'    <input type="hidden" value="1" name="Customers.CurrentKey"/>'#$D#$A
+    +'    <label id="lblTitle" for="inpTitle">Titie</label>'#$D#$A
+    +'    <input type="text" id="inpTitle" name="Customers.Current.Title" value="Salesperson"/>'#$D#$A
+    +'    <input type="hidden" name="Customers.Current.OriginalValues.Title" value="Salesperson"/>'#$D#$A
+    +'  </form>'#$D#$A
+    +'</html>'#$D#$A
+    ,S);
+end;
+
+procedure TestTgWebUI.CurrentObjectPathName;
+var
+  S: String;
+begin
+  S :=
+    '<div object="Customers">'
+    +'<form object="Current">'
+       +'<input type="text" id="inpTitle" name="Title" />'
+       +'<input type="text" id="inpTitle" name="Owner.Owner.Customer.Title" />' //we shouldn't ever use
+       +'<input type="text" id="inpTitle" name="Model.Customer.Title" />'
+     +'</form>'
+    +'</div>';
+  FModel.Customer.Title := 'CFO';
+  FModel.Customers.Add;
+  FModel.Customers.Current.Title := 'CGO';
+  FModel.Customers.Save;
+  CheckTrue(FModel.Customers.Current.Owner = FModel.Customers);
+  CheckTrue(FModel.Customers.Current.Owner.Owner = FModel);
+  FDocument.ProcessText('<html>'+S+'</html>',S,FModel);
+   CheckEquals(
+      '<html>'#13#10 + //0
+      '  <div>'#13#10 + //1
+      '    <form>'#13#10 + //2
+      '      <input type="hidden" value="" name="Customers.CurrentKey"/>'#13#10 + //3
+      '      <input type="text" id="inpTitle" name="Customers.Current.Title" value="CGO"/>'#13#10 + //4
+      '      <input type="hidden" name="Customers.Current.OriginalValues.Title" value="CGO"/>'#13#10 + //5
+      '      <input type="text" id="inpTitle" name="Owner.Owner.Customer.Title" value="CFO"/>'#13#10 + //6
+      '      <input type="hidden" name="Owner.Owner.Customer.Title" value="CFO"/>'#13#10 + //7
+      '      <input type="text" id="inpTitle" name="Model.Customer.Title" value="CFO"/>'#13#10 + //8
+      '      <input type="hidden" name="Model.Customer.Title" value="CFO"/>'#13#10 + //9
+      '    </form>'#13#10 + //10
+      '  </div>'#13#10 + //11
+      '</html>'#13#10 //12
+     ,S);
+
 end;
 
 procedure TestTgWebUI.DoubleValue;
@@ -3391,7 +3582,7 @@ var
 begin
   S := TgWebUIBase.ToString('Text',FDataClass);
 
-  CheckEquals('<div name="grpText"><label id="lblText" for="Text">My Text</label><textarea id="Text" name="Text"></textarea></div>',S);
+  CheckEquals('<div name="grpText"><label id="lblText" for="Text">My Text</label><textarea id="txtText" name="Text"></textarea></div>',S);
 
   FData.Text := 'This is a Test';
 
@@ -3401,7 +3592,7 @@ begin
    '<html>'#$D#$A
   +'  <div name="grpText">'#$D#$A
   +'    <label id="lblText" for="Text">My Text</label>'#$D#$A
-  +'    <textarea id="Text" name="Text">This is a Test</textarea>'#$D#$A
+  +'    <textarea id="txtText" name="Text">This is a Test</textarea>'#$D#$A
   +'  </div>'#$D#$A
   +'</html>'#$D#$A
   ,S);
@@ -3428,6 +3619,180 @@ begin
  +'  </div>'#$D#$A
  +'</html>'#$D#$A
  ,S);
+end;
+
+
+procedure TestTgWebUI.gListItem;
+var
+  S: String;
+begin
+  S :=
+    '<form object="List1.Current">'
+     +'<label id="lblTitle" for="inpTitle">Titie</label>'
+     +'<input type="text" id="inpTitle" name="Title" />'
+   +'</form>';
+  // if it has a value then it knows it needs to put a hidden input for current key
+  // Look to the current and see if it has idenity if it doesn't then its new
+  FModel.List1.Add;
+  CheckEquals(0,FModel.List1.CurrentIndex);
+  FModel.List1.Current.IsLoaded := True;
+  FModel.List1.Add;
+  CheckEquals(1,FModel.List1.CurrentIndex);
+  FModel.List1.Current.IsLoaded := True;
+  FModel.List1.Current.Title := 'CEO';
+  CheckEquals('Salesperson',FModel.List1.Current.OriginalValues['Title']);
+  FModel.List1.Add;
+  CheckEquals(2,FModel.List1.CurrentIndex);
+  FModel.List1.Current.IsLoaded := True;
+
+  FModel.List1.CurrentIndex := 1;
+  CheckTrue(FModel.List1.Current.IsLoaded);
+  CheckEquals('Salesperson',FModel.List1.Current.OriginalValues['Title']);
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FModel);
+   CheckEquals(
+      '<html>'#$D#$A
+     +'  <form>'#$D#$A
+     +'    <input type="hidden" value="1" name="List1.CurrentIndex"/>'#$D#$A
+     +'    <label id="lblTitle" for="inpTitle">Titie</label>'#$D#$A
+     +'    <input type="text" id="inpTitle" name="List1.Current.Title" value="CEO"/>'#$D#$A
+     +'    <input type="hidden" name="List1.Current.OriginalValues.Title" value="Salesperson"/>'#$D#$A
+     +'  </form>'#$D#$A
+     +'</html>'#$D#$A
+     ,S);
+end;
+
+procedure TestTgWebUI.gListAdd;
+var
+  S: String;
+begin
+  S :=
+    '<form object="List1.Current">'
+     +'<label id="lblTitle" for="inpTitle">Titie</label>'
+     +'<input type="text" id="inpTitle" name="Title" />'
+   +'</form>';
+  // if it has a value then it knows it needs to put a hidden input for current key
+  // Look to the current and see if it has idenity if it doesn't then its new
+  FModel.List1.Add;
+  CheckEquals(0,FModel.List1.CurrentIndex);
+  CheckFalse(FModel.List1.Current.IsLoaded);
+  // Because isLoaded is false the form should add a hidden input List1.Add to the tags.
+  FDocument.ProcessText('<html>'+S+'</html>',S,FModel);
+   CheckEquals(
+     '<html>'#$D#$A
+    +'  <form>'#$D#$A
+    +'    <input type="hidden" value="" name="List1.Add"/>'#$D#$A
+    +'    <label id="lblTitle" for="inpTitle">Titie</label>'#$D#$A
+    +'    <input type="text" id="inpTitle" name="List1.Current.Title" value="Salesperson"/>'#$D#$A
+    +'    <input type="hidden" name="List1.Current.OriginalValues.Title" value="Salesperson"/>'#$D#$A
+    +'  </form>'#$D#$A
+    +'</html>'#$D#$A
+
+    ,S);
+end;
+
+procedure TestTgWebUI.InputTagBoolean;
+var
+  Template: String;
+  S: String;
+begin
+  Template := '<form object="Customer">'
+    +'<div name="grpGoodCustomer">'
+    +'<label id="lblGoodCustomer" for="inpGoodCustomer">Good Customer</label>' // ToDo: is the "For" correct
+    +'<input type="checkbox" id="inpGoodCustomer" name="GoodCustomer" />'
+    +'</div>'
+    +'</form>';
+  FModel.Customer.GoodCustomer := True;
+  FDocument.ProcessText('<html>'+Template+'</html>',S,FModel);
+  CheckEquals(
+     '<html>'#$D#$A
+    +'  <form>'#$D#$A
+    +'    <div name="grpGoodCustomer">'#$D#$A
+    +'      <label id="lblGoodCustomer" for="inpGoodCustomer">Good Customer</label>'#$D#$A
+    +'      <input type="hidden" name="Customer.GoodCustomer" value=""/>'#$D#$A
+    +'      <input type="checkbox" id="inpGoodCustomer" name="Customer.GoodCustomer" value="true" checked="checked"/>'#$D#$A
+    +'      <input type="hidden" name="Customer.OriginalValues.GoodCustomer" value="false"/>'#$D#$A
+    +'    </div>'#$D#$A
+    +'  </form>'#$D#$A
+    +'</html>'#$D#$A,S);
+
+  FModel.Customer.GoodCustomer := False;
+  FDocument.Clear;
+  FDocument.ProcessText('<html>'+Template+'</html>',S,FModel);
+  CheckEquals(
+     '<html>'#$D#$A
+    +'  <form>'#$D#$A
+    +'    <div name="grpGoodCustomer">'#$D#$A
+    +'      <label id="lblGoodCustomer" for="inpGoodCustomer">Good Customer</label>'#$D#$A
+    +'      <input type="hidden" name="Customer.GoodCustomer" value=""/>'#$D#$A
+    +'      <input type="checkbox" id="inpGoodCustomer" name="Customer.GoodCustomer" value="true"/>'#$D#$A
+    +'      <input type="hidden" name="Customer.OriginalValues.GoodCustomer" value="false"/>'#$D#$A
+    +'    </div>'#$D#$A
+    +'  </form>'#$D#$A
+    +'</html>'#$D#$A,S);
+end;
+
+procedure TestTgWebUI.InputTagInt;
+var
+  S: String;
+begin
+
+  S :=
+    '<form object="Customer">'
+     +'<div name="grpInt">'
+       +'<label id="lblInt" for="Int">Int</label>'
+       +'<input type="text" id="inpInt" name="Int" size="11" maxlength="11" />'
+     +'</div>'
+   +'</form>';
+
+  FModel.Customer.Int := 1234;
+  FModel.Customer.Save;
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FModel);
+
+  CheckEquals(
+     '<html>'#$D#$A
+    +'  <form>'#$D#$A
+    +'    <div name="grpInt">'#$D#$A
+    +'      <label id="lblInt" for="Int">Int</label>'#$D#$A
+    +'      <input type="text" id="inpInt" name="Customer.Int" size="11" maxlength="11" value="1234"/>'#$D#$A
+    +'      <input type="hidden" name="Customer.OriginalValues.Int" value="1234"/>'#$D#$A
+    +'    </div>'#$D#$A
+    +'  </form>'#$D#$A
+    +'</html>'#$D#$A
+    ,S);
+end;
+
+procedure TestTgWebUI.InputTagList1_0Int;
+var
+  S: String;
+begin
+
+  S :=
+    '<form object="List1[0]">'
+     +'<div name="grpInt">'
+       +'<label id="lblInt" for="Int">Int</label>'
+       +'<input type="text" id="inpInt" name="Int" size="11" maxlength="11"/>'
+     +'</div>'
+   +'</form>';
+
+  FModel.FList1.Add;
+  FModel.FList1[0].Int := 1234;
+  FModel.FList1.Current.Save;
+
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FModel);
+
+  CheckEquals(
+    '<html>'#$D#$A
+    +'  <form>'#$D#$A
+    +'    <div name="grpInt">'#$D#$A
+    +'      <label id="lblInt" for="Int">Int</label>'#$D#$A
+    +'      <input type="text" id="inpInt" name="List1[0].Int" size="11" maxlength="11" value="1234"/>'#$D#$A
+    +'      <input type="hidden" name="List1[0].OriginalValues.Int" value="1234"/>'#$D#$A
+    +'    </div>'#$D#$A
+    +'  </form>'#$D#$A
+    +'</html>'#$D#$A,S);
 end;
 
 procedure TestTgWebUI.Int;
@@ -3610,15 +3975,103 @@ begin
     Text := TgWebUIBase.CreateUITemplate(TMyModel,'Customer',False);
     CheckEquals(
       '<form object="Customer">'
-       +'<div name="grpFirstName"><label id="lblFirstName" for="FirstName">First Name</label><textarea id="FirstName" name="FirstName"></textarea></div>'
-       +'<div name="grpLastName"><label id="lblLastName" for="LastName">Last Name</label><textarea id="LastName" name="LastName"></textarea></div>'
-       +'<input type="submit" value="Delete" condition="CanDelete" />'
-       +'<input type="submit" value="Save" condition="CanSave" />'
+       +'<div name="grpFirstName"><label id="lblFirstName" for="FirstName">First Name</label><textarea id="txtFirstName" name="FirstName"></textarea></div>'
+       +'<div name="grpLastName"><label id="lblLastName" for="LastName">Last Name</label><textarea id="txtLastName" name="LastName"></textarea></div>'
+       +'<input condition="CanDelete" type="submit" id="inpDelete" value="Delete" />'
+       +'<input condition="CanSave" type="submit" id="inpSave" value="Save" />'
        +'</form>'
        ,Text);
   finally
     FreeAndNil(Model);
   end;
+end;
+
+
+procedure TestTgWebUI.Composite;
+var
+  S: String;
+begin
+  S  :=
+    '<form object="Customer2">'
+     +'<label id="lblFirstName" for="inpFirstName">First Name</label>'
+     +'<input type="text" id="inpFirstName" name="FirstName" />'
+     +'<fieldset id="fstBillingAddress" object="BillingAddress">'
+     +'<legend id="legBillingAddress">Billing Address</legend>'
+     +'<label id="lblBillingAddress_Address" for="inpBillingAddress_Address">Address</label>'
+     +'<input type="text" id="inpBillingAddress_Address" name="Address" />'
+     +'</fieldset>'
+   +'</form>';
+
+  FDocument.ProcessText('<html>'+S+'</html>',S,FModel);
+  CheckEquals(
+    '<html>'#13#10 + //0
+    '  <form>'#13#10 + //1
+    '    <label id="lblFirstName" for="inpFirstName">First Name</label>'#13#10 + //2
+    '    <input type="text" id="inpFirstName" name="Customer2.FirstName"/>'#13#10 + //3
+    '    <input type="hidden" name="Customer2.OriginalValues.FirstName" value=""/>'#13#10 + //4
+    '    <fieldset id="fstBillingAddress">'#13#10 + //5
+    '      <legend id="legBillingAddress">Billing Address</legend>'#13#10 + //6
+    '      <label id="lblBillingAddress_Address" for="inpBillingAddress_Address">Address</label>'#13#10 + //7
+    '      <input type="text" id="inpBillingAddress_Address" name="Customer2.BillingAddress.Address"/>'#13#10 + //8
+    '      <input type="hidden" id="" name="Customer2.OriginalValues.BillingAddress.Address"/>'#13#10 + //8
+    '    </fieldset>'#13#10 + //9
+    '  </form>'#13#10 + //10
+    '</html>'#13#10  //11
+   ,S);
+
+
+
+
+end;
+
+procedure TestTgWebUI.CompositeIdentity;
+var
+  S: String;
+  Text: String;
+begin
+  S  :=
+    '<form object="Customer2">'
+     +'<label id="lblFirstName" for="inpFirstName">First Name</label>'
+     +'<input type="text" id="inpFirstName" name="FirstName" />'
+     +'<fieldset id="fstShippingAddress" object="ShippingAddress">'
+     +'<legend id="legShippingAddress">Shipping Address</legend>'
+     +'<label id="lblShippingAddress_Address" for="inpShippingAddress_Address">Address</label>'
+     +'<input type="text" id="inpShippingAddress_Address" name="Address" />'
+     +'</fieldset>'
+   +'</form>';
+
+  FDocument.ProcessText('<html>'+S+'</html>',Text,FModel);
+(*
+  Customer2.BillingAddress.Address
+  Customer2.OriginalValues['BillingAddress.Address']
+
+  Customer2.BillingAddress.OrignialValues.Address
+
+  TBillingAddress(Customer2.BillingAddress.OriginalValues).Address
+  Customer2.BillingAddress.OriginalValues['Address'] :=
+
+
+  Customer2.BillingAddress.Address
+  Customer2.OriginalValues.FirstName
+  Customer2.OriginalValues.BillingAddress.Address
+
+  Customer2.BillingAddress.Changed(Customer.OriginalValues.BillingAddress);
+*)
+  CheckEquals(
+     '<html>'#$D#$A
+    +'  <form>'#$D#$A
+    +'    <label id="lblFirstName" for="inpFirstName">First Name</label>'#$D#$A
+    +'    <input type="text" id="inpFirstName" name="Customer2.FirstName"/>'#$D#$A
+    +'    <input type="hidden" name="Customer2.OriginalValues.FirstName" value=""/>'#$D#$A
+    +'    <fieldset id="fstShippingAddress">'#$D#$A
+    +'      <legend id="legShippingAddress">Shipping Address</legend>'#$D#$A
+    +'      <label id="lblShippingAddress_Address" for="inpShippingAddress_Address">Address</label>'#$D#$A
+    +'      <input type="text" id="inpShippingAddress_Address" name="Customer2.ShippingAddress.Address"/>'#$D#$A
+    +'      <input type="hidden" name="Customer2.ShippingAddress.OriginalValues.Address" value=""/>'#$D#$A
+    +'    </fieldset>'#$D#$A
+    +'  </form>'#$D#$A
+    +'</html>'#$D#$A
+   ,Text);
 end;
 
 procedure TestTgWebUI.NotVisibleBool;
@@ -3697,6 +4150,7 @@ begin
   FData := TMyClass.Create;
   FDataClass := TMyClass;
   FDocument := TgDocument.Create(FData);
+  FModel := TMyModel.Create;
 
 end;
 
@@ -3742,6 +4196,7 @@ end;
 
 procedure TestTgWebUI.TearDown;
 begin
+  FreeAndNil(FModel);
   FreeAndNil(FDocument);
   FreeAndNil(FData);
   inherited;
@@ -3776,6 +4231,58 @@ begin
   Int := 14;
 end;
 
+procedure TestTBase4.SetUp;
+begin
+  inherited;
+  FBase4 := TBase4.Create;
+end;
+
+procedure TestTBase4.TearDown;
+begin
+  FreeAndNil(FBase4);
+  inherited;
+end;
+
+{ TestTgWebUI.TMyModel.TCustomer2 }
+
+function TestTgWebUI.TMyModel.TCustomer2.GetOriginalValues: TCustomer2;
+begin
+  Result := TCustomer2(inherited OriginalValues)
+end;
+
+{ TestTgOriginalValues }
+
+procedure TestTgOriginalValues.SetUp;
+begin
+  inherited;
+end;
+
+procedure TestTgOriginalValues.TearDown;
+begin
+  inherited;
+  FreeAndNil(FOriginalValues);
+end;
+
+procedure TestTgOriginalValues.Test;
+var
+  Data: TItem;
+begin
+  Data := TItem.Create;
+
+  FOriginalValues := TgOriginalValues.Create(Data);
+  FOriginalValues.Load;
+  Checkequals(0,FOriginalValues.Values['Int']);
+  Checkequals('',FOriginalValues.Values['Name']);
+  CheckFalse(FOriginalValues.Values['Bool']);
+  Data.Int := 12;
+  Data.Name := 'OMG!';
+  Data.Bool := True;
+  FOriginalValues.Load;
+  Checkequals(12,FOriginalValues.Values['Int']);
+  Checkequals('OMG!',FOriginalValues.Values['Name']);
+  CheckTrue(FOriginalValues.Values['Bool']);
+end;
+
 initialization
   // Register any test cases with the test runner
   RegisterTest(TestTBase.Suite);
@@ -3784,6 +4291,7 @@ initialization
   RegisterTest(TestTIdentityObject.Suite);
   RegisterTest(TestTIdentityObjectList.Suite);
   RegisterTest(TestTBase3.Suite);
+  RegisterTest(TestTBase4.Suite);
   RegisterTest(TestTIDObject.Suite);
   RegisterTest(TestTIDObject2.Suite);
 //  RegisterTest(TestTgNodeCSV.Suite);
@@ -3797,7 +4305,7 @@ initialization
   RegisterTest(TestTgDictionary.Suite);
   RegisterTest(TestTgWebServerController.Suite);
   RegisterTest(TestTgWebUI.Suite);
-
+  RegisterTest(TestTgOriginalValues.Suite);
   RegisterRuntimeClasses([TFirebirdObject]);
 
 end.
@@ -3811,6 +4319,7 @@ end.
     +'</ul>'
       ,Text);
 *)
+
 
 
 
