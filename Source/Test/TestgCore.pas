@@ -571,9 +571,17 @@ type
   end;
 
   TestTgWebServerController = class(TTestCase)
+  public
+    type
+      TModel = class(TgModel)
+      private
+        function GetFirstName: string;
+      published
+        property FirstName: string read GetFirstName;
+      end;
   protected
     FWebServerController: TgWebServerController;
-    const DefaulthtmlContent = '<html><body>hello!</body></html>';
+    const DefaulthtmlContent = '<html><body>{FirstName}!</body></html>';
     const DefaulthtmContent = '<html><body>{Name}, hello!</body></html>';
     const WebConfigurationDataContent = '';
     procedure SetUp; override;
@@ -1134,20 +1142,20 @@ begin
     '    <DateTimeProperty>1/1/2012 00:34:00</DateTimeProperty>'#13#10 + //4
     '    <Enum>be</Enum>'#13#10 +
     '    <IntegerProperty>5</IntegerProperty>'#13#10 + //5
-    '    <ManuallyConstructedObjectProperty classname="TestgCore.TBase">'#13#10 + //6
+    '    <ManuallyConstructedObjectProperty>'#13#10 + //6
     '      <BooleanProperty>False</BooleanProperty>'#13#10 + //7
     '      <DateProperty>12/30/1899</DateProperty>'#13#10 + //8
     '      <DateTimeProperty>12/30/1899 00:00:00</DateTimeProperty>'#13#10 + //9
     '      <Enum>be</Enum>'#13#10 +
     '      <IntegerProperty>6</IntegerProperty>'#13#10 + //10
-    '      <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //11
+    '      <ObjectProperty>'#13#10 + //11
     '        <IntegerProperty>2</IntegerProperty>'#13#10 + //12
     '        <StringProperty>12345</StringProperty>'#13#10 + //13
     '      </ObjectProperty>'#13#10 + //14
     '      <String5>98765</String5>'#13#10 + //15
     '      <Phone>(444) 444-4444</Phone>'#13#10 + //16
     '    </ManuallyConstructedObjectProperty>'#13#10 + //17
-    '    <ObjectProperty classname="TestgCore.TBase2">'#13#10 + //18
+    '    <ObjectProperty>'#13#10 + //18
     '      <IntegerProperty>2</IntegerProperty>'#13#10 + //19
     '      <StringProperty>12345</StringProperty>'#13#10 + //20
     '    </ObjectProperty>'#13#10 + //21
@@ -3090,15 +3098,16 @@ end;
 procedure TestTgWebServerController.SetUp;
 begin
   inherited;
+  // Write files to disk
   with TStringList.Create do try
     Add(DefaultHtmlContent);
-    SaveToFile(G.DataPath+'default.html');
+    SaveToFile(G.DataPath+'default.html',TEncoding.Unicode);
   finally
     Free;
   end;
   with TStringList.Create do try
     Add(DefaulthtmContent);
-    SaveToFile(G.DataPath+'default.htm');
+    SaveToFile(G.DataPath+'default.htm',TEncoding.Unicode);
   finally
     Free;
   end;
@@ -3106,7 +3115,7 @@ begin
     Add(WebConfigurationDataContent);
     TgWebServerController.ReadConfigurationData(procedure(WSCCD: TgWebServerControllerConfigurationData)
       begin
-        SaveToFile(WSCCD.FileName);
+        SaveToFile(WSCCD.FileName);    { TODO : Wrong Folder. for some reason this goes to the root folder with the file }
       end);
   finally
     Free;
@@ -3118,6 +3127,9 @@ begin
     var
       RM: TgRequestMap;
     begin
+      // Because the WSCCD is
+      if WSCCD.Hosts.Count > 0 then exit;
+      WSCCD.TemplateFileExtensions.Add('html');
       WSCCD.Hosts.Add;
       CheckEquals(1,WSCCD.Hosts.Count);
       RM := WSCCD.Hosts.Current;
@@ -3126,6 +3138,17 @@ begin
       RM.ID := 'g.com';
       RM.DefaultPage := 'default.html';
       CheckEquals(0,WSCCD.Hosts.IndexOf('g.com'));
+
+      WSCCD.Hosts.Add;
+      CheckEquals(2,WSCCD.Hosts.Count);
+      RM := WSCCD.Hosts.Current;
+      RM.BasePath := G.DataPath;
+      RM.SearchPath := '.';
+      RM.ID := 'gm.com';
+      RM.ModelClass := TModel;
+      RM.DefaultPage := 'default.html';
+      CheckEquals(0,WSCCD.Hosts.IndexOf('g.com'));
+
     end);
 end;
 
@@ -3137,20 +3160,24 @@ begin
 end;
 
 procedure TestTgWebServerController.TestModel;
+var
+  MyClass: TObject;
+  Str: AnsiString;
 begin
   FWebServerController.Request.Method := 'GET';
-  FWebServerController.Request.Host := 'g.com';
-  CheckEquals('g.com',FWebServerController.Request.Host);
+  FWebServerController.Request.Host := 'gm.com';
+  CheckEquals('gm.com',FWebServerController.Request.Host);
   FWebServerController.Request.URI := 'default.html';
   FWebServerController.Execute;
-  with TStringList.Create do try
-    LoadFromStream(FWebServerController.Response.ContentStream);
-    // String list added the #13#10
-    CheckEquals(DefaulthtmlContent+#13#10,Text);
-  finally
-    Free;
+  Str := FWebServerController.Response.Text;
+  // String list added the #13#10
+//    CheckEquals(DefaulthtmlContent+#13#10,SL.Text);
+  CheckEquals(
+     '<html>'#13#10
+    +'  <body>Hello!</body>'#13#10
+    +'</html>'#13#10
+        ,Str);
 
-  end;
 end;
 
 procedure TestTgWebServerController.TestNoModel;
@@ -4008,12 +4035,12 @@ begin
     '  <form>'#13#10 + //1
     '    <label id="lblFirstName" for="inpFirstName">First Name</label>'#13#10 + //2
     '    <input type="text" id="inpFirstName" name="Customer2.FirstName"/>'#13#10 + //3
-    '    <input type="hidden" name="Customer2.OriginalValues.FirstName" value=""/>'#13#10 + //4
+    '    <input type="hidden" name="Customer2.OriginalValues.FirstName"/>'#13#10 + //4
     '    <fieldset id="fstBillingAddress">'#13#10 + //5
     '      <legend id="legBillingAddress">Billing Address</legend>'#13#10 + //6
     '      <label id="lblBillingAddress_Address" for="inpBillingAddress_Address">Address</label>'#13#10 + //7
     '      <input type="text" id="inpBillingAddress_Address" name="Customer2.BillingAddress.Address"/>'#13#10 + //8
-    '      <input type="hidden" id="" name="Customer2.OriginalValues.BillingAddress.Address"/>'#13#10 + //8
+    '      <input type="hidden" name="Customer2.BillingAddress.OriginalValues.Address"/>'#13#10 + //8
     '    </fieldset>'#13#10 + //9
     '  </form>'#13#10 + //10
     '</html>'#13#10  //11
@@ -4271,7 +4298,7 @@ begin
 
   FOriginalValues := TgOriginalValues.Create(Data);
   FOriginalValues.Load;
-  Checkequals(0,FOriginalValues.Values['Int']);
+  Checkequals(0,FOriginalValues['Int']);
   Checkequals('',FOriginalValues.Values['Name']);
   CheckFalse(FOriginalValues.Values['Bool']);
   Data.Int := 12;
@@ -4281,6 +4308,12 @@ begin
   Checkequals(12,FOriginalValues.Values['Int']);
   Checkequals('OMG!',FOriginalValues.Values['Name']);
   CheckTrue(FOriginalValues.Values['Bool']);
+end;
+
+function TestTgWebServerController.TModel.GetFirstName: string;
+begin
+  // TODO -cMM: TestTgWebServerController.TModel.GetFirstName default body inserted
+  Result := 'Hello';
 end;
 
 initialization

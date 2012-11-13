@@ -1282,7 +1282,7 @@ const
   type
     TgEnumerator = record
     strict private
-      function GetCurrentOriginalValues: T;
+      function GetCurrentOriginalValues: TgOriginalValues;
     private
       FCurrentIndex: Integer;
       FList: TgIdentityList<T>;
@@ -1291,7 +1291,7 @@ const
       procedure Init(AList: TgIdentityList<T>);
       function MoveNext: Boolean;
       property Current: T read GetCurrent;
-      property CurrentOriginalValues: T read GetCurrentOriginalValues;
+      property CurrentOriginalValues: TgOriginalValues read GetCurrentOriginalValues;
     End;
 
   strict protected
@@ -2930,7 +2930,7 @@ end;
 function TgBase.GetValues(Const APath : String): Variant;
 Begin
   If Not DoGetValues(APath, Result) Then
-    Raise EgValue.CreateFmt('Path ''%s'' not found.', [APath]);
+    Raise EgValue.CreateFmt('Path ''%s'' not found. ClassName ''%s''', [APath,ClassName]);
 End;
 
 function TgBase.GetObjects(Const APath : String): TgBase;
@@ -6215,10 +6215,10 @@ begin
   Result := FList.Current;
 end;
 
-function TgIdentityList<T>.TgEnumerator.GetCurrentOriginalValues: T;
+function TgIdentityList<T>.TgEnumerator.GetCurrentOriginalValues: TgOriginalValues;
 begin
   if Assigned(Current) then
-    Result := TgIdentityObject(Current).OriginalValues as T
+    Result := Current.OriginalValues
   else
     Result := nil;
 end;
@@ -8872,9 +8872,11 @@ var
 begin
   Source := Owner;
   Result := Assigned(Source) and Source.DoGetProperties(APath,RTTIProperty,Source);
-  Result := Result and (RttiProperty is TRttiInstanceProperty) and (TRttiInstanceProperty(RttiProperty).PropInfo.NameIndex <= High(FValues));
-  if Result then
-    AValue := FValues[TRttiInstanceProperty(RttiProperty).PropInfo.NameIndex];
+  Result := Result and (RttiProperty is TRttiInstanceProperty);
+  if (TRttiInstanceProperty(RttiProperty).PropInfo.NameIndex <= High(FValues)) then
+    AValue := FValues[TRttiInstanceProperty(RttiProperty).PropInfo.NameIndex]
+  else
+    AValue := null;
 end;
 
 Initialization

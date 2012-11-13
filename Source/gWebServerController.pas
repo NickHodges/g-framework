@@ -349,11 +349,14 @@ type
     procedure SetHeader(const AValue: String);
     procedure SetSetMobile(const AValue: Boolean);
     procedure SetIsMobile(const AValue: Boolean);
+  private
+    function GetText: AnsiString;
   Public
     constructor Create(AOwner: TgBase = Nil); override;
     Destructor Destroy;Override;
     function GetFriendlyClassName: string; override;
     property ContentStream: TMemoryStream read FContentStream;
+    property Text: AnsiString read GetText;
   Published
     property HeaderFields: TgDictionary read FHeaderFields;
     property Cookies: TgDictionary read FCookies;
@@ -436,7 +439,8 @@ var
   ModelNeeded: Boolean;
   StringList: TStringList;
   Attribute: TCustomAttribute;
-  Token: String;
+  Token: string;
+  TempVariant: Variant;
   GDocument: TgDocument;
   PropertyAttribute: TgPropertyAttribute;
 begin
@@ -515,10 +519,9 @@ begin
         // emailaddress: jim@computerminds.com
         // password: password
 
-        Token := Request.CookieFields['Token'];
-
-        if Token = '' then
-        for Attribute in G.Attributes(FModel, Authorization) do
+        if Request.CookieFields.DoGetValues('Token',TempVariant) and  (TempVariant <> '') then
+          Token := TempVariant
+        else  for Attribute in G.Attributes(FModel, Authorization) do
         Begin
           PropertyAttribute := TgPropertyAttribute(Attribute);
           FModel[PropertyAttribute.RTTIProperty.Name] := Request.ContentFields[PropertyAttribute.RTTIProperty.Name];
@@ -1606,6 +1609,12 @@ end;
 function TgResponse.GetStatusLine: String;
 begin
   Result := Format('HTTP/1.0 %d %s', [StatusCode, ReasonPhrase]);
+end;
+
+function TgResponse.GetText: AnsiString;
+begin
+  SetLength(Result, ContentStream.Size);
+  Move((ContentStream as TMemoryStream).Memory^, pAnsiChar(Result)^, ContentStream.Size);
 end;
 
 procedure TgResponse.SetDate(const Value: TDateTime);
