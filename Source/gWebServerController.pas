@@ -153,6 +153,7 @@ type
     class procedure EndWriteConfigurationData;
     class function WriteConfiguationData: TgWebServerControllerConfigurationData; overload;
     class procedure WriteConfiguationData(Method: TgWebServerControllerConfigurationDataAnon); overload;
+    class function FileUploadPath: String;
     procedure Execute;
     procedure Login;
     procedure LogOut;
@@ -374,6 +375,25 @@ type
   EgWebServerController = class(Exception)
   end;
 
+  TgWebRequestParser = class(TObject)
+  strict private
+    FRequest: TgRequest;
+  strict protected
+    procedure ReadContentFields; virtual; abstract;
+    procedure ReadCookieFields; virtual; abstract;
+    procedure ReadHeaderFields; virtual; abstract;
+    procedure ReadQueryFields; virtual; abstract;
+    procedure ReadRequestLine; virtual; abstract;
+    function RemoveContentTypeExtraData(AContentType: String): String;
+    property Request: TgRequest read FRequest write FRequest;
+  public
+    constructor Create(ARequest: TgRequest);
+    destructor Destroy; override;
+    procedure GetData; virtual;
+    class procedure PopulateCookieFields(const ACookieString: String; ACookieFields: TgDictionary);
+    class procedure PopulateHeaderFields(AHeaderString: String; AHeaderFields: TgRequest.THeaderFields);
+    class procedure PopulateQueryFields(const AQueryString: String; AQueryFields: TgDictionary);
+  end;
 implementation
 
 Uses
@@ -943,7 +963,7 @@ end;
 
 function TgRequestContentItemBase.FileUploadPath: String;
 begin
-  Result := RootPath + IncludeTrailingPathDelimiter('FileUploads');
+  Result := G.RootPath + IncludeTrailingPathDelimiter('FileUploads');
 end;
 
 function TgRequestContentItemBase.GetContent: TMemoryStream;
@@ -1666,6 +1686,11 @@ begin
   End;
 end;
 
+class function TgWebServerController.FileUploadPath: String;
+begin
+  Result := G.RootPath + IncludeTrailingPathDelimiter('FileUploads');
+end;
+
 function TgWebServerController.FindDocument(const ADocument: String): String;
 var
   UnvirtualizedDocument: String;
@@ -1714,6 +1739,142 @@ begin
   inherited;
   Buffered := True;
   Active := True;
+end;
+
+{ TgWebRequestParser }
+
+constructor TgWebRequestParser.Create(ARequest: TgRequest);
+begin
+  inherited Create;
+  FRequest := ARequest;
+end;
+
+procedure TgWebRequestParser.GetData;
+begin
+//  DebugLog.WriteLn( 'Parsing request' );
+  ReadRequestLine;
+  ReadHeaderFields;
+  ReadQueryFields;
+  ReadCookieFields;
+  ReadContentFields;
+end;
+
+class procedure TgWebRequestParser.PopulateCookieFields(const ACookieString: String; ACookieFields: TgDictionary);
+var
+  StringList: TStringList;
+  CookieString: String;
+  TempString: String;
+  CookieName: String;
+  CookieValue: String;
+begin
+  TempString := Trim(ACookieString);
+  TempString := StringReplace(TempString, ';', #13#10, [rfReplaceAll]);
+  StringList := TStringList.Create;
+  try
+    StringList.Text := TempString;
+    For CookieString In StringList Do
+    Begin
+      SplitOnChar(CookieString, '=', CookieName, CookieValue);
+      CookieName := Trim(CookieName);
+      CookieValue := AnsiDequotedStr(Trim(CookieValue), '"');
+      If ACookieFields[CookieName] = '' Then
+        ACookieFields[CookieName] := CookieValue;
+    End;
+  Finally
+    StringList.Free;
+  End;
+end;
+
+class procedure TgWebRequestParser.PopulateHeaderFields(AHeaderString: String; AHeaderFields: TgRequest.THeaderFields);
+var
+  HeaderLine: String;
+  HeaderStringList: TStringList;
+  Name: string;
+  Value: string;
+begin
+  HeaderStringList := TStringList.Create;
+  try
+    HeaderStringList.Text := AHeaderString;
+    For HeaderLine In HeaderStringList Do
+    Begin
+      SplitOnChar(HeaderLine, ':', Name, Value);
+      try
+        Name := Trim(URLDecode(Name));
+      except
+      end;
+      try
+        Value := Trim(URLDecode(Value));
+      except
+      end;
+      If Value > '' Then
+        AHeaderFields[Name] := Value;
+    End;
+  finally
+    HeaderStringList.Free;
+  end;
+end;
+
+class procedure TgWebRequestParser.PopulateQueryFields(const AQueryString: String; AQueryFields: TgDictionary);
+var
+  StringList: TStringList;
+  URLElement: String;
+  PropertyName: string;
+  PropertyValue: String;
+begin
+  If AQueryString > '' Then
+  Begin
+    StringList := TStringList.Create;
+    Try
+      StringList.CommaText := '"' + StringReplace(AQueryString, '&', '","', [rfReplaceAll]) + '"';
+      For URLElement In StringList Do
+      Begin
+        SplitOnChar( URLElement, '=', PropertyName, PropertyValue );
+        PropertyName := URLDecode( PropertyName );
+        PropertyValue := URLDecode( PropertyValue );
+        If AQueryFields[PropertyName] = '' Then
+          AQueryFields[PropertyName] := PropertyValue
+        Else
+          AQueryFields[PropertyName] := AQueryFields[PropertyName] + ',' + PropertyValue;
+      End;
+    Finally
+      StringList.Free;
+    End;
+  End;
+end;
+
+function TgWebRequestParser.RemoveContentTypeExtraData(AContentType: String): String;
+var
+  ContentTypeSemicolon: Integer;
+begin
+  ContentTypeSemicolon := Pos( ';', AContentType );
+  If ContentTypeSemicolon > 0 Then
+    Result := Copy( AContentType, 1, ContentTypeSemicolon - 1 )
+  Else
+    Result := AContentType;
+end;
+
+destructor TgWebRequestParser.Destroy;
+Var
+  FilePath : String;
+  SearchRec : TSearchRec;
+begin
+  FilePath := TgWebServerController.FileUploadPath + IncludeTrailingPathDelimiter(IntToStr(GetCurrentThreadId));
+  If Request.MultiPart And DirectoryExists( FilePath ) Then
+  Begin
+    Try
+      If ( SysUtils.FindFirst( FilePath + '*.*', faAnyFile, SearchRec ) = 0 ) Then
+      Begin
+        Repeat
+          If ( SearchRec.Attr And faDirectory ) = 0 Then
+            SysUtils.DeleteFile( FilePath + SearchRec.Name );
+        Until FindNext( SearchRec ) <> 0;
+      End;
+    Finally
+      SysUtils.FindClose( SearchRec );
+    End;
+    RemoveDir( FilePath );
+  End;
+  inherited;
 end;
 
 end.

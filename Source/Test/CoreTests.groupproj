@@ -9,6 +9,9 @@
         <Projects Include="pgCoreTests.dproj">
             <Dependencies/>
         </Projects>
+        <Projects Include="..\..\..\..\gISAPI\Source\gISAPI.dproj">
+            <Dependencies/>
+        </Projects>
     </ItemGroup>
     <ProjectExtensions>
         <Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -35,14 +38,23 @@
     <Target Name="pgCoreTests:Make">
         <MSBuild Projects="pgCoreTests.dproj" Targets="Make"/>
     </Target>
+    <Target Name="gISAPI">
+        <MSBuild Projects="..\..\..\..\gISAPI\Source\gISAPI.dproj"/>
+    </Target>
+    <Target Name="gISAPI:Clean">
+        <MSBuild Projects="..\..\..\..\gISAPI\Source\gISAPI.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="gISAPI:Make">
+        <MSBuild Projects="..\..\..\..\gISAPI\Source\gISAPI.dproj" Targets="Make"/>
+    </Target>
     <Target Name="Build">
-        <CallTarget Targets="pgCore;pgCoreTests"/>
+        <CallTarget Targets="pgCore;pgCoreTests;gISAPI"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="pgCore:Clean;pgCoreTests:Clean"/>
+        <CallTarget Targets="pgCore:Clean;pgCoreTests:Clean;gISAPI:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="pgCore:Make;pgCoreTests:Make"/>
+        <CallTarget Targets="pgCore:Make;pgCoreTests:Make;gISAPI:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

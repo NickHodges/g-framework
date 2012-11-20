@@ -6,6 +6,8 @@ Uses
 
   Generics.Collections,
   Generics.Defaults,
+  Winapi.ShlObj,
+  Winapi.SHFolder,
   System.TypInfo,
   System.Types,
   System.RTTI,
@@ -468,6 +470,8 @@ const
     procedure Assign(ASource : TgBase); virtual;
     procedure Deserialize(ASerializerClass: TgSerializerClass; const AString: String);
     function GetEnumerator: TEnumerator; inline;
+    class function ApplicationPath: String;
+    class function DataPath: String;
     class function FriendlyName: String; virtual;
     function GetFriendlyClassName: String; virtual;
     function Inspect(ARTTIProperty: TRttiProperty): TObject; overload;
@@ -609,6 +613,7 @@ const
         RTTIProperty: TRTTIProperty;
         constructor Create(AIdentityObjectClass: TgIdentityObjectClass; ARTTIProperty: TRTTIProperty);
       end;
+      TSpecialFolder = (sfCommonAppData);
 
   strict private
   class var
@@ -665,7 +670,9 @@ const
     class destructor Destroy;
     class procedure AddConnectionDescriptor(AConnectionDescriptor: TgConnectionDescriptor); static;
     class procedure AddServer(AServer: TgServer); static;
-    class function ApplicationPath: String; static;
+    class function SpecialFolder(Index: TSpecialFolder): String;
+    class function RootPath: String; static;
+    class function ApplicationPath(ABaseClass: TgBaseClass): String;
     class function AssignableProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function AssignableProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
     class function Attributes(ABaseClass: TgBaseClass; AAttributeClass: TCustomAttributeClass): TArray<TCustomAttribute>; overload; static;
@@ -694,8 +701,8 @@ const
     class function ClassValidationAttributes(AClass: TgBaseClass): TArray<Validation>; overload; static;
     class function ClassValidationAttributes(ABase: TgBase): TArray<Validation>; overload; static;
     class function ConnectionDescriptor(const AName: String): TgConnectionDescriptor; static;
-
-    class function DataPath: String; static;
+    class function DataPath(ABaseClass: TgBaseClass): String; overload; static;
+    class function DataPath: String; overload; static;
     class function IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function IdentityListProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
     class procedure Initialize; static;
@@ -1074,11 +1081,12 @@ const
     procedure RollBack(AObject: TgIdentityObject); virtual; abstract;
     procedure SaveObject(AObject: TgIdentityObject); virtual; abstract;
     procedure StartTransaction(AObject: TgIdentityObject; ATransactionIsolationLevel: TgTransactionIsolationLevel = ilReadCommitted); virtual; abstract;
+    function FileName: String;
     property ForClass: TgIdentityObjectClass read FForClass write FForClass;
   End;
 
   ///	<summary>
-  ///	  This class is used for <see cref="TgPersistanceManager" />.  It
+  ///	  This class is used for <see cref="TgPersistenceManager" />.  It
   ///	  contains a property <see cref="ID" /> which is the key used to store
   ///	  the published properties of this class.  If you plan or persisting to a
   ///	  database you should actually decend from <see cref="TgIdentityObject&lt;T&gt;" />
@@ -1114,6 +1122,7 @@ const
     procedure Assign(ASource: TgBase); reintroduce; override;
     function HasIdentity: Boolean; virtual;
     procedure RemoveIdentity;
+    class function PersistenceManagerPath: String;
     constructor Create(AOwner: TgBase = nil); override;
     property IsDeleting: Boolean index osDeleting read GetStates write SetStates;
     property IsLoading: Boolean index osLoading read GetStates write SetStates;
@@ -2019,8 +2028,6 @@ function DayOfWeekStr(DateTime: TDateTime): string;
 
 function MonthStr(DateTime: TDateTime): string;
 
-function RootPath: String;
-
 procedure SplitBuffer(Const ASearchString : AnsiString; ABuffer : Pointer; ALength : Integer; AList : TList);
 
 var
@@ -2267,11 +2274,6 @@ begin
   Result := Months[Month];
 end;
 
-function RootPath: String;
-begin
-  Result := IncludeTrailingPathDelimiter( ExecutablePath ) + IncludeTrailingPathDelimiter('..');
-end;
-
 { TODO : Unicodification }
 procedure SplitBuffer(Const ASearchString : AnsiString; ABuffer : Pointer; ALength : Integer; AList : TList);
 var
@@ -2341,6 +2343,16 @@ end;
 class function TgBase.AddAttributes(ARTTIProperty: TRttiProperty): TArray<TCustomAttribute>;
 begin
 
+end;
+
+class function TgBase.ApplicationPath: String;
+begin
+  Result := G.ApplicationPath(Self);
+end;
+
+class function TgBase.DataPath: String;
+begin
+  Result := IncludeTrailingPathDelimiter(ApplicationPath + 'Data');
 end;
 
 function TgBase.AsPointer: Pointer;
@@ -3101,7 +3113,8 @@ begin
   ForceDirectories(G.PersistenceManagerPath);
   for PersistenceManager in G.PersistenceManagers do
   Begin
-    FileName := Format('%s%s.xml', [PersistenceManagerPath, PersistenceManager.ForClass.FriendlyName]);
+    FileName := PersistenceManager.FileName;
+    ForceDirectories(ExtractFilePath(FileName));
     if Not FileExists(FileName) then
     Begin
       PersistenceManager.Configure;
@@ -3305,10 +3318,14 @@ begin
   FServers.AddOrSetValue(AServer.Name, AServer);
 end;
 
-class function G.ApplicationPath: String;
+class function G.ApplicationPath(ABaseClass: TgBaseClass): String;
 begin
-  Result := IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0))) + '..');
-//  Result := IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(Application.ExeName + '..');
+  Result := RootPath+IncludeTrailingPathDelimiter(ABaseClass.UnitName);
+end;
+
+class function G.RootPath: String;
+begin
+  Result := G.SpecialFolder(sfCommonAppData) + IncludeTrailingPathDelimiter('G');
 end;
 
 class function G.AssignableProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
@@ -3707,9 +3724,14 @@ begin
   FConnectionDescriptors.TryGetValue(AName, Result);;
 end;
 
+class function G.DataPath(ABaseClass: TgBaseClass): String;
+begin
+  Result := ABaseClass.ApplicationPath + IncludeTrailingPathDelimiter('Data');
+end;
+
 class function G.DataPath: String;
 begin
-  Result := IncludeTrailingPathDelimiter(ApplicationPath + 'Data');
+  Result := RootPath + IncludeTrailingPathDelimiter('Data');
 end;
 
 class function G.IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
@@ -3898,7 +3920,7 @@ end;
 
 class function G.PersistenceManagerPath: String;
 begin
-  Result := IncludeTrailingPathDelimiter(ApplicationPath + 'PersistenceManagers');
+  Result := IncludeTrailingPathDelimiter(RootPath + 'PersistenceManagers');
 end;
 
 class function G.PersistenceManager(AIdentityObjectClass: TgIdentityObjectClass): TgPersistenceManager;
@@ -3929,6 +3951,136 @@ end;
 class function G.Server(const AName: String): TgServer;
 begin
   FServers.TryGetValue(AName, Result);
+end;
+
+class function G.SpecialFolder(Index: TSpecialFolder): String;
+var
+  windir: array[0..MAX_PATH] of char;
+  nFolder: Word;
+begin
+  case Index of
+    sfCommonAppData: nFolder := CSIDL_COMMON_APPDATA;
+    else
+      Result := '';
+  end;
+
+(*
+  CSIDL_DESKTOP                 = $0000;          // <desktop>
+  {$EXTERNALSYM CSIDL_DESKTOP}
+  CSIDL_INTERNET                = $0001;          // Internet Explorer (icon on desktop)
+  {$EXTERNALSYM CSIDL_INTERNET}
+  CSIDL_PROGRAMS                = $0002;          // Start Menu\Programs
+  {$EXTERNALSYM CSIDL_PROGRAMS}
+  CSIDL_CONTROLS                = $0003;          // My Computer\Control Panel
+  {$EXTERNALSYM CSIDL_CONTROLS}
+  CSIDL_PRINTERS                = $0004;          // My Computer\Printers
+  {$EXTERNALSYM CSIDL_PRINTERS}
+  CSIDL_PERSONAL                = $0005;          // My Documents
+  {$EXTERNALSYM CSIDL_PERSONAL}
+  CSIDL_FAVORITES               = $0006;          // <user name>\Favorites
+  {$EXTERNALSYM CSIDL_FAVORITES}
+  CSIDL_STARTUP                 = $0007;          // Start Menu\Programs\Startup
+  {$EXTERNALSYM CSIDL_STARTUP}
+  CSIDL_RECENT                  = $0008;          // <user name>\Recent
+  {$EXTERNALSYM CSIDL_RECENT}
+  CSIDL_SENDTO                  = $0009;          // <user name>\SendTo
+  {$EXTERNALSYM CSIDL_SENDTO}
+  CSIDL_BITBUCKET               = $000a;          // <desktop>\Recycle Bin
+  {$EXTERNALSYM CSIDL_BITBUCKET}
+  CSIDL_STARTMENU               = $000b;          // <user name>\Start Menu
+  {$EXTERNALSYM CSIDL_STARTMENU}
+  CSIDL_MYDOCUMENTS             = CSIDL_PERSONAL; // Personal was just a silly name for My Documents
+  {$EXTERNALSYM CSIDL_MYDOCUMENTS}
+  CSIDL_MYMUSIC                 = $000d;          // "My Music" folder
+  {$EXTERNALSYM CSIDL_MYMUSIC}
+  CSIDL_MYVIDEO                 = $000e;          // "My Videos" folder
+  {$EXTERNALSYM CSIDL_MYVIDEO}
+  CSIDL_DESKTOPDIRECTORY        = $0010;          // <user name>\Desktop
+  {$EXTERNALSYM CSIDL_DESKTOPDIRECTORY}
+  CSIDL_DRIVES                  = $0011;          // My Computer
+  {$EXTERNALSYM CSIDL_DRIVES}
+  CSIDL_NETWORK                 = $0012;          // Network Neighborhood (My Network Places)
+  {$EXTERNALSYM CSIDL_NETWORK}
+  CSIDL_NETHOOD                 = $0013;          // <user name>\nethood
+  {$EXTERNALSYM CSIDL_NETHOOD}
+  CSIDL_FONTS                   = $0014;          // windows\fonts
+  {$EXTERNALSYM CSIDL_FONTS}
+  CSIDL_TEMPLATES               = $0015;
+  {$EXTERNALSYM CSIDL_TEMPLATES}
+  CSIDL_COMMON_STARTMENU        = $0016;          // All Users\Start Menu
+  {$EXTERNALSYM CSIDL_COMMON_STARTMENU}
+  CSIDL_COMMON_PROGRAMS         = $0017;          // All Users\Start Menu\Programs
+  {$EXTERNALSYM CSIDL_COMMON_PROGRAMS}
+  CSIDL_COMMON_STARTUP          = $0018;          // All Users\Startup
+  {$EXTERNALSYM CSIDL_COMMON_STARTUP}
+  CSIDL_COMMON_DESKTOPDIRECTORY = $0019;          // All Users\Desktop
+  {$EXTERNALSYM CSIDL_COMMON_DESKTOPDIRECTORY}
+  CSIDL_APPDATA                 = $001a;          // <user name>\Application Data
+  {$EXTERNALSYM CSIDL_APPDATA}
+  CSIDL_PRINTHOOD               = $001b;          // <user name>\PrintHood
+  {$EXTERNALSYM CSIDL_PRINTHOOD}
+  CSIDL_LOCAL_APPDATA           = $001c;          // <user name>\Local Settings\Applicaiton Data (non roaming)
+  {$EXTERNALSYM CSIDL_LOCAL_APPDATA}
+  CSIDL_ALTSTARTUP              = $001d;          // non localized startup
+  {$EXTERNALSYM CSIDL_ALTSTARTUP}
+  CSIDL_COMMON_ALTSTARTUP       = $001e;          // non localized common startup
+  {$EXTERNALSYM CSIDL_COMMON_ALTSTARTUP}
+  CSIDL_COMMON_FAVORITES        = $001f;
+  {$EXTERNALSYM CSIDL_COMMON_FAVORITES}
+  CSIDL_INTERNET_CACHE          = $0020;
+  {$EXTERNALSYM CSIDL_INTERNET_CACHE}
+  CSIDL_COOKIES                 = $0021;
+  {$EXTERNALSYM CSIDL_COOKIES}
+  CSIDL_HISTORY                 = $0022;
+  {$EXTERNALSYM CSIDL_HISTORY}
+  CSIDL_COMMON_APPDATA          = $0023;          // All Users\Application Data
+  {$EXTERNALSYM CSIDL_COMMON_APPDATA}
+  CSIDL_WINDOWS                 = $0024;          // GetWindowsDirectory()
+  {$EXTERNALSYM CSIDL_WINDOWS}
+  CSIDL_SYSTEM                  = $0025;          // GetSystemDirectory()
+  {$EXTERNALSYM CSIDL_SYSTEM}
+  CSIDL_PROGRAM_FILES           = $0026;          // C:\Program Files
+  {$EXTERNALSYM CSIDL_PROGRAM_FILES}
+  CSIDL_MYPICTURES              = $0027;          // C:\Program Files\My Pictures
+  {$EXTERNALSYM CSIDL_MYPICTURES}
+  CSIDL_PROFILE                 = $0028;          // USERPROFILE
+  {$EXTERNALSYM CSIDL_PROFILE}
+  CSIDL_SYSTEMX86               = $0029;          // x86 system directory on RISC
+  {$EXTERNALSYM CSIDL_SYSTEMX86}
+  CSIDL_PROGRAM_FILESX86        = $002a;          // x86 C:\Program Files on RISC
+  {$EXTERNALSYM CSIDL_PROGRAM_FILESX86}
+  CSIDL_PROGRAM_FILES_COMMON    = $002b;          // C:\Program Files\Common
+  {$EXTERNALSYM CSIDL_PROGRAM_FILES_COMMON}
+  CSIDL_PROGRAM_FILES_COMMONX86 = $002c;          // x86 Program Files\Common on RISC
+  {$EXTERNALSYM CSIDL_PROGRAM_FILES_COMMONX86}
+  CSIDL_COMMON_TEMPLATES        = $002d;          // All Users\Templates
+  {$EXTERNALSYM CSIDL_COMMON_TEMPLATES}
+  CSIDL_COMMON_DOCUMENTS        = $002e;          // All Users\Documents
+  {$EXTERNALSYM CSIDL_COMMON_DOCUMENTS}
+  CSIDL_COMMON_ADMINTOOLS       = $002f;          // All Users\Start Menu\Programs\Administrative Tools
+  {$EXTERNALSYM CSIDL_COMMON_ADMINTOOLS}
+  CSIDL_ADMINTOOLS              = $0030;          // <user name>\Start Menu\Programs\Administrative Tools
+  {$EXTERNALSYM CSIDL_ADMINTOOLS}
+  CSIDL_CONNECTIONS             = $0031;          // Network and Dial-up Connections
+  {$EXTERNALSYM CSIDL_CONNECTIONS}
+  CSIDL_COMMON_MUSIC            = $0035;          // All Users\My Music
+  {$EXTERNALSYM CSIDL_COMMON_MUSIC}
+  CSIDL_COMMON_PICTURES         = $0036;          // All Users\My Pictures
+  {$EXTERNALSYM CSIDL_COMMON_PICTURES}
+  CSIDL_COMMON_VIDEO            = $0037;          // All Users\My Video
+  {$EXTERNALSYM CSIDL_COMMON_VIDEO}
+  CSIDL_RESOURCES               = $0038;          // Resource Direcotry
+  {$EXTERNALSYM CSIDL_RESOURCES}
+  CSIDL_RESOURCES_LOCALIZED     = $0039;          // Localized Resource Direcotry
+  {$EXTERNALSYM CSIDL_RESOURCES_LOCALIZED}
+  CSIDL_COMMON_OEM_LINKS        = $003a;          // Links to All Users OEM specific apps
+  {$EXTERNALSYM CSIDL_COMMON_OEM_LINKS}
+  CSIDL_CDBURN_AREA             = $003b;          // USERPROFILE\Local Settings\Application Data\Microsoft\CD Burning
+*)
+  if not SHGetSpecialFolderPath(0,@Windir,nFolder,FALSE) then
+    Result := ''
+  else
+    Result := IncludeTrailingPathDelimiter(Windir);
 end;
 
 class function G.VisibleProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
@@ -5644,6 +5796,11 @@ begin
     varSmallint, varInteger, varSingle, varDouble, varCurrency, varDate, varShortInt, varByte, varWord, varLongWord, varInt64: ID := 0;
     varString: ID := '';
   end;
+end;
+
+class function TgIdentityObject.PersistenceManagerPath: String;
+begin
+  Result:=  ApplicationPath + IncludeTrailingPathDelimiter('PersistanceManagers');
 end;
 
 procedure TgIdentityObject.Rollback;
@@ -8877,6 +9034,11 @@ begin
     AValue := FValues[TRttiInstanceProperty(RttiProperty).PropInfo.NameIndex]
   else
     AValue := null;
+end;
+{ TgPersistenceManager }
+function TgPersistenceManager.FileName: String;
+begin
+  Result := Format('%s%s.xml', [ForClass.PersistenceManagerPath, ForClass.FriendlyName]);
 end;
 
 Initialization

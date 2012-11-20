@@ -12,7 +12,7 @@ unit TestgCore;
 interface
 
 uses
-  TestFramework, Classes,gCore, System.Rtti,
+  TestFramework, Classes,gCore, System.Rtti, Windows,
   gWebServerController,
   gWebUI,
   Xml.XMLDoc,
@@ -145,6 +145,7 @@ type
   TestTBase = class(TTestCase)
   strict private
     Base: TBase;
+    const _ExpectedCommonAppData = 'C:\ProgramData\';
   public
     procedure PathEndsWithAnObjectProperty;
     procedure PathExtendsBeyondOrdinalProperty;
@@ -157,6 +158,7 @@ type
     procedure TearDown; override;
     procedure UndeclaredProperty;
   published
+    procedure Location;
     procedure GetValue;
     procedure SetValue;
     procedure Assign;
@@ -887,6 +889,15 @@ begin
   CheckEquals(FloatToStr(StrToDateTime('1/1/12 12:34 am')), Base['DateTimeProperty'], 'DateTime as String');
   Base.Enum := beLast;
   CheckEquals('beLast',Base['Enum']);
+end;
+
+procedure TestTBase.Location;
+begin
+  CheckEquals(_ExpectedCommonAppData,G.SpecialFolder(sfCommonAppData));
+  CheckEquals(_ExpectedCommonAppData+'G\',G.RootPath);
+  CheckEquals(_ExpectedCommonAppData+'G\gCore\',TgBase.ApplicationPath);
+  CheckEquals(_ExpectedCommonAppData+'G\gCore\Data\',TgBase.DataPath);
+  CheckEquals(_ExpectedCommonAppData+'G\Data\',G.DataPath);
 end;
 
 procedure TestTBase.PathEndsWithAnObjectProperty;
