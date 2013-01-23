@@ -60,6 +60,8 @@ const
   TgPersistenceManager = class;
 
   TgIdentityList = class;
+  TgDictionary = class;
+
 
   TgModel = class;
   TgConnectionDescriptor = class;
@@ -348,6 +350,8 @@ const
         class procedure Deserialize(AObject: TgBase; ASerializer: TgSerializer; ARTTIProperty: TRTTIProperty = Nil); virtual; abstract;
         class procedure DeserializeUnpublishedProperty(AObject: TgBase; ASerializer: TgSerializer; const PropertyName: String); virtual; abstract;
       end;
+  private
+    FDefaultClass: TgBaseClass;
   Public
     constructor Create; virtual;
     procedure AddObjectProperty(ARTTIProperty: TRTTIProperty; AObject: TgBase); virtual; abstract;
@@ -356,6 +360,7 @@ const
     procedure Deserialize(AObject: TgBase; const AString: String); virtual; abstract;
     function ExtractClassName(const AString: string): String; virtual; abstract;
     function Serialize(AObject: TgBase): String; virtual; abstract;
+    property DefaultClass: TgBaseClass read FDefaultClass write FDefaultClass;
   End;
 
 
@@ -514,6 +519,7 @@ const
         Attributes: TArray<T>): boolean; overload;
     class function GetAttributes<T>(ARttiType: TRttiType; var Attributes:
         TArray<T>): boolean; overload;
+    function Serialize(ASerializerClass: TgSerializerClass; ADefaultClass: TgBaseClass): String; overload; virtual;
     function Serialize(ASerializerClass: TgSerializerClass): String; overload; virtual;
     function GetPathIndexOf(const APath: String): Integer; virtual;
     class function RTTIValueProperties: TArray<TRTTIProperty>; virtual;
@@ -664,10 +670,14 @@ const
     class procedure InitializePersistableProperties(ARTTIType: TRTTIType); static;
     class procedure InitializePropertyValidationAttributes(ARTTIType: TRTTIType); static;
   public
-  class var
-    DefaultPersistenceManagerClassName: String;
+    class var
+      DefaultPersistenceManagerClassName: String;
+    class var
+      _AfterInit: array of TProc;
     class constructor Create;
     class destructor Destroy;
+    class procedure AfterInit(Proc: TProc);
+    class procedure DoAfterInit;
     class procedure AddConnectionDescriptor(AConnectionDescriptor: TgConnectionDescriptor); static;
     class procedure AddServer(AServer: TgServer); static;
     class function SpecialFolder(Index: TSpecialFolder): String;
@@ -703,6 +713,7 @@ const
     class function ConnectionDescriptor(const AName: String): TgConnectionDescriptor; static;
     class function DataPath(ABaseClass: TgBaseClass): String; overload; static;
     class function DataPath: String; overload; static;
+    class procedure Finalize;
     class function IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>; overload; static;
     class function IdentityListProperties(ABase: TgBase): TArray<TRTTIProperty>; overload; static;
     class procedure Initialize; static;
@@ -863,6 +874,8 @@ const
     procedure Filter; virtual;
     function GetEnumerator: TgEnumerator;
     procedure Sort;
+    procedure Add(const AItemClassName: String); overload;
+    procedure Add(AItemClass: TgBaseClass); overload;
     property IndexString: String read GetIndexString write SetIndexString;
     property IsFiltered: Boolean read GetIsFiltered write SetIsFiltered;
     property IsOrdered: Boolean read GetIsOrdered write SetIsOrdered;
@@ -1325,6 +1338,20 @@ const
   TgIdentityListCascadeDelete<T: TgIdentityObject> = class(TgIdentityList<T>)
   end;
 
+  TgDictionary = class(TgBase)
+  strict private
+    FDictionary: TDictionary<String, Variant>;
+  strict protected
+    function DoGetValues(const APath: string; out AValue: Variant): Boolean; override;
+    function DoSetValues(const APath: string; AValue: Variant): Boolean; override;
+    function GetPathCount: Integer; override;
+    function GetPaths(AIndex: Integer): String; override;
+  public
+    procedure Delete(const APath: String);
+    constructor Create(AOwner: TgBase = Nil); override;
+    destructor Destroy; override;
+  end;
+
   TgSerializerStackBase<T> = class(TgSerializer)
   public
     type
@@ -1372,6 +1399,12 @@ const
       THelperIdentityList = class(THelper<TgIdentityList>)
       public
         class procedure Serialize(AObject: TgIdentityList; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil); override;
+        class procedure DeserializeUnpublishedProperty(AObject: TgIdentityList; ASerializer: TgSerializerXML; const PropertyName: String); override;
+      end;
+      THelperDictionary= class(THelper<TgDictionary>)
+      public
+        class procedure Serialize(AObject: TgDictionary; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil); override;
+        class procedure DeserializeUnpublishedProperty(AObject: TgDictionary; ASerializer: TgSerializerXML; const PropertyName: String); override;
       end;
 
   strict private
@@ -1937,19 +1970,6 @@ const
     property UserName: String read FUserName write FUserName;
   end;
 
-  TgDictionary = class(TgBase)
-  strict private
-    FDictionary: TDictionary<String, Variant>;
-  strict protected
-    function DoGetValues(const APath: string; out AValue: Variant): Boolean; override;
-    function DoSetValues(const APath: string; AValue: Variant): Boolean; override;
-    function GetPathCount: Integer; override;
-    function GetPaths(AIndex: Integer): String; override;
-  public
-    constructor Create(AOwner: TgBase = Nil); override;
-    destructor Destroy; override;
-  end;
-
   Authorization = class(TgPropertyAttribute)
   end;
 
@@ -2446,6 +2466,8 @@ procedure TgBase.Deserialize(ASerializerClass: TgSerializerClass; const AString:
 var
   Serializer: TgSerializer;
 begin
+  if (AString = '') or (AString = #$D#$A) then exit;
+
   Serializer := ASerializerClass.Create;
   try
     Serializer.Deserialize(Self, AString);
@@ -2992,16 +3014,22 @@ begin
   Result := G.AssignableProperties(Self);
 end;
 
-function TgBase.Serialize(ASerializerClass: TgSerializerClass): String;
+function TgBase.Serialize(ASerializerClass: TgSerializerClass; ADefaultClass: TgBaseClass): String;
 var
   Serializer: TgSerializer;
 begin
   Serializer := ASerializerClass.Create;
+  Serializer.DefaultClass := ADefaultClass;
   try
     Result := Serializer.Serialize(Self);
   finally
     Serializer.Free;
   end;
+end;
+
+function TgBase.Serialize(ASerializerClass: TgSerializerClass): String;
+begin
+  Serialize(ASerializerClass,nil);
 end;
 
 procedure TgBase.SetStates(const AIndex: TgBase.TState; const AValue: Boolean);
@@ -3131,11 +3159,12 @@ begin
       Servers.Add;
       Servers.Current.Assign(Server);
     end;
-    ServerString := Servers.Serialize(TgSerializerXML);
+    ServerString := Servers.Serialize(TgSerializerXML,TgList<TgServer>);
     StringToFile(ServerString, G.DataPath + sServerPath);
   finally
     Servers.Free;
   end;
+  DoAfterInit;
 end;
 
 class procedure G.InitializeAttributes(ARTTIType: TRTTIType);
@@ -3200,6 +3229,9 @@ begin
         TgPropertyAttribute(Attribute).RTTIProperty := RTTIProperty;
       AddAttribute;
     end;
+    for Attribute in RTTIProperty.PropertyType.GetAttributes do
+      AddAttribute;
+      
   end;
 end;
 
@@ -3318,6 +3350,12 @@ begin
   FServers.AddOrSetValue(AServer.Name, AServer);
 end;
 
+class procedure G.AfterInit(Proc: TProc);
+begin
+  SetLength(_AfterInit,Length(_AfterInit)+1);
+  _AfterInit[High(_AfterInit)] := Proc;
+end;
+
 class function G.ApplicationPath(ABaseClass: TgBaseClass): String;
 begin
   Result := RootPath+IncludeTrailingPathDelimiter(ABaseClass.UnitName);
@@ -3386,6 +3424,14 @@ end;
 class function G.DisplayPropertyNames(AClass: TgBaseClass): TArray<String>;
 begin
   FDisplayPropertyNames.TryGetValue(AClass, Result);
+end;
+
+class procedure G.DoAfterInit;
+var Proc: TProc;
+begin
+  for Proc in _AfterInit do
+    Proc;
+  SetLength(_AfterInit,0);
 end;
 
 class procedure G.InitializePersistableProperties(ARTTIType: TRTTIType);
@@ -3734,6 +3780,11 @@ begin
   Result := RootPath + IncludeTrailingPathDelimiter('Data');
 end;
 
+class procedure G.Finalize;
+begin
+  // TODO -cMM: G.Finalize default body inserted
+end;
+
 class function G.IdentityListProperties(ABaseClass: TgBaseClass): TArray<TRTTIProperty>;
 begin
   FIdentityListProperties.TryGetValue(ABaseClass, Result);
@@ -3858,6 +3909,7 @@ class procedure G.InitializeSerializableProperties(ARTTIType: TRTTIType);
 Var
   BaseClass: TgBaseClass;
   PropertyAttributeClassKey: TgPropertyAttributeClassKey;
+  SerializableAttribute: TgPropertyAttributeClassKey;
   RTTIProperties: TArray<TRTTIProperty>;
   RTTIProperty : TRTTIProperty;
 Begin
@@ -3866,9 +3918,11 @@ Begin
   begin
     PropertyAttributeClassKey.RTTIProperty := RTTIProperty;
     PropertyAttributeClassKey.AttributeClass := NotSerializable;
+    SerializableAttribute.RTTIProperty := RTTIProperty;
+    SerializableAttribute.AttributeClass := Serializable;
     if (RTTIProperty.Visibility = mvPublished) And RTTIProperty.IsReadable
       And (Length(PropertyAttributes(PropertyAttributeClassKey)) = 0)
-      And (Not RTTIProperty.PropertyType.IsInstance or Not RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityList))
+      And ((Length(PropertyAttributes(SerializableAttribute)) <> 0) or Not RTTIProperty.PropertyType.IsInstance or Not RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgIdentityList))
       And
         (
             (RTTIProperty.PropertyType.IsInstance And RTTIProperty.PropertyType.AsInstance.MetaclassType.InheritsFrom(TgBase))
@@ -4193,6 +4247,7 @@ end;
 
 procedure TgSerializerXML.Load(const AString: String);
 begin
+  if (AString = '') or (AString = #$D#$A) then exit;
   Document.LoadFromXML(AString);
   FNodeStack.Push(Document.DocumentElement.ChildNodes[0]);
 end;
@@ -4200,7 +4255,7 @@ end;
 class procedure TgSerializerXML.Register;
 begin
   RegisterRuntimeClasses([
-      THelperBase, THelperList, THelperIdentityObject, THelperIdentityList
+      THelperBase, THelperList, THelperIdentityObject, THelperIdentityList, THelperDictionary
     ]);
 
 end;
@@ -4208,20 +4263,19 @@ end;
 function TgSerializerXML.Serialize(AObject: TgBase): string;
 var
   HelperBaseClass: TgSerializationHelperClass;
-  ResultText: String;
 begin
   FDocument.Active := True;
   TemporaryCurrentNode(Document.AddChild('xml'),procedure
     begin
       TemporaryCurrentNode(CurrentNode.AddChild(AObject.FriendlyClassName),procedure
       begin
-        CurrentNode.Attributes['classname'] := AObject.QualifiedClassName;
+        if FDefaultClass <> AObject.ClassType then
+          CurrentNode.Attributes['classname'] := AObject.QualifiedClassName;
         HelperBaseClass := G.SerializationHelpers(TgSerializerXML, AObject);
         HelperBaseClass.Serialize(AObject, Self);
-        ResultText := Document.XML.Text;
       end);
     end);
-  Result := ResultText;
+  Result := Document.XML.Text;
 end;
 
 { TgSerializerXML.THelper }
@@ -4317,10 +4371,43 @@ end;
 
 { TgSerializerXML.THelperIdentityList }
 
-class procedure TgSerializerXML.THelperIdentityList.Serialize(AObject: TgIdentityList; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil);
+class procedure TgSerializerXML.THelperIdentityList.DeserializeUnpublishedProperty(
+  AObject: TgIdentityList; ASerializer: TgSerializerXML; const PropertyName: String);
+var
+  HelperClass: TgSerializationHelperClass;
+  TempItemClass: TgObjectClass;
 begin
-  if Not Assigned(ARTTIProperty) Or (Length(G.PropertyAttributes(G.TgPropertyAttributeClassKey.Create(ARTTIProperty, Composite))) > 0) then
-    Inherited Serialize(AObject, ASerializer, ARTTIProperty);
+  if SameText(PropertyName, AObject.ItemClass.FriendlyName) then
+  Begin
+    AObject.Add(ASerializer.CurrentNode.Attributes['classname']);
+    HelperClass := G.SerializationHelpers(TgSerializerXML, AObject.Current);
+    ASerializer.TemporaryCurrentNode(ASerializer.CurrentNode,procedure
+      begin
+        HelperClass.Deserialize(AObject.Current, ASerializer);
+      end);
+  End
+  Else
+    Inherited;
+end;
+
+
+class procedure TgSerializerXML.THelperIdentityList.Serialize(AObject: TgIdentityList; ASerializer: TgSerializerXML; ARTTIProperty: TRTTIProperty = Nil);
+var
+  ItemObject: TgBase;
+  HelperClass: TgSerializationHelperClass;
+begin
+//  Inherited Serialize(AObject, ASerializer);
+  if AObject.Count = 0 then exit;
+  for ItemObject in AObject do
+  Begin
+    ASerializer.TemporaryCurrentNode(ASerializer.CurrentNode.AddChild(AObject.ItemClass.FriendlyName),procedure
+      begin
+        if AObject.ItemClass <> ItemObject.ClassType then
+          ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName;
+        HelperClass := G.SerializationHelpers(TgSerializerXML, ItemObject);
+        HelperClass.Serialize(ItemObject, ASerializer);
+      end);
+  End;
 end;
 
 { TgSerializerXML.THelperList }
@@ -4366,7 +4453,8 @@ begin
       Begin
         ASerializer.TemporaryCurrentNode(ASerializer.CurrentNode.AddChild(ItemObject.FriendlyClassName),procedure
           begin
-            ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName;
+            if ARTTIProperty.PropertyType.AsInstance.MetaclassType <> ItemObject.ClassType then
+              ASerializer.CurrentNode.Attributes['classname'] := ItemObject.QualifiedClassName;
             HelperClass := G.SerializationHelpers(TgSerializerXML, ItemObject);
             HelperClass.Serialize(ItemObject, ASerializer);
           end);
@@ -4730,8 +4818,21 @@ End;
 
 procedure TgList.Add;
 Begin
-  FCurrentIndex := FList.Add(ItemClass.Create(Self));
+  Add(ItemClass);
 End;
+
+procedure TgList.Add(AItemClass: TgBaseClass);
+begin
+  FCurrentIndex := FList.Add(AItemClass.Create(Self));
+end;
+
+procedure TgList.Add(const AItemClassName: String);
+begin
+  if AItemClassName <> '' then
+    Add(G.ClassByName(AItemClassName))
+  else
+    Add;
+end;
 
 procedure TgList.Assign(ASource: TgBase);
 var
@@ -6495,23 +6596,17 @@ end;
 
 function TgSerializer.THelper.TComparer.Compare(const Left,
   Right: TPair<TgBaseClass, THelperClass>): Integer;
+  function ParentCount(Value: TClass): Integer;
+  begin
+    Result := 0;
+    if Assigned(Value) then
+      Result := 1 + ParentCount(Value.ClassParent);
+  end;
+
 begin
-  Result := 0;
-  if Left.Key <> Right.Key then
-    if Left.Key.InheritsFrom(Right.Key) then
-      Result := -1
-    else if Right.Key.InheritsFrom(Left.Key) then
-      Result := 1
-    else
-      Result := CompareValue(NativeInt(Left.Key),NativeInt(Right.Key));
-  // The purpose of this compare is to push the generic types down so the final class is first
-  if (Result = 0) and (Left.Value <> Right.Value) then
-    if Left.Value.InheritsFrom(Right.Value) then
-      Result := -1
-    else if Right.Value.InheritsFrom(Left.Value) then
-      Result := 1
-    else
-      Result := CompareValue(NativeInt(Left.Value),NativeInt(Right.Value));
+    Result := -CompareValue(ParentCount(Left.Key),ParentCount(Right.Key));
+    if Result = 0 then
+      Result := -CompareValue(ParentCount(Left.Value),ParentCount(Right.Value));
 end;
 
 { TgSerializerStackBase<T> }
@@ -8549,6 +8644,11 @@ begin
   FDictionary := TDictionary<String, Variant>.Create();
 end;
 
+procedure TgDictionary.Delete(const APath: String);
+begin
+  FDictionary.Remove(APath);
+end;
+
 destructor TgDictionary.Destroy;
 begin
   FreeAndNil(FDictionary);
@@ -8557,9 +8657,10 @@ end;
 
 function TgDictionary.DoGetValues(const APath: string; out AValue: Variant): Boolean;
 begin
-  Result := inherited DoGetValues(APath, AValue);
-  if Not Result then
-    Result := FDictionary.TryGetValue(APath, AValue);
+  Result := True;
+  if inherited DoGetValues(APath, AValue) then exit;
+  if FDictionary.TryGetValue(APath, AValue) then exit;
+  AValue := Unassigned;
 end;
 
 function TgDictionary.DoSetValues(const APath: string; AValue: Variant): Boolean;
@@ -9039,6 +9140,31 @@ end;
 function TgPersistenceManager.FileName: String;
 begin
   Result := Format('%s%s.xml', [ForClass.PersistenceManagerPath, ForClass.FriendlyName]);
+end;
+
+{ TgSerializerXML.THelperDictionary }
+
+class procedure TgSerializerXML.THelperDictionary.DeserializeUnpublishedProperty(
+  AObject: TgDictionary; ASerializer: TgSerializerXML;
+  const PropertyName: String);
+begin
+  AObject[PropertyName] := ASerializer.CurrentNode.NodeValue;
+end;
+
+class procedure TgSerializerXML.THelperDictionary.Serialize(
+  AObject: TgDictionary; ASerializer: TgSerializerXML;
+  ARTTIProperty: TRTTIProperty);
+var
+  Item: TgBase.TPathValue;
+begin
+  for Item in AObject do
+  begin
+    if Assigned(Item.RTTIProperty) then
+      Inherited Serialize(AObject, ASerializer, Item.RTTIProperty)
+    else
+      ASerializer.AddValueproperty(Item.Path,Item.Value);
+  end;
+
 end;
 
 Initialization

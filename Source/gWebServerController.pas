@@ -11,6 +11,8 @@ uses
   , StrUtils
   , Windows
 ;
+const
+  sDateFormat = '"%s", dd "%s" yyyy hh:nn:ss';
 
 type
   TgRequestContentBase = class;
@@ -24,18 +26,21 @@ type
     procedure WriteString(const Value: String);
   end;
 
+  TgHeaderFields = class(TgDictionary)
+  strict private
+    FHost: String;
+    FMethod: AnsiString;
+    FDocument: AnsiString;
+  published
+    property Document: AnsiString read FDocument write FDocument;
+    property Host: String read FHost write FHost;
+    property Method: AnsiString read FMethod write FMethod;
+  end;
+
   TgRequest = class(TgBase)
-  public
-    type
-      THeaderFields = class(TgDictionary)
-      strict private
-        FHost: String;
-      published
-        property Host: String read FHost write FHost;
-      end;
   strict private
     FContent: TgRequestContentBase;
-    FHeaderFields: THeaderFields;
+    FHeaderFields: TgHeaderFields;
     FQueryFields: TgDictionary;
     FCookieFields: TgDictionary;
     FContentFields: TgDictionary;
@@ -64,7 +69,7 @@ type
     property URI: String read FURI write FURI;
     property ContentFields: TgDictionary read FContentFields;
     property CookieFields: TgDictionary read FCookieFields;
-    property HeaderFields: THeaderFields read FHeaderFields;
+    property HeaderFields: TgHeaderFields read FHeaderFields;
     property Host: String read GetHost write SetHost;
     property QueryFields: TgDictionary read FQueryFields;
     property IPAddress: String read FIPAddress write FIPAddress;
@@ -209,6 +214,7 @@ type
   private
   public
     type
+      [Serializable]
       TgRequestMaps = class(TgIdentityList<TgRequestMap>)
       public
         constructor Create(Owner: TgBase = nil); override;
@@ -245,15 +251,20 @@ type
     class destructor Destroy;
     class procedure SplitHostPath(const APath : String; var AHead, ATail : String);
     class Procedure SplitRequestPath(const ARequestPath : String; var AHead, ATail : String); Virtual;
+    constructor Create(AOwner: TgBase = nil); override;
+    destructor Destroy; override;
     Function TopRequestMap : TgRequestMap;
     property VirtualPath[var APath : String]: TgRequestMap read GetVirtualPath;
     Property Path[ARequestString : String] : String read GetPath;
     Property SubHost[var AHost : String] : TgRequestMap read GetSubHost;
   Published
     property BasePath: String read FBasePath write FBasePath;
+    [DefaultValue('.')]
     Property SearchPath : String read GetSearchPath write FSearchPath;
     property MobileSearchPath: String read FMobileSearchPath write FMobileSearchPath;
+    [NotAutoCreate]
     property VirtualPaths: TgRequestMaps read FVirtualPaths stored False;
+    [NotAutoCreate]
     property SubHosts: TgRequestMaps read FSubHosts;
     property DefaultPage: String read FDefaultPage write FDefaultPage;
     property LogClass: TgRequestLogItemClass read FLogClass write FLogClass;
@@ -265,34 +276,39 @@ type
   End;
 
   TgWebServerControllerConfigurationData = class(TgBase)
+  public
+    class var
+       Packages: TStringList;
   strict private
     FDefaultHost: String;
     FFileTypes: TgDictionary;
-    FPackages: TStringList;
     FHosts: TgRequestMap.TgRequestMaps;
     FTemplateFileExtensions: TgMemo;
     RequestMapBuilders: TObjectList;
     procedure AddDefaultFileTypes;
-    function GetFileName: String;
+    class function GetFileName: String; static;
     procedure AddDefaultPackages;
     procedure AddDefaultPackage(const AFileName: String);
   public
+    class constructor Create;
+    class destructor Destroy;
+    class function FileNamePackages: String;
+    class procedure LoadPackages;
+    class procedure UnloadPackages;
+    class procedure RegisterPackage(const APackageName: String);
     constructor Create(AOwner: TgBase = Nil); override;
     destructor Destroy; override;
-    procedure LoadPackages;
-    procedure UnloadPackages;
-    procedure RegisterPackage(const APackageName: String);
     procedure Load;
     procedure Save;
     procedure InitializeRequestMapBuilders;
     procedure FinalizeRequestMapBuilders;
     procedure GetRequestMap(var Host, URI: String; out RequestMap: TgRequestMap);
-    property FileName: String read GetFileName;
+    class property FileName: String read GetFileName;
+    function Serialize(ASerializerClass: TgSerializerClass): string; override;
   published
     property DefaultHost: String read FDefaultHost write FDefaultHost;
     property FileTypes: TgDictionary read FFileTypes;
     property Hosts: TgRequestMap.TgRequestMaps read FHosts;
-    property Packages: TStringList read FPackages write FPackages;
     property TemplateFileExtensions: TgMemo read FTemplateFileExtensions write FTemplateFileExtensions;
   end;
 
@@ -391,9 +407,41 @@ type
     destructor Destroy; override;
     procedure GetData; virtual;
     class procedure PopulateCookieFields(const ACookieString: String; ACookieFields: TgDictionary);
-    class procedure PopulateHeaderFields(AHeaderString: String; AHeaderFields: TgRequest.THeaderFields);
+    class procedure PopulateHeaderFields(AHeaderString: String; AHeaderFields: TgHeaderFields);
     class procedure PopulateQueryFields(const AQueryString: String; AQueryFields: TgDictionary);
   end;
+
+  TgWebAdapter = class(TObject)
+  strict protected
+    function DiscoverExecutablePath: String; virtual; abstract;
+  public
+    constructor Create; virtual;
+    destructor Destroy; override;
+  end;
+
+type
+  TgWebResponseGenerator = class(TObject)
+  strict private
+    FHeaderStream: TStringStream;
+    FContentStream: TStringStream;
+    FController: TgWebServerController;
+    FRequest: TgRequest;
+    FResponse: TgResponse;
+  strict protected
+    procedure PopulateHeaderStream;
+    procedure SendStream(AStream: TStream); virtual; abstract;
+    property HeaderStream: TStringStream read FHeaderStream write FHeaderStream;
+    property ContentStream: TStringStream read FContentStream write FContentStream;
+    property Request: TgRequest read FRequest write FRequest;
+    property Response: TgResponse read FResponse write FResponse;
+  public
+    constructor Create(AController: TgWebServerController);
+    destructor Destroy; override;
+    procedure SendData;
+  end;
+
+function ParseRFC822DateString(const ADateString: String): TDateTime;
+
 implementation
 
 Uses
@@ -402,10 +450,37 @@ Uses
   DateUtils
 ;
 
+function ParseRFC822DateString(const ADateString: String): TDateTime;
+const
+  MonthsString = 'JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC';
+var
+  DateString: String;
+  Day: Integer;
+  MonthPos : Integer;
+  Month : Integer;
+  Year: Integer;
+  Time: TDateTime;
+Begin
+  Try
+    DateString := Trim(ADateString);
+    Day := StrToInt(Copy(DateString, 6, 2));
+    MonthPos := Pos(UpperCase(Copy(DateString, 9, 3)), MonthsString);
+    Month := ((MonthPos - 1) DIV 3) + 1;
+    Year := StrToInt(Copy(DateString, 13, 4));
+    Time := StrToTime(Copy(DateString, 18, 8));
+    Result := EncodeDate(Year, Month, Day) + Time;
+  Except
+    Result := 0;
+  End;
+End;
+
 class constructor TgWebServerController.Create;
 begin
-  ConfigurationData := TgWebServerControllerConfigurationData.Create;
-  ConfigurationDataSynchronizer := TMultiReadExclusiveWriteSynchronizer.Create;
+//  G.AfterInit(procedure
+//    begin
+      ConfigurationData := TgWebServerControllerConfigurationData.Create;
+      ConfigurationDataSynchronizer := TMultiReadExclusiveWriteSynchronizer.Create;
+//    end);
 end;
 
 class destructor TgWebServerController.Destroy;
@@ -457,6 +532,7 @@ var
   Host: String;
   IsTemplate: Boolean;
   ModelNeeded: Boolean;
+  ModelClass: TgModelClass;
   StringList: TStringList;
   Attribute: TCustomAttribute;
   Token: string;
@@ -470,7 +546,11 @@ begin
     Document := Request.URI;
     TgWebServerController.ConfigurationData.GetRequestMap(Host,Document,FRequestMap);
 
-    if RequestMap.Redirect > '' then
+    if not Assigned(RequestMap) then begin
+      Response.StatusCode := 501;
+      exit;
+    end;
+    if (RequestMap.Redirect > '') then
     Begin
       Response.StatusCode := 301;
       Response.HeaderFields['Location'] := RequestMap.Redirect;
@@ -512,20 +592,23 @@ begin
     If FileName = '' Then
       Raise EFileNotFound.CreateFmt( '%s not found.', [Document] );
 
-    If Assigned(RequestMap.ModelClass) Then
+    FileNameExtension := ExtractFileExt( FileName );
+    If FileNameExtension > '' Then
     Begin
-      FileNameExtension := ExtractFileExt( FileName );
-      If FileNameExtension > '' Then
-      Begin
-        Delete(FileNameExtension, 1, 1);
-        IsTemplate := ConfigurationData.TemplateFileExtensions.IndexOf( FileNameExtension ) > -1;
-        if IsTemplate then
-          ModelNeeded := True;
-      End;
+      Delete(FileNameExtension, 1, 1);
+      IsTemplate := ConfigurationData.TemplateFileExtensions.IndexOf( FileNameExtension ) > -1;
+      if IsTemplate then
+        ModelNeeded := True;
+    End;
+    if IsTemplate then
+    begin
+      ModelClass := RequestMap.ModelClass;
+      If not Assigned(ModelClass) Then
+        ModelClass := TgModel;
       If ModelNeeded Then
       Begin
 { TODO : Add IPAddressLog stuff }
-        FModel := RequestMap.ModelClass.Create(Self);
+        FModel := ModelClass.Create(Self);
         If Assigned(RequestMap.LogClass) Then
           FLogItem := RequestMap.LogClass.Create(Self);
 
@@ -587,7 +670,8 @@ begin
     End
     else begin
       // Just send file
-      Response.ContentStream.LoadFromFile(FileName);
+      Response.HeaderFields['X-SendFile'] := FileName
+   //   Response.ContentStream.LoadFromFile(FileName);
     end;
     Response.Date := Now;
   Except
@@ -1402,6 +1486,11 @@ begin
   RequestMapBuilders := TObjectList.Create();
 end;
 
+class destructor TgWebServerControllerConfigurationData.Destroy;
+begin
+  FreeAndNil(Packages);
+end;
+
 destructor TgWebServerControllerConfigurationData.Destroy;
 begin
   FreeAndNil(RequestMapBuilders);
@@ -1433,35 +1522,35 @@ begin
   FileTypes['zip'] := 'application/zip';
 end;
 
-function TgWebServerControllerConfigurationData.GetFileName: String;
+class function TgWebServerControllerConfigurationData.GetFileName: String;
 begin
   Result := IncludeTrailingPathDelimiter( ExecutablePath ) + 'gwscontroller.xml';
 end;
 
-procedure TgWebServerControllerConfigurationData.LoadPackages;
+class procedure TgWebServerControllerConfigurationData.LoadPackages;
 var
   Counter: Integer;
 begin
-  If Assigned( FPackages ) Then
-    For Counter := 0 To FPackages.Count - 1 Do
-      FPackages.Objects[Counter] := TObject(LoadPackage( FPackages[Counter] ));
+  If Assigned( Packages ) Then
+    For Counter := 0 To Packages.Count - 1 Do
+      Packages.Objects[Counter] := TObject(LoadPackage( Packages[Counter] ));
 end;
 
-procedure TgWebServerControllerConfigurationData.UnloadPackages;
+class procedure TgWebServerControllerConfigurationData.UnloadPackages;
 var
   Counter: Integer;
   Module: Integer;
 begin
-  If Assigned( FPackages ) Then
-    For Counter := FPackages.Count - 1 DownTo 0 Do
+  If Assigned( Packages ) Then
+    For Counter := Packages.Count - 1 DownTo 0 Do
     Begin
-      Module := Cardinal(FPackages.Objects[Counter]);
+      Module := Cardinal(Packages.Objects[Counter]);
       If Module > 0 Then
         UnloadPackage( Module );
     End;
 end;
 
-procedure TgWebServerControllerConfigurationData.RegisterPackage(const APackageName: String);
+class procedure TgWebServerControllerConfigurationData.RegisterPackage(const APackageName: String);
 var
   PackageFileName: String;
   Counter: Integer;
@@ -1487,6 +1576,13 @@ begin
   Begin
     AddDefaultFileTypes;
     AddDefaultPackages;
+    Hosts.Add;
+    DefaultHost := 'thebugger.com';
+    Hosts.Current.BasePath := 'c:\GWeb';
+    Hosts.Current.ID := 'thebugger.com';
+    Hosts.Current.VirtualPaths.Add;
+    Hosts.Current.VirtualPaths.Current.ID :='LoveBucket';
+    Hosts.Current.VirtualPaths.Current.BasePath :='C:\LoveBucket';
     Save;
   End;
   Deserialize(TgSerializerXML, FileToString(FileName));
@@ -1494,13 +1590,29 @@ end;
 
 procedure TgWebServerControllerConfigurationData.Save;
 begin
+  Packages.SaveToFile(FileNamePackages);
+
   StringToFile(Serialize(TgSerializerXML), FileName);
+end;
+
+function TgWebServerControllerConfigurationData.Serialize(
+  ASerializerClass: TgSerializerClass): string;
+begin
+  Result := Serialize(ASerializerClass,TgWebServerControllerConfigurationData);
 end;
 
 procedure TgWebServerControllerConfigurationData.AddDefaultPackages;
 begin
   AddDefaultPackage( 'pgFirebird.bpl' );
   AddDefaultPackage( 'pgIndy.bpl' );
+end;
+
+class constructor TgWebServerControllerConfigurationData.Create;
+begin
+  Packages := TStringList.Create;
+  if FileExists(FileNamePackages) then
+   Packages.LoadFromFile(FileNamePackages);
+
 end;
 
 procedure TgWebServerControllerConfigurationData.AddDefaultPackage(const AFileName: String);
@@ -1520,6 +1632,11 @@ begin
     RequestMapBuilder;
 end;
 
+class function TgWebServerControllerConfigurationData.FileNamePackages: String;
+begin
+  Result := ChangeFileExt(FileName,'.pkgs');
+end;
+
 procedure TgWebServerControllerConfigurationData.FinalizeRequestMapBuilders;
 begin
   FreeAndNil(RequestMapBuilders);
@@ -1532,17 +1649,21 @@ Var
   Head : String;
   Tail : String;
   TopLevelDomain : String;
-  DefaultRequestMap : TgRequestMap;
+//  DefaultRequestMap : TgRequestMap;
 begin
   // Todo: Make sure DefaultRequestMap is assigned prior to this
-  RequestMap := DefaultRequestMap;
+//  RequestMap := DefaultRequestMap;
   TopLevelDomain := ExtractFileExt(Host);
   TgRequestMap.SplitHostPath(ChangeFileExt(Host, ''), Head, Tail);
-  if not Hosts.TryGet(Head + TopLevelDomain,RequestMap) then
-    Exit;
-  Head := Tail;
-  if Head > '' then
-    RequestMap := RequestMap.SubHost[Head];
+  if Hosts.TryGet(Head + TopLevelDomain,RequestMap) then begin
+    Head := Tail;
+    if Head > '' then
+      RequestMap := RequestMap.SubHost[Head];
+  end
+  else if not Hosts.TryGet(DefaultHost,RequestMap) then begin
+    RequestMap := nil;
+    exit;
+  end;
   if URI > '' then
     RequestMap := RequestMap.VirtualPath[URI];
 
@@ -1725,6 +1846,21 @@ begin
   Result := 500;
 end;
 
+
+constructor TgRequestMap.Create(AOwner: TgBase);
+begin
+  inherited;
+  FVirtualPaths := TgRequestMaps.Create;
+  FSubHosts := TgRequestMaps.Create;
+end;
+
+destructor TgRequestMap.Destroy;
+begin
+  FreeAndNil(FSubHosts);
+  FreeAndNil(FVirtualPaths);
+  inherited;
+end;
+
 { TMemoryStream_Helper }
 
 procedure TMemoryStream_Helper.WriteString(const Value: String);
@@ -1785,7 +1921,7 @@ begin
   End;
 end;
 
-class procedure TgWebRequestParser.PopulateHeaderFields(AHeaderString: String; AHeaderFields: TgRequest.THeaderFields);
+class procedure TgWebRequestParser.PopulateHeaderFields(AHeaderString: String; AHeaderFields: TgHeaderFields);
 var
   HeaderLine: String;
   HeaderStringList: TStringList;
@@ -1875,6 +2011,102 @@ begin
     RemoveDir( FilePath );
   End;
   inherited;
+end;
+
+{ TgWebAdapter }
+
+constructor TgWebAdapter.Create;
+begin
+  Try
+    TgWebServerController.ConfigurationData.Load;
+    TgWebServerController.ConfigurationData.InitializeRequestMapBuilders;
+  Except
+  End;
+end;
+
+destructor TgWebAdapter.Destroy;
+begin
+  Try
+    TgWebServerController.ConfigurationData.FinalizeRequestMapBuilders;
+    G.Finalize;
+    TgWebServerController.ConfigurationData.UnloadPackages;
+    inherited Destroy;
+  Except
+  End;
+end;
+
+constructor TgWebResponseGenerator.Create(AController: TgWebServerController);
+begin
+  inherited Create;
+  FHeaderStream := TStringStream.Create( '' );
+  FContentStream := TStringStream.Create( '' );
+  FController := AController;
+  FRequest := FController.Request;
+  FResponse := FController.Response;
+end;
+
+destructor TgWebResponseGenerator.Destroy;
+begin
+  FreeAndNil(FContentStream);
+  FreeAndNil(FHeaderStream);
+  inherited Destroy;
+end;
+
+procedure TgWebResponseGenerator.PopulateHeaderStream;
+Var
+  Header : TgHeaderFields.TPathValue;
+begin
+  For Header In Response.HeaderFields Do
+    HeaderStream.WriteString( Header.Path + ': ' + Header.Value + CRLF );
+  For Header In Response.Cookies Do
+    HeaderStream.WriteString( 'Set-Cookie: ' + Header.Path + '=' + Header.Value + CRLF );
+  HeaderStream.WriteString( '' + CRLF );
+end;
+
+procedure TgWebResponseGenerator.SendData;
+var
+  SendFileName: String;
+  SendFileStream: TFileStream;
+  LastModified: TDateTime;
+  IfModifiedSince: TDateTime;
+  LastModifiedString: String;
+  SendFileDelete: Boolean;
+  IfModifiedSinceString: String;
+begin
+//  DebugLog.WriteLn( 'Generating response' );
+  SendFileName := Response.HeaderFields['X-SendFile'];
+  If SendFileName > '' Then
+  Begin
+    SendFileDelete := SameText( Response.HeaderFields['X-SendFileDelete'], 'True' );
+    Response.HeaderFields.Delete( 'X-SendFile' );
+    FileAge( SendFileName, LastModified );
+    IfModifiedSinceString := Request.HeaderFields['If-Modified-Since'];
+    // This should be parsed in the request.
+    If IfModifiedSinceString > '' Then
+      IfModifiedSince := ParseRFC822DateString( IfModifiedSinceString ) - TimeZoneBias
+    Else
+      IfModifiedSince := 0;
+    If ( IfModifiedSince = 0 ) Or ( IfModifiedSince >= LastModified ) Then
+    Begin
+      LastModifiedString := Format(FormatDateTime(sDateFormat + ' "GMT; "', LastModified + TimeZoneBias), [DayOfWeekStr(LastModified), MonthStr(LastModified)]);
+      Response.HeaderFields['Last-Modified'] := LastModifiedString;
+      SendFileStream := TFileStream.Create( SendFileName, fmOpenRead + fmShareDenyWrite );
+      try
+        SendStream( SendFileStream );
+      finally
+        SendFileStream.Free;
+      end;
+    End
+    Else
+    Begin
+      Response.StatusCode := 304;
+      SendStream( nil );
+    End;
+    If SendFileDelete Then
+      SysUtils.DeleteFile( SendFileName );
+  End
+  Else
+    SendStream( Response.ContentStream );
 end;
 
 end.
