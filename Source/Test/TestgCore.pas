@@ -575,10 +575,20 @@ type
   TestTgWebServerController = class(TTestCase)
   public
     type
+      TWireRims = class(TgIdentityObject)
+      private
+        FFirstName: String;
+        FLastName: String;
+      published
+        property LastName: String read FLastName write FLastName;
+        property FirstName: String read FFirstName write FFirstName;
+      end;
       TModel = class(TgModel)
       private
+        FCustomers: TgIdentityList<TWireRims>;
         function GetFirstName: string;
       published
+        property Customers: TgIdentityList<TWireRims> read FCustomers;
         property FirstName: string read GetFirstName;
       end;
   protected
@@ -592,6 +602,7 @@ type
     procedure DefaultConfig;
     procedure TestNoModel;
     procedure TestModel;
+    procedure TestRest;
   end;
   TestTgWebUI = class(TTestCase)
   protected
@@ -698,6 +709,7 @@ type
             FGoodCustomer: Boolean;
             FInt: Integer;
             FLastName: string;
+            FReadEMail: Boolean;
             FTitle: String;
           published
             [ListColumn(1)] // Default takes the first non object property
@@ -708,6 +720,9 @@ type
             property Int: Integer read FInt write FInt;
             [DefaultValue('Salesperson')]
             property Title: String read FTitle write FTitle;
+            [PathQuery]
+            property ReadEMail: Boolean read FReadEMail write FReadEMail;
+
           end;
           TCustomers = TgIdentityList<TCustomer>;
 
@@ -778,6 +793,8 @@ type
             property Name: string read FName write FName;
             property Shows: TgIdentityList<TExhibitorShow> read FShows;
           end;
+          TShows = TgIdentityList<TShow>;
+          TExhibitors = TgIdentityList<TExhibitor>;
 
 
       private
@@ -788,8 +805,8 @@ type
         FList2: TgList<TCustomer>;
         FList3: TgList<TCustomer2>;
         FList4: TgList<TObjectProperty>;
-        FShows: TgIdentityList<TShow>;
-        FExhibitors: TgIdentityList<TExhibitor>;
+        FShows: TShows;
+        FExhibitors: TExhibitors;
         FName: String;
       published
         [Columns('LastName,FirstName')]
@@ -801,6 +818,8 @@ type
         property Customer2: TCustomer2 read FCustomer2;
         property Customers: TCustomers read FCustomers;
         property Name: String read FName write FName;
+        property Shows: TShows read FShows;
+        property Exhibitors: TExhibitors read FExhibitors;
       end;
 
   private
@@ -847,6 +866,7 @@ type
     procedure FileName;
     procedure WebAddress;
     procedure Model1;
+    procedure RestPaths;
   end;
 
 implementation
@@ -1147,7 +1167,7 @@ begin
   Base.DateTimeProperty := StrToDateTime('1/1/12 12:34 am');
   XMLString :=
     '<xml>'#13#10 + //0
-    '  <Base classname="TestgCore.TBase">'#13#10 + //1
+    '  <Base>'#13#10 + //1
     '    <BooleanProperty>True</BooleanProperty>'#13#10 + //2
     '    <DateProperty>1/1/2012</DateProperty>'#13#10 + //3
     '    <DateTimeProperty>1/1/2012 00:34:00</DateTimeProperty>'#13#10 + //4
@@ -1653,17 +1673,17 @@ begin
   Add3;
   XMLString :=
     '<xml>'#13#10 + //0
-    '  <Base2List classname="TestgCore.TBase2List">'#13#10 + //1
+    '  <Base2List>'#13#10 + //1
     '    <List>'#13#10 + //2
-    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //3
+    '      <Base2>'#13#10 + //3
     '        <IntegerProperty>1</IntegerProperty>'#13#10 + //4
     '        <StringProperty>12345</StringProperty>'#13#10 + //5
     '      </Base2>'#13#10 + //6
-    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //7
+    '      <Base2>'#13#10 + //7
     '        <IntegerProperty>2</IntegerProperty>'#13#10 + //8
     '        <StringProperty>12345</StringProperty>'#13#10 + //9
     '      </Base2>'#13#10 + //10
-    '      <Base2 classname="TestgCore.TBase2">'#13#10 + //11
+    '      <Base2>'#13#10 + //11
     '        <IntegerProperty>3</IntegerProperty>'#13#10 + //12
     '        <StringProperty>12345</StringProperty>'#13#10 + //13
     '      </Base2>'#13#10 + //14
@@ -1945,9 +1965,10 @@ end;
 
 procedure TestTIdentityObjectList.Delete;
 begin
+  FIdentityObjectList.Active := True; // this list as to be active to do this
   Add3;
-  FIdentityObjectList.Active := True;
   FIdentityObjectList.CurrentIndex := 1;
+  CheckEquals(2, FIdentityObjectList.Current.ID, 'The 3rd item should have taken the place of the 2nd');
   FIdentityObjectList.Delete;
   CheckEquals(2, FIdentityObjectList.Count, 'Deleting one of the 3 list items should yield a count of 2.');
   CheckEquals(3, FIdentityObjectList.Current.ID, 'The 3rd item should have taken the place of the 2nd');
@@ -1987,20 +2008,18 @@ begin
   XMLString :=
     '<xml>'#13#10 + //0
     '  <IdentityObjectList classname="TestgCore.TIdentityObjectList">'#13#10 + //1
-    '    <List>'#13#10 + //2
-    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //3
-    '        <ID>1</ID>'#13#10 + //4
-    '        <Name>One</Name>'#13#10 + //5
-    '      </IdentityObject>'#13#10 + //6
-    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //7
-    '        <ID>2</ID>'#13#10 + //8
-    '        <Name>Two</Name>'#13#10 + //9
-    '      </IdentityObject>'#13#10 + //10
-    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //11
-    '        <ID>3</ID>'#13#10 + //12
-    '        <Name>Three</Name>'#13#10 + //13
-    '      </IdentityObject>'#13#10 + //14
-    '    </List>'#13#10 + //15
+    '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //3
+    '      <ID>1</ID>'#13#10 + //4
+    '      <Name>One</Name>'#13#10 + //5
+    '    </IdentityObject>'#13#10 + //6
+    '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //7
+    '      <ID>2</ID>'#13#10 + //8
+    '      <Name>Two</Name>'#13#10 + //9
+    '    </IdentityObject>'#13#10 + //10
+    '    <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //11
+    '      <ID>3</ID>'#13#10 + //12
+    '      <Name>Three</Name>'#13#10 + //13
+    '    </IdentityObject>'#13#10 + //14
     '  </IdentityObjectList>'#13#10 + //16
     '</xml>'#13#10; //17
   FIdentityObjectList.Deserialize(TgSerializerXML, XMLString);
@@ -2060,26 +2079,26 @@ procedure TestTIdentityObjectList.SerializeXML;
 var
   XMLString: string;
 begin
+  FIdentityObjectList.Active := True;
   Add3;
   XMLString :=
     '<xml>'#13#10 + //0
-    '  <IdentityObjectList classname="TestgCore.TIdentityObjectList">'#13#10 + //1
-    '    <List>'#13#10 + //2
-    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //3
-    '        <ID>1</ID>'#13#10 + //4
-    '        <Name>One</Name>'#13#10 + //5
-    '      </IdentityObject>'#13#10 + //6
-    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //7
-    '        <ID>2</ID>'#13#10 + //8
-    '        <Name>Two</Name>'#13#10 + //9
-    '      </IdentityObject>'#13#10 + //10
-    '      <IdentityObject classname="TestgCore.TIdentityObject">'#13#10 + //11
-    '        <ID>3</ID>'#13#10 + //12
-    '        <Name>Three</Name>'#13#10 + //13
-    '      </IdentityObject>'#13#10 + //14
-    '    </List>'#13#10 + //15
+    '  <IdentityObjectList>'#13#10 + //1
+    '    <IdentityObject>'#13#10 + //3
+    '      <ID>1</ID>'#13#10 + //4
+    '      <Name>One</Name>'#13#10 + //5
+    '    </IdentityObject>'#13#10 + //6
+    '    <IdentityObject>'#13#10 + //7
+    '      <ID>2</ID>'#13#10 + //8
+    '      <Name>Two</Name>'#13#10 + //9
+    '    </IdentityObject>'#13#10 + //10
+    '    <IdentityObject>'#13#10 + //11
+    '      <ID>3</ID>'#13#10 + //12
+    '      <Name>Three</Name>'#13#10 + //13
+    '    </IdentityObject>'#13#10 + //14
     '  </IdentityObjectList>'#13#10 + //16
     '</xml>'#13#10; //17
+  CheckEquals(3,FIdentityObjectList.Count);
   CheckEquals(XMLString, FIdentityObjectList.Serialize(TgSerializerXML));
 end;
 
@@ -2130,21 +2149,21 @@ begin
   Add3;
   XMLString :=
     '<xml>'#13#10 + //0
-    '  <Base3 classname="TestgCore.TBase3">'#13#10 + //1
+    '  <Base3>'#13#10 + //1
     '    <IntegerProperty>2</IntegerProperty>'#13#10 + //2
     '    <StringProperty>12345</StringProperty>'#13#10 + //3
     '    <Name>One</Name>'#13#10 + //4
-    '    <List classname="TestgCore.TBase2List">'#13#10 + //5
+    '    <List>'#13#10 + //5
     '      <List>'#13#10 + //6
-    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //7
+    '        <Base2>'#13#10 + //7
     '          <IntegerProperty>1</IntegerProperty>'#13#10 + //8
     '          <StringProperty>A</StringProperty>'#13#10 + //9
     '        </Base2>'#13#10 + //10
-    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //11
+    '        <Base2>'#13#10 + //11
     '          <IntegerProperty>2</IntegerProperty>'#13#10 + //12
     '          <StringProperty>B</StringProperty>'#13#10 + //13
     '        </Base2>'#13#10 + //14
-    '        <Base2 classname="TestgCore.TBase2">'#13#10 + //15
+    '        <Base2>'#13#10 + //15
     '          <IntegerProperty>3</IntegerProperty>'#13#10 + //16
     '          <StringProperty>C</StringProperty>'#13#10 + //17
     '        </Base2>'#13#10 + //18
@@ -3160,6 +3179,15 @@ begin
       RM.DefaultPage := 'default.html';
       CheckEquals(0,WSCCD.Hosts.IndexOf('g.com'));
 
+      WSCCD.Hosts.Add;
+      CheckEquals(3,WSCCD.Hosts.Count);
+      RM := WSCCD.Hosts.Current;
+      RM.BasePath := G.DataPath;
+      RM.SearchPath := '.';
+      RM.ID := 'gmr.com';
+      RM.ModelClass := TModel;
+      RM.URLHandler := TgRestURLHandler;
+
     end);
 end;
 
@@ -3201,6 +3229,40 @@ begin
   with TStringList.Create do try
     LoadFromStream(FWebServerController.Response.ContentStream);
     // String list added the #13#10
+    CheckEquals(DefaulthtmlContent+#13#10,Text);
+  finally
+    Free;
+
+  end;
+
+end;
+
+procedure TestTgWebServerController.TestRest;
+begin
+  FWebServerController.Request.Method := 'GET';
+  FWebServerController.Request.Host := 'gmr.com';
+  FWebServerController.Request.URI := 'Customers/';
+//  FWebServerController.Request.QueryFields['ID'] := '3';
+  FWebServerController.Execute;
+//  FWebServerController.Response.
+  with TStringList.Create do try
+    LoadFromStream(FWebServerController.Response.ContentStream);
+    // String list added the #13#10
+    CheckEquals(1,Count);
+    CheckEquals(DefaulthtmlContent+#13#10,Text);
+  finally
+    Free;
+
+  end;
+
+  FWebServerController.Request.Method := 'GET';
+  FWebServerController.Request.Host := 'gmr.com';
+  FWebServerController.Execute;
+//  FWebServerController.Response.
+  with TStringList.Create do try
+    LoadFromStream(FWebServerController.Response.ContentStream);
+    // String list added the #13#10
+    CheckEquals(1,Count);
     CheckEquals(DefaulthtmlContent+#13#10,Text);
   finally
     Free;
@@ -3933,7 +3995,7 @@ begin
     Model.List1.Current.LastName := 'Laport';
 //    Text := '<gForm/>';
 //    Text := TgDocument._ProcessText(Text,Model);
-    Text := TgWebUIBase.CreateUITemplate(TMyModel,'',False); // True generates sub structure support files
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'');
 (*
     CheckEquals(
      '<ul id="mnuMyModel">' // friendly name of the model
@@ -3954,7 +4016,7 @@ begin
       ,Text);
 
     // List
-    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List1',False); // True generates sub structure support files
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List1'); // True generates sub structure support files
     CheckEquals(
        '<table id="lstList1">'
         +'<tr>'
@@ -3968,7 +4030,7 @@ begin
       +'</table>'
       ,Text);
 
-    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List2',False); // True generates sub structure support files
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List2'); // True generates sub structure support files
     CheckEquals(
      '<table id="lstList2">'
       +'<tr>'
@@ -3982,7 +4044,7 @@ begin
     +'</table>'
       ,Text);
 
-    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List3',False); // True generates sub structure support files
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List3'); // True generates sub structure support files
     CheckEquals(
      '<table id="lstList3">'
       +'<tr>'
@@ -3996,7 +4058,7 @@ begin
     +'</table>'
       ,Text);
 
-    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List4',False); // True generates sub structure support files
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'List4'); // True generates sub structure support files
     CheckEquals(
      '<table id="lstList4">'
       +'<tr>'
@@ -4010,7 +4072,7 @@ begin
 
     // Customer Property
 
-    Text := TgWebUIBase.CreateUITemplate(TMyModel,'Customer',False);
+    Text := TgWebUIBase.CreateUITemplate(TMyModel,'Customer');
     CheckEquals(
       '<form object="Customer">'
        +'<div name="grpFirstName"><label id="lblFirstName" for="FirstName">First Name</label><textarea id="txtFirstName" name="FirstName"></textarea></div>'
@@ -4162,6 +4224,45 @@ begin
    +'  </div>'#$D#$A
    +'</html>'#$D#$A
     ,S);
+end;
+
+procedure TestTgWebUI.RestPaths;
+var
+  gBase: TgBase;
+  Template: String;
+begin
+  CheckTrue(FModel.UseRestPath('',Template,gBase));
+  CheckEquals(Template,'','the template should return Empty');
+  CheckTrue(gBase = FModel);
+
+  CheckFalse(FModel.UseRestPath('JoeBlow\0\d',Template,gBase));
+
+  CheckTrue(FModel.UseRestPath('List1',Template,gBase));
+  CheckEquals('List1',Template,'the template should return Empty');
+  CheckTrue(gBase = FModel.List1);
+  FModel.List1.Add;
+  CheckEquals(1,FModel.List1.Count);
+  FModel.List1.Current.FirstName := 'Hi!';
+  FModel.List1.Current.Save;
+  CheckTrue(FModel.UseRestPath('List1\0',Template,gBase,'\'));
+  CheckEquals('List1Form',Template,'Should be Form Template');
+  CheckTrue(gBase = FModel.List1[0]);
+
+  CheckTrue(FModel.UseRestPath('Customer',Template,gBase));
+  CheckEquals('Customer',Template,'');
+  CheckTrue(gBase = FModel.Customer);
+
+  CheckNotNull(FModel.Shows);
+  FModel.Shows.Add;
+  CheckTrue(FModel.UseRestPath('Shows\0\Exhibitors',Template,gBase,'\'));
+  CheckEquals('Shows-Exhibitors',Template,'');
+  CheckTrue(gBase = FModel.Shows[0].Exhibitors);
+
+  FModel.Shows.Current.Exhibitors.Add;
+  CheckTrue(FModel.UseRestPath('Shows\0\Exhibitors\0',Template,gBase,'\'));
+  CheckEquals('Shows-ExhibitorsForm',Template,'');
+  CheckTrue(gBase = FModel.Shows[0].Exhibitors[0]);
+
 end;
 
 procedure TestTgWebUI.ReadBool_False;

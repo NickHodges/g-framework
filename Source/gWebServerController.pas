@@ -17,6 +17,7 @@ const
 type
   TgRequestContentBase = class;
   TgWebServerControllerConfigurationData = class;
+  TgWebServerController = class;
   TgRequestLogItem = class;
   TgResponse = class;
   TgRequestMap = class;
@@ -44,6 +45,7 @@ type
     FQueryFields: TgDictionary;
     FCookieFields: TgDictionary;
     FContentFields: TgDictionary;
+    FRestFields: TgDictionary;
     FHTTPVersion: String;
     FMaxFileUploadSize: Integer;
     FMultiPart: Boolean;
@@ -68,6 +70,7 @@ type
     property HTTPVersion: String read FHTTPVersion write FHTTPVersion;
     property URI: String read FURI write FURI;
     property ContentFields: TgDictionary read FContentFields;
+    property RestFields: TgDictionary read FRestFields;
     property CookieFields: TgDictionary read FCookieFields;
     property HeaderFields: TgHeaderFields read FHeaderFields;
     property Host: String read GetHost write SetHost;
@@ -125,9 +128,9 @@ type
         function ResponseCode: Integer; override;
       end;
       TgWebServerControllerConfigurationDataAnon = reference to procedure(Item: TgWebServerControllerConfigurationData);
+
   strict private
     FActions: TgDictionary;
-    FModel: TgModel;
     FRequest: TgRequest;
     FResponse: TgResponse;
     FUIState: TgDictionary;
@@ -139,15 +142,20 @@ type
     procedure DoAction;
     function FindDocument(const ADocument: String): String;
     procedure SetCookies(APropertyList: TStringList);
-    property Model: TgModel read FModel write FModel;
   private
   class var
-    ConfigurationData: TgWebServerControllerConfigurationData;
     ConfigurationDataSynchronizer: TMultiReadExclusiveWriteSynchronizer;
   var
     FAction: String;
+    FIsTemplate: Boolean;
+    FTemplateInstance: TgBase;
     procedure SetAction(const AValue: String);
   strict protected
+  private
+    FModel: TgModel;
+    FModelClass: TgModelClass;
+    class var
+      ConfigurationData: TgWebServerControllerConfigurationData;
   public
     class constructor Create;
     class destructor Destroy;
@@ -163,9 +171,14 @@ type
     procedure Login;
     procedure LogOut;
     function MakeCookie(const AName, AValue, ADomain, APath: String; const AExpiration: TDateTime; ASecure: Boolean): String;
+    property Model: TgModel read FModel write FModel;
+    property ModelClass: TgModelClass read FModelClass write FModelClass;
+    property TemplateInstance: TgBase read FTemplateInstance write
+        FTemplateInstance;
   published
     property Action: String read FAction write SetAction;
     property Actions: TgDictionary read FActions;
+    property IsTemplate: Boolean read FIsTemplate write FIsTemplate;
     property Request: TgRequest read FRequest;
     property Response: TgResponse read FResponse;
     property UIState: TgDictionary read FUIState;
@@ -210,11 +223,39 @@ type
     constructor Create(AOwner: TgBase = nil); override;
   End;
 
-  TgRequestMap = class(TgIdentityObject<String>)
-  private
+  TgURLFilter = class(TgBase)
   public
     type
-      [Serializable]
+      TClassOf = class of TgURLFilter;
+    class function Decrypt(const Document: String): String; virtual; abstract;
+    class function Encrypt(const Document: String): String; virtual; abstract;
+  end;
+
+  TgURLHandler = class(TgBase)
+  public
+    type
+      TClassOf = class of TgURLHandler;
+    class function Execute(WebServerController: TgWebServerController; var Document: String; out FileName: String; out Instance: TgBase): Boolean; virtual; abstract;
+  end;
+
+  TgPathQueryURLHandler = class(TgURLHandler)
+  public
+    class function Execute(WebServerController: TgWebServerController; var Document: String; out FileName: String; out Instance: TgBase): Boolean; override;
+  end;
+
+  TgRestURLHandler = class(TgURLHandler)
+  public
+    class function Execute(WebServerController: TgWebServerController; var Document: String; out FileName: String; out Instance: TgBase): Boolean; override;
+  end;
+
+
+  TgRequestMap = class(TgIdentityObject<String>)
+  private
+    FURLFilter: TgURlFilter.TClassOf;
+    FURLHandler: TgURLHandler.TClassOf;
+  public
+    type
+      [Serializable][NotPersistable]
       TgRequestMaps = class(TgIdentityList<TgRequestMap>)
       public
         constructor Create(Owner: TgBase = nil); override;
@@ -224,7 +265,7 @@ type
     class procedure RegisterBuilder(Anon: TPopulateMethod);
   strict private
     FVirtualPaths: TgRequestMaps;
-    FSearchPath : String;
+    FSearchPath : TStringList;
     FSubHosts: TgRequestMaps;
     FDefaultPage: String;
     FRedirect : String;
@@ -245,6 +286,7 @@ type
     function AbsolutePath(ARelativePath: String): String;
     Function IsRelativePath(APath : String) : Boolean;
     Function GetSearchPath : String;
+    procedure SetSearchPath(const Value: String);
     property Hosts: TgIdentityList read FHosts;
   Public
     class constructor Create;
@@ -254,13 +296,15 @@ type
     constructor Create(AOwner: TgBase = nil); override;
     destructor Destroy; override;
     Function TopRequestMap : TgRequestMap;
+    procedure AddSearchPath(const APath: String); overload;
+    procedure AddSearchPath(const APath: String; const FmtArgs: array of const); overload;
     property VirtualPath[var APath : String]: TgRequestMap read GetVirtualPath;
     Property Path[ARequestString : String] : String read GetPath;
     Property SubHost[var AHost : String] : TgRequestMap read GetSubHost;
   Published
     property BasePath: String read FBasePath write FBasePath;
     [DefaultValue('.')]
-    Property SearchPath : String read GetSearchPath write FSearchPath;
+    Property SearchPath : String read GetSearchPath write SetSearchPath;
     property MobileSearchPath: String read FMobileSearchPath write FMobileSearchPath;
     [NotAutoCreate]
     property VirtualPaths: TgRequestMaps read FVirtualPaths stored False;
@@ -269,10 +313,13 @@ type
     property DefaultPage: String read FDefaultPage write FDefaultPage;
     property LogClass: TgRequestLogItemClass read FLogClass write FLogClass;
     Property Redirect : String read FRedirect write FRedirect;
+// only on the model    [DefaultValue('login.html')]
     Property LoginTemplate : String read GetLoginTemplate write FLoginTemplate;
     property ModelClass: TgModelClass read FModelClass write FModelClass;
     property SecurePath: String read FSecurePath write FSecurePath;
     property PathQuery: Boolean read FPathQuery write FPathQuery;
+    property URLFilter: TgURLFilter.TClassOf read FURLFilter write FURLFilter;
+    property URLHandler: TgURLHandler.TClassOf read FURLHandler write FURLHandler;
   End;
 
   TgWebServerControllerConfigurationData = class(TgBase)
@@ -304,6 +351,8 @@ type
     procedure FinalizeRequestMapBuilders;
     procedure GetRequestMap(var Host, URI: String; out RequestMap: TgRequestMap);
     class property FileName: String read GetFileName;
+    function GetIsTemplate(const FileName: String): Boolean;
+
     function Serialize(ASerializerClass: TgSerializerClass): string; override;
   published
     property DefaultHost: String read FDefaultHost write FDefaultHost;
@@ -476,11 +525,11 @@ End;
 
 class constructor TgWebServerController.Create;
 begin
-//  G.AfterInit(procedure
-//    begin
+  G.AfterInit(procedure
+    begin
       ConfigurationData := TgWebServerControllerConfigurationData.Create;
       ConfigurationDataSynchronizer := TMultiReadExclusiveWriteSynchronizer.Create;
-//    end);
+   end);
 end;
 
 class destructor TgWebServerController.Destroy;
@@ -524,15 +573,14 @@ var
   FileExtention: String;
   MimeType: String;
   PathArray: TStringDynArray;
+  Path: String;
   PathQuery: String;
   RedirectString: String;
   TempString: String;
   Document: String;
   FileNameExtension: String;
   Host: String;
-  IsTemplate: Boolean;
-  ModelNeeded: Boolean;
-  ModelClass: TgModelClass;
+  TemplateObject: TgBase;
   StringList: TStringList;
   Attribute: TCustomAttribute;
   Token: string;
@@ -541,9 +589,10 @@ var
   PropertyAttribute: TgPropertyAttribute;
 begin
 { TODO : Add request logging }
+  IsTemplate := False;
   Try
     Host := Request.Host;
-    Document := Request.URI;
+    Document := Request.URI;  // There should be no ? Query Params
     TgWebServerController.ConfigurationData.GetRequestMap(Host,Document,FRequestMap);
 
     if not Assigned(RequestMap) then begin
@@ -557,58 +606,47 @@ begin
       Exit;
     End;
 
-
-    // exposites.com/pathquery/id=6/image.jpg
-    ModelNeeded := False;
-    If RequestMap.PathQuery Then
-    Begin
-      ModelNeeded := True;
-      SplitOnChar(Document, '/', PathQuery, TempString);
-      PathQuery := URLDecode(PathQuery);
-      Document := TempString;
-      StringList := TStringList.Create;
-      try
-        StringList.Delimiter := '&';
-        StringList.DelimitedText := PathQuery;
-        For Counter := 0 to StringList.Count - 1 Do
-          Request.QueryFields[StringList.Names[Counter]] := StringList.ValueFromIndex[Counter];
-      finally
-        StringList.Free;
-      end;
-    End;
-
     // if a document doesn't end in a slash, then redirect with a slash to
     // make the client address include the root character
     If Document = '' Then
     Begin
-      Response.StatusCode := 301;
+      Response.StatusCode := 301; // Redirect
       Response.HeaderFields['Location'] := Request.URI + '/';
       Exit;
     End;
 
+    if Assigned(RequestMap.URLFilter) then
+      Document := RequestMap.URLFilter.Decrypt(Document);
+
+    FileName := '';
     If ( Document = '/' ) And ( RequestMap.DefaultPage > '' ) Then
       Document := RequestMap.DefaultPage;
-    FileName := FindDocument(Document);
+
+    if Assigned(RequestMap.URLHandler) then
+      RequestMap.URLHandler.Execute(Self,Document,FileName,FTemplateInstance);
+
+    // exposites.com/pathquery/id=6/image.jpg
+
+
+
+    if FileName = '' then
+      FileName := FindDocument(Document)
+    else
+      FileName := FindDocument(FileName);
     If FileName = '' Then
       Raise EFileNotFound.CreateFmt( '%s not found.', [Document] );
 
-    FileNameExtension := ExtractFileExt( FileName );
-    If FileNameExtension > '' Then
-    Begin
-      Delete(FileNameExtension, 1, 1);
-      IsTemplate := ConfigurationData.TemplateFileExtensions.IndexOf( FileNameExtension ) > -1;
-      if IsTemplate then
-        ModelNeeded := True;
-    End;
     if IsTemplate then
     begin
-      ModelClass := RequestMap.ModelClass;
       If not Assigned(ModelClass) Then
         ModelClass := TgModel;
-      If ModelNeeded Then
+      If Assigned(ModelClass) Then
       Begin
 { TODO : Add IPAddressLog stuff }
-        FModel := ModelClass.Create(Self);
+        if not Assigned(FModel) then
+          FModel := ModelClass.Create(Self);
+          //ParseURL(FModel,Document,TemplateFileName,FInstance);
+          //FInstance := FModel;
         If Assigned(RequestMap.LogClass) Then
           FLogItem := RequestMap.LogClass.Create(Self);
 
@@ -698,7 +736,7 @@ var
   NewName: String;
   TempName: String;
   RequestFields: TgBase;
-  RequestFieldsArray: Array[0..1] Of TgBase;
+  RequestFieldsArray: Array[0..2] Of TgBase;
   LastTwoChars: String;
   MethodFound: Boolean;
   RTTIProperty: TRTTIProperty;
@@ -707,6 +745,7 @@ begin
   MethodFound := False;
   RequestFieldsArray[0] := Request.QueryFields;
   RequestFieldsArray[1] := Request.ContentFields;
+  RequestFieldsArray[2] := Request.RestFields;
   Try
     For RequestFields In RequestFieldsArray Do
     Begin
@@ -1373,15 +1412,16 @@ end;
 
 function TgRequestMap.GetSearchPath: String;
 begin
+  Result := '';
   If Not IsLoading Then
   Begin
-    If FSearchPath > '' Then
-      Result := AbsolutePath(FSearchPath)
+    If FSearchPath.Count > 0 Then
+      Result := AbsolutePath(FSearchPath.DelimitedText)
   End
   Else If Not IsSaving Then
-    Result := AbsolutePath(FSearchPath)
+    Result := AbsolutePath(FSearchPath.DelimitedText)
   Else
-    Result := FSearchPath;
+    Result := FSearchPath.DelimitedText;
 end;
 
 function TgRequestMap.GetSubHost(var AHost: String): TgRequestMap;
@@ -1408,7 +1448,7 @@ begin
     APath := ''
   Else
   Begin
-    If VirtualPaths.TryGet(Head,VirtualPathRequestMap) Then
+    If VirtualPaths.TryGet(Head,VirtualPathRequestMap) and not Assigned(VirtualPathRequestMap.URLHandler) Then
     Begin
       APath := Tail;
       Result := VirtualPathRequestMap.GetVirtualPath(APath);
@@ -1428,6 +1468,11 @@ class procedure TgRequestMap.RegisterBuilder(
   Anon: TPopulateMethod);
 begin
   _Builders.Add(Anon);
+end;
+
+procedure TgRequestMap.SetSearchPath(const Value: String);
+begin
+  FSearchPath.DelimitedText := Value;
 end;
 
 class procedure TgRequestMap.SplitHostPath(const APath : String; var AHead, ATail : String);
@@ -1576,13 +1621,6 @@ begin
   Begin
     AddDefaultFileTypes;
     AddDefaultPackages;
-    Hosts.Add;
-    DefaultHost := 'thebugger.com';
-    Hosts.Current.BasePath := 'c:\GWeb';
-    Hosts.Current.ID := 'thebugger.com';
-    Hosts.Current.VirtualPaths.Add;
-    Hosts.Current.VirtualPaths.Current.ID :='LoveBucket';
-    Hosts.Current.VirtualPaths.Current.BasePath :='C:\LoveBucket';
     Save;
   End;
   Deserialize(TgSerializerXML, FileToString(FileName));
@@ -1608,10 +1646,15 @@ begin
 end;
 
 class constructor TgWebServerControllerConfigurationData.Create;
+var
+  S: String;
+  Ss: TArray<String>;
 begin
   Packages := TStringList.Create;
   if FileExists(FileNamePackages) then
    Packages.LoadFromFile(FileNamePackages);
+  G.LoadPackages(Packages) ;
+
 
 end;
 
@@ -1642,6 +1685,21 @@ begin
   FreeAndNil(RequestMapBuilders);
 end;
 
+function TgWebServerControllerConfigurationData.GetIsTemplate(const FileName: String): Boolean;
+var
+  FileNameExtension: String;
+begin
+  Result := False;
+  // Determine if its a template
+  FileNameExtension := ExtractFileExt(FileName);
+  If FileNameExtension > '' Then
+  Begin
+    Delete(FileNameExtension, 1, 1);
+    Result := TemplateFileExtensions.IndexOf( FileNameExtension ) > -1;
+  End;
+
+end;
+
 
 procedure TgWebServerControllerConfigurationData.GetRequestMap(var Host,
   URI: String; out RequestMap: TgRequestMap);
@@ -1664,7 +1722,7 @@ begin
     RequestMap := nil;
     exit;
   end;
-  if URI > '' then
+  if (URI > '') and not Assigned(RequestMap.URLHandler) then
     RequestMap := RequestMap.VirtualPath[URI];
 
 end;
@@ -1847,15 +1905,31 @@ begin
 end;
 
 
+procedure TgRequestMap.AddSearchPath(const APath: String);
+begin
+  if FSearchPath.IndexOf(APath) >= 0 then exit;
+  FSearchPath.Add(APath);
+
+end;
+
+procedure TgRequestMap.AddSearchPath(const APath: String;
+  const FmtArgs: array of const);
+begin
+  AddSearchPath(Format(APath,FmtArgs));
+end;
+
 constructor TgRequestMap.Create(AOwner: TgBase);
 begin
+  FSearchPath := TStringList.Create;
+  FSearchPath.Delimiter := ';';
   inherited;
-  FVirtualPaths := TgRequestMaps.Create;
-  FSubHosts := TgRequestMaps.Create;
+  FVirtualPaths := TgRequestMaps.Create(Self);
+  FSubHosts := TgRequestMaps.Create(Self);
 end;
 
 destructor TgRequestMap.Destroy;
 begin
+  FreeAndNil(FSearchPath);
   FreeAndNil(FSubHosts);
   FreeAndNil(FVirtualPaths);
   inherited;
@@ -2108,6 +2182,68 @@ begin
   Else
     SendStream( Response.ContentStream );
 end;
+{ TgPathQueryURLHandler }
+
+class function TgPathQueryURLHandler.Execute(
+  WebServerController: TgWebServerController; var Document: String;
+  out FileName: String; out Instance: TgBase): Boolean;
+begin
+  Result := False;
+(*
+  If WebServerController.RequestMap.PathQuery Then
+  Begin
+    IsTemplate := ModelNeeded := True;
+    SplitOnChar(Document, '/', PathQuery, TempString);
+    PathQuery := URLDecode(PathQuery);
+    Document := TempString;
+    StringList := TStringList.Create;
+    try
+      StringList.Delimiter := '&';
+      StringList.DelimitedText := PathQuery;
+      For Counter := 0 to StringList.Count - 1 Do
+        Request.QueryFields[StringList.Names[Counter]] := StringList.ValueFromIndex[Counter];
+    finally
+      StringList.Free;
+    end;
+  End;
+*)
+end;
+
+{ TgRestURLHandler }
+
+class function TgRestURLHandler.Execute(
+  WebServerController: TgWebServerController; var Document: String;
+  out FileName: String; out Instance: TgBase): Boolean;
+var
+  TemplateName: String;
+begin
+  Result := False;
+  Instance := nil;
+  FileName := '';
+  if Document = '' then exit;
+  // Check Default Template
+  if (Document[Length(Document)] = '/') or WebServerController.ConfigurationData.GetIsTemplate(Document) then begin
+    if not Assigned(WebServerController.ModelClass) then
+      WebServerController.ModelClass := WebServerController.RequestMap.ModelClass;
+    if not Assigned(WebServerController.Model) then
+      WebServerController.Model := WebServerController.ModelClass.Create(WebServerController);
+    Instance := WebServerController.Model;
+    if (Document[Length(Document)] <> '/') then
+      FileName := ExtractFileName(Document)
+  end
+  else begin
+    FileName := ExtractFileName(Document);
+  end;
+  if not Assigned(Instance) then exit;
+  Result := WebServerController.Model.UseRestPath(Document,TemplateName,Instance);
+  if Result and (FileName = '') then
+    FileName := TemplateName+'.html';
+  WebServerController.IsTemplate := True;
+end;
+
+{ TgURLHandler }
+
 
 end.
+
 

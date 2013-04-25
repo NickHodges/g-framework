@@ -1,9 +1,11 @@
 unit gPackageLoader;
 
 interface
-uses Windows, gCore;
+uses ActiveX, Windows, gCore;
 implementation
 initialization
-//  OutputDebugString(pChar('Hello'));
+  CoInitialize(nil); // <-- manually call CoInitialize()
   G.Initialize;
+finalization
+  CoUnInitialize; // <-- free memory
 end.

@@ -19,10 +19,10 @@ uses
   TestFramework,
   GUITestRunner,
   TextTestRunner,
-  gPackageLoader in '..\gPackageLoader.pas',
   TestgCore in 'TestgCore.pas',
   gWebServerController in '..\gWebServerController.pas',
-  gWebUI in '..\gWebUI.pas';
+  gWebUI in '..\gWebUI.pas',
+  gPackageLoader in '..\gPackageLoader.pas';
 
 {$R *.RES}
 begin

@@ -12,6 +12,12 @@
 			<Projects Include="..\..\gISAPI\Source\gISAPI.dproj">
 				<Dependencies/>
 			</Projects>
+			<Projects Include="..\..\..\FirstTest\source\FirstTest.dproj">
+				<Dependencies/>
+			</Projects>
+			<Projects Include="..\pgRequestMapGenerator.dproj">
+				<Dependencies/>
+			</Projects>
 		</ItemGroup>
 		<ProjectExtensions>
 			<Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -47,14 +53,32 @@
 		<Target Name="gISAPI:Make">
 			<MSBuild Projects="..\..\gISAPI\Source\gISAPI.dproj" Targets="Make"/>
 		</Target>
+		<Target Name="FirstTest">
+			<MSBuild Projects="..\..\..\FirstTest\source\FirstTest.dproj"/>
+		</Target>
+		<Target Name="FirstTest:Clean">
+			<MSBuild Projects="..\..\..\FirstTest\source\FirstTest.dproj" Targets="Clean"/>
+		</Target>
+		<Target Name="FirstTest:Make">
+			<MSBuild Projects="..\..\..\FirstTest\source\FirstTest.dproj" Targets="Make"/>
+		</Target>
+		<Target Name="pgRequestMapGenerator">
+			<MSBuild Projects="..\pgRequestMapGenerator.dproj"/>
+		</Target>
+		<Target Name="pgRequestMapGenerator:Clean">
+			<MSBuild Projects="..\pgRequestMapGenerator.dproj" Targets="Clean"/>
+		</Target>
+		<Target Name="pgRequestMapGenerator:Make">
+			<MSBuild Projects="..\pgRequestMapGenerator.dproj" Targets="Make"/>
+		</Target>
 		<Target Name="Build">
-			<CallTarget Targets="pgCore;pgCoreTests;gISAPI"/>
+			<CallTarget Targets="pgCore;pgCoreTests;gISAPI;FirstTest;pgRequestMapGenerator"/>
 		</Target>
 		<Target Name="Clean">
-			<CallTarget Targets="pgCore:Clean;pgCoreTests:Clean;gISAPI:Clean"/>
+			<CallTarget Targets="pgCore:Clean;pgCoreTests:Clean;gISAPI:Clean;FirstTest:Clean;pgRequestMapGenerator:Clean"/>
 		</Target>
 		<Target Name="Make">
-			<CallTarget Targets="pgCore:Make;pgCoreTests:Make;gISAPI:Make"/>
+			<CallTarget Targets="pgCore:Make;pgCoreTests:Make;gISAPI:Make;FirstTest:Make;pgRequestMapGenerator:Make"/>
 		</Target>
 		<Import Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')" Project="$(BDS)\Bin\CodeGear.Group.Targets"/>
 	</Project>

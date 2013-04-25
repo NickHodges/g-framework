@@ -81,9 +81,10 @@ type
     class function ReadableText(const Value: String): String;
   public
     constructor Create(ARttiNamedObject: TRttiNamedObject); virtual;
-    class procedure CreateUITemplate(var Builder: TStringBuilder; gBaseClass: TgBaseClass; ARTTIProperty: TRTTIProperty = nil; GenerateSupportFiles: Boolean = False); overload;
-    class procedure CreateUITemplate(var Builder: TStringBuilder; gModelClass: TgModelClass; GenerateSupportFiles: Boolean = False); overload;
-    class function CreateUITemplate(ModelClass: TgModelClass; const PropertyName: String = ''; GenerateSupportFiles: Boolean = False): string; overload;
+    class procedure CreateUITemplate(var Builder: TStringBuilder; gBaseClass: TgBaseClass; ARTTIProperty: TRTTIProperty = nil); overload;
+    class procedure CreateUITemplate(var Builder: TStringBuilder; gModelClass: TgModelClass); overload;
+    class function CreateUITemplate(AClass: TgBaseClass; const PropertyName: String = ''): string; overload;
+    class function CreateUITemplate(AClass: TgBaseClass; ARTTIProperty: TRTTIProperty = nil): string; overload;
     procedure BuildLink(var Builder: TStringBuilder; RttiMemeber: TRttiMember); virtual;
     procedure BuildLabel(var Builder: TStringBuilder); virtual;
     procedure BuildValue(var Builder: TStringBuilder); virtual;
@@ -268,7 +269,13 @@ end;
 
 procedure TgWebUIBase.BuildLink(var Builder: TStringBuilder;
   RttiMemeber: TRttiMember);
+var
+  InstanceMemeber: TRttiInstanceProperty;
+  Attrs: TArray<TCustomAttribute>;
 begin
+  if not (RttiMemeber is TRttiInstanceProperty) then exit;
+  InstanceMemeber := RttiMemeber as TRttiInstanceProperty;
+  Builder.AppendFormat('<li><a href="%0:s">%0:s</a></li>',[InstanceMemeber.Name]);
 end;
 
 procedure TgWebUIBase.BuildValue(var Builder: TStringBuilder);
@@ -285,8 +292,7 @@ begin
 end;
 
 class procedure TgWebUIBase.CreateUITemplate(var Builder: TStringBuilder;
-  gBaseClass: TgBaseClass; ARTTIProperty: TRTTIProperty;
-  GenerateSupportFiles: Boolean);
+  gBaseClass: TgBaseClass; ARTTIProperty: TRTTIProperty);
 var
   WebUI: TgWebUIBase;
 begin
@@ -295,7 +301,7 @@ begin
 end;
 
 class procedure TgWebUIBase.CreateUITemplate(var Builder: TStringBuilder;
-  gModelClass: TgModelClass; GenerateSupportFiles: Boolean);
+  gModelClass: TgModelClass);
 var
   Index: Integer;
   WebUI: TgWebUIBase;
@@ -313,22 +319,12 @@ begin
   Builder.Append('</ul>');
 end;
 
-class function TgWebUIBase.CreateUITemplate(ModelClass: TgModelClass; const PropertyName: String = ''; GenerateSupportFiles: Boolean = False): string;
-var
-  Builder: TStringBuilder;
-  RTTIProperty: TRttiProperty;
+class function TgWebUIBase.CreateUITemplate(AClass: TgBaseClass; const PropertyName: String = ''): string;
 begin
-  Builder := TStringBuilder.Create;
-  try
-    if PropertyName = '' then
-      CreateUITemplate(Builder,ModelClass,GenerateSupportFiles)
-    else
-      CreateUITemplate(Builder,ModelClass,G.PropertyByName(ModelClass,PropertyName),GenerateSupportFiles);;
-    Result := Builder.ToString;
-  finally
-    Builder.Free;
-  end;
-
+  if Trim(PropertyName) = '' then
+    Result := CreateUITemplate(AClass,nil)
+  else
+    Result := CreateUITemplate(AClass,G.PropertyByName(AClass,PropertyName))
 end;
 
 class destructor TgWebUIBase.Destroy;
@@ -523,6 +519,27 @@ end;
 class procedure TgWebUIBase.Unregister(Value: TgWebUIBase);
 begin
   _.Remove(Value.RttiNamedObject);
+end;
+
+class function TgWebUIBase.CreateUITemplate(AClass: TgBaseClass;
+  ARTTIProperty: TRTTIProperty): string;
+var
+  Builder: TStringBuilder;
+begin
+  Builder := TStringBuilder.Create;
+  try
+    if not Assigned(ARTTIProperty) then begin
+      if AClass.InheritsFrom(TgModel) then
+        CreateUITemplate(Builder,TgModelClass(AClass))
+      else
+        CreateUITemplate(Builder,AClass)
+    end
+    else
+      CreateUITemplate(Builder,AClass,ARTTIProperty);
+    Result := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
 end;
 
 { TgWebUIHTML }
@@ -902,7 +919,7 @@ begin
     ANode.Attributes[AName] := NodeAttributes.Values[AName];
   end;
   TargetChildNodes.Add(ANode);
-  if Assigned(AObject) then
+  if (Name <> '') and Assigned(AObject) then
     case TypeEnum of
       itHidden
       :;
